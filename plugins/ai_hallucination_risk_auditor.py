@@ -122,7 +122,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI reliability, hallucination detection, and factual risk'
         capability_type = 'scoring'
         logic_profile_id = 'hallucination_risk_auditor_profile'
-        generation_note = 'hallucination semantic context depth fix'
+        generation_note = 'production_validation_repair: ensure non-empty actions for low-risk hallucination payloads'
         use_cases = ['Identify claims that need citations or external verification.', 'Classify risk by domain such as legal, medical, financial, or technical.', 'Suggest safer rewrites for uncertain claims.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -169,6 +169,8 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         ]
         if not result['recommended_actions'] and context_signals:
             result['recommended_actions'].append({'action': 'Preserve context caveat', 'signals': context_signals, 'context': context_text[:240]})
+        if not result['recommended_actions']:
+            result['recommended_actions'].append({'action': 'Keep answer caveated and cite any new factual claims', 'context': context_text[:240] or def_text[:240]})
         if safer_rewrites:
             result['recommended_actions'].append({'action': 'Use safer rewrites', 'rewrites': safer_rewrites})
         result['scores'] = {'confidence': round(min(0.92, 0.44 + min(0.24, 0.045 * len(sentences)) + min(0.16, 0.025 * len(context_signals)) + (0.08 if claims else 0)), 2), 'hallucination_risk': risk_score, 'citation_coverage': round(len([c for c in claims if c['has_citation']]) / max(1, len(claims)), 2), 'risk': risk_score, 'context_signal_count': len(context_signals)}

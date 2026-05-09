@@ -156,6 +156,7 @@ class CapabilityProfileTests(unittest.TestCase):
                 self.assertEqual(result["status"], "succeeded", result)
                 output = result["output"]
                 self.assertEqual(output["details"]["logic_profile_id"], registered_profile_id(slug))
+                self.assertTrue(output["recommended_actions"], output)
                 self.assertNotEqual(output["details"]["logic_profile_id"], "semantic_repair")
                 self.assertNotIn("capability_profile_error", str(output))
 

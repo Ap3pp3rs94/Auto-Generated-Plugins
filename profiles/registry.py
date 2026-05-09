@@ -482,6 +482,8 @@ result['recommended_actions'] = [
 ]
 if not result['recommended_actions'] and context_signals:
     result['recommended_actions'].append({{'action': 'Preserve context caveat', 'signals': context_signals, 'context': context_text[:240]}})
+if not result['recommended_actions']:
+    result['recommended_actions'].append({{'action': 'Keep answer caveated and cite any new factual claims', 'context': context_text[:240] or def_text[:240]}})
 if safer_rewrites:
     result['recommended_actions'].append({{'action': 'Use safer rewrites', 'rewrites': safer_rewrites}})
 result['scores'] = {{'confidence': round(min(0.92, 0.44 + min(0.24, 0.045 * len(sentences)) + min(0.16, 0.025 * len(context_signals)) + (0.08 if claims else 0)), 2), 'hallucination_risk': risk_score, 'citation_coverage': round(len([c for c in claims if c['has_citation']]) / max(1, len(claims)), 2), 'risk': risk_score, 'context_signal_count': len(context_signals)}}
