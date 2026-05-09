@@ -112,36 +112,73 @@ complexity_terms = sorted(set(
     for word in planning_text.split()
     if len(word.strip('.,:;!?')) > 7
 ))[:12]
+risk_action_templates = {{
+    'release_safety': ('safety_review', 'Create rollback, migration, and production-safety checks for', True),
+    'security_auth': ('security_review', 'Verify authentication, session, and permission behavior for', True),
+    'factual_safety': ('grounding_review', 'Collect citations and mark unsupported claims before drafting', True),
+    'coordination': ('handoff_review', 'Assign owner, handoff packet, and blocker resolution path for', False),
+}}
+capability_actions = []
+for signal in risk_signals:
+    template = risk_action_templates.get(signal['category'])
+    if template:
+        capability_actions.append({{
+            'phase': template[0],
+            'task': template[1] + ' ' + ', '.join(signal['signals']),
+            'blocking': template[2],
+            'source_signal': signal['category'],
+        }})
+for index, existing_step in enumerate(current_plan[:3], 1):
+    capability_actions.append({{
+        'phase': 'align',
+        'task': 'Reconcile existing plan step %d with the new objective: %s' % (index, str(existing_step)[:140]),
+        'blocking': False,
+        'source_signal': 'current_plan',
+    }})
+for blocker in blocked_steps[:3]:
+    capability_actions.append({{
+        'phase': 'unblock',
+        'task': 'Resolve or route blocker before dependent work continues: ' + str(blocker)[:160],
+        'blocking': True,
+        'source_signal': 'blocked_steps',
+    }})
 sequenced_plan = []
 if not explicit_objective_text:
     sequenced_plan.append({{'step': 1, 'phase': 'clarify', 'task': 'Define the objective and acceptance criteria.', 'blocking': True}})
 sequenced_plan.append({{'step': len(sequenced_plan) + 1, 'phase': 'plan', 'task': 'Break work into implementation, review, and verification checkpoints for ' + def_text[:160], 'blocking': True}})
+for action in capability_actions:
+    action = dict(action)
+    action['step'] = len(sequenced_plan) + 1
+    sequenced_plan.append(action)
 sequenced_plan.append({{'step': len(sequenced_plan) + 1, 'phase': 'execute', 'task': 'Complete the smallest reversible implementation unit.', 'blocking': False}})
 sequenced_plan.append({{'step': len(sequenced_plan) + 1, 'phase': 'verify', 'task': 'Run tests or explicit checks tied to ' + objective_text[:140], 'blocking': True}})
+sequenced_plan.append({{'step': len(sequenced_plan) + 1, 'phase': 'handoff', 'task': 'Package changed files, decisions, blockers, and verification evidence for the next agent.', 'blocking': True}})
 handoff_packet = {{
     'objective': objective_text,
     'completed_steps': completed_steps,
     'blocked_steps': blocked_steps,
     'parallelizable_work': parallel_hints or ['document assumptions', 'prepare verification checklist'],
     'risk_signals': risk_signals,
+    'specialized_actions': capability_actions,
     'integration_checkpoint': 'Confirm completed work, blockers, changed files, and test evidence before the next agent starts.',
 }}
 complexity_score = min(0.12, len(complexity_terms) * 0.01)
 risk_signal_score = min(0.14, sum(len(item['signals']) for item in risk_signals) * 0.025)
-coverage = 0.38 + (0.12 if explicit_objective_text else 0) + (0.1 if current_plan else 0) + (0.1 if completed_steps else 0) + (0.08 if blocked_steps else 0) + min(0.1, len(constraints) * 0.03) + complexity_score + min(0.06, len(parallel_hints) * 0.02)
+coverage = 0.34 + (0.12 if explicit_objective_text else 0) + (0.09 if current_plan else 0) + (0.09 if completed_steps else 0) + (0.08 if blocked_steps else 0) + min(0.1, len(constraints) * 0.03) + complexity_score + min(0.08, len(capability_actions) * 0.015) + min(0.06, len(parallel_hints) * 0.02)
 result['summary'] = plugin_name + ': built a sequenced AI-agent plan with checkpoints for ' + def_text[:140] + '.'
 result['primary_insights'] = [
     {{'title': 'Plan coverage', 'detail': 'Found %d existing plan step(s), %d completed step(s), and %d blocker(s).' % (len(current_plan), len(completed_steps), len(blocked_steps))}},
     {{'title': 'Blocking path', 'detail': blocked_steps[0] if blocked_steps else 'No explicit blocker was provided.'}},
     {{'title': 'Parallel work', 'detail': handoff_packet['parallelizable_work']}},
     {{'title': 'Risk signals', 'detail': risk_signals or 'No high-risk planning signal detected.'}},
+    {{'title': 'Specialized actions', 'detail': capability_actions or 'No specialized action was required beyond the standard plan.'}},
 ]
 result['recommended_actions'] = [
-    {{'action': item['task'], 'phase': item['phase'], 'blocking': item['blocking']}} for item in sequenced_plan
+    {{'action': item['task'], 'phase': item['phase'], 'blocking': item['blocking'], 'source_signal': item.get('source_signal', 'standard')}} for item in sequenced_plan
 ]
 risk_score = round(min(0.92, max(0.12, 0.42 + risk_signal_score + 0.04 * len(blocked_steps) - min(0.18, len(completed_steps) * 0.04))), 2)
-result['scores'] = {{'confidence': round(min(0.92, coverage), 2), 'plan_coverage': round(min(1.0, coverage + 0.08 + complexity_score), 2), 'handoff_readiness': round(0.5 + min(0.35, len(handoff_packet['parallelizable_work']) * 0.07 + len(sequenced_plan) * 0.025), 2), 'risk': risk_score, 'complexity': round(complexity_score + risk_signal_score, 2)}}
-result['details'] = {{'sequenced_plan': sequenced_plan, 'handoff_packet': handoff_packet, 'risk_signals': risk_signals, 'complexity_terms': complexity_terms, 'missing_inputs': [key for key in ['objective', 'current_plan', 'blocked_steps'] if not payload_data.get(key)]}}
+result['scores'] = {{'confidence': round(min(0.92, coverage), 2), 'plan_coverage': round(min(1.0, coverage + 0.08 + complexity_score), 2), 'handoff_readiness': round(0.48 + min(0.4, len(handoff_packet['parallelizable_work']) * 0.06 + len(sequenced_plan) * 0.018 + len(capability_actions) * 0.025), 2), 'risk': risk_score, 'complexity': round(complexity_score + risk_signal_score, 2)}}
+result['details'] = {{'sequenced_plan': sequenced_plan, 'handoff_packet': handoff_packet, 'risk_signals': risk_signals, 'complexity_terms': complexity_terms, 'specialized_action_count': len(capability_actions), 'missing_inputs': [key for key in ['objective', 'current_plan', 'blocked_steps'] if not payload_data.get(key)]}}
 {_common_result_footer("sequenced_plan[0]['task'] if sequenced_plan else 'Define the next planning step.'")}
 """.strip()
 
