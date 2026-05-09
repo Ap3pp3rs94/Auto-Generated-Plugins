@@ -66,7 +66,7 @@ result['progress_state'] = {{
 result['user_experience'] = {{
     'plain_language_takeaway': result['summary'],
     'beginner_tip': 'Use the first recommendation as the next concrete step.',
-    'power_user_tip': 'Pass details and scores into the next AI capability plugin.',
+    'power_user_tip': 'Pass details and scores into the next AI capability module.',
     'interaction_suggestions': [item.get('action', str(item)) for item in result.get('recommended_actions', [])[:3]],
 }}
 result['fun_mode'] = {{
@@ -1502,7 +1502,7 @@ for label, terms in [
     hits = [term for term in terms if term in factory_surface]
     if hits:
         factory_signals.append({{'category': label, 'signals': hits}})
-primary_signal = factory_signals[0]['category'] if factory_signals else 'plugin_creation'
+primary_signal = factory_signals[0]['category'] if factory_signals else 'capability_creation'
 plugin_keywords = sorted(set(
     word.strip('.,:;!?').lower()
     for word in factory_surface.split()
@@ -1510,9 +1510,9 @@ plugin_keywords = sorted(set(
 ))[:14]
 domain_signals = []
 for label, terms in [
-    ('release_auth_plugin', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
-    ('grounded_medical_plugin', ['medical', 'clinical', 'citation', 'source', 'unsupported', 'claim']),
-    ('tool_trace_plugin', ['tool', 'trace', 'retrieval', 'mismatch', 'consistency']),
+    ('release_auth_capability', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
+    ('grounded_medical_capability', ['medical', 'clinical', 'citation', 'source', 'unsupported', 'claim']),
+    ('tool_trace_capability', ['tool', 'trace', 'retrieval', 'mismatch', 'consistency']),
 ]:
     hits = [term for term in terms if term in factory_surface]
     if hits:
@@ -1523,13 +1523,13 @@ if logic_profile_id == 'plugin_spec_architect_profile':
     spec_blueprint = {{
         'name': desired_plugin,
         'category': 'ai_plugin_factory',
-        'goal': 'Create a focused plugin for ' + desired_plugin,
+        'goal': 'Create a focused AI capability for ' + desired_plugin,
         'required_inputs': ['task', 'objective', 'constraints', 'existing_plugins'],
         'required_outputs': ['summary', 'primary_insights', 'recommended_actions', 'scores', 'details'],
         'acceptance_criteria': ['unique capability boundary', 'capability-specific details', 'semantic probe passes'],
     }}
     uniqueness_checks = ['Compare slug and family_key with existing_plugins', 'Reject broad names that duplicate current roadmap', 'Require one unique output detail key']
-    capability_boundaries = ['State what this plugin owns', 'State adjacent plugins it must not duplicate', 'Define handoff fields for downstream plugins']
+    capability_boundaries = ['State what this capability owns', 'State adjacent capabilities it must not duplicate', 'Define handoff fields for downstream capabilities']
     prompt_requirements = ['Goal must name the concrete capability', 'Use cases must be observable', 'Outputs must include machine-readable details']
     details_payload = {{'spec_blueprint': spec_blueprint, 'uniqueness_checks': uniqueness_checks, 'capability_boundaries': capability_boundaries, 'prompt_requirements': prompt_requirements}}
     next_step = 'Draft PluginSpec blueprint for ' + desired_plugin
@@ -1557,7 +1557,7 @@ elif logic_profile_id == 'plugin_quality_gate_designer_profile':
 elif logic_profile_id == 'plugin_test_payload_generator_profile':
     test_payloads = [
         {{'name': 'happy_path', 'payload': {{'task': desired_plugin, 'constraints': constraints[:3], 'existing_plugins': existing_plugins[:5]}}}},
-        {{'name': 'semantic_contrast', 'payload': {{'task': 'release-sensitive auth plugin', 'objective': 'rollback-safe generation'}}}},
+        {{'name': 'semantic_contrast', 'payload': {{'task': 'release-sensitive auth capability', 'objective': 'rollback-safe generation'}}}},
         {{'name': 'adversarial_shallow', 'payload': {{'task': 'make it better', 'objective': '', 'constraints': []}}}},
     ]
     edge_cases = ['missing objective', 'duplicate existing plugin', 'empty candidate output', 'high-risk release wording']
@@ -1595,8 +1595,8 @@ elif logic_profile_id == 'plugin_repair_strategy_planner_profile':
     next_step = 'Patch capability profile for ' + desired_plugin
 elif logic_profile_id == 'plugin_release_packager_profile':
     validation_summary = {{'quality_failures': len(quality_failures), 'candidate_count': len(candidate_outputs), 'signals': factory_signals}}
-    release_package = {{'title': desired_plugin, 'summary': 'Package generated plugin with validation evidence', 'files': payload_data.get('files', []), 'notes': source_notes[:5]}}
-    github_publish_plan = ['stage plugin and profile files', 'commit with validation summary', 'push origin main after gates pass']
+    release_package = {{'title': desired_plugin, 'summary': 'Package generated capability module with validation evidence', 'files': payload_data.get('files', []), 'notes': source_notes[:5]}}
+    github_publish_plan = ['stage capability module and profile files', 'commit with validation summary', 'push origin main after gates pass']
     rollback_notes = ['keep backup in quality_backups', 'do not publish failed candidates', 're-run quality runner before restart']
     details_payload = {{'release_package': release_package, 'validation_summary': validation_summary, 'github_publish_plan': github_publish_plan, 'rollback_notes': rollback_notes}}
     next_step = 'Prepare GitHub release package for ' + desired_plugin
@@ -1604,32 +1604,32 @@ else:
     backlog_items = [
         {{'slug_hint': 'ai_plugin_spec_architect', 'priority': 1, 'why': 'improves future specs'}},
         {{'slug_hint': 'ai_plugin_quality_gate_designer', 'priority': 2, 'why': 'prevents shallow acceptance'}},
-        {{'slug_hint': 'ai_plugin_repair_strategy_planner', 'priority': 3, 'why': 'recovers weak generated plugins'}},
+        {{'slug_hint': 'ai_plugin_repair_strategy_planner', 'priority': 3, 'why': 'recovers weak generated capabilities'}},
     ]
-    priority_rationale = ['Factory leverage first', 'Quality before speed', 'No duplicate or random plugin ideas']
+    priority_rationale = ['Factory leverage first', 'Quality before speed', 'No duplicate or random capability ideas']
     dependency_order = ['spec', 'logic_blueprint', 'quality_gate', 'test_payloads', 'duplicate_check', 'repair', 'release']
     next_plugin_specs = [item['slug_hint'] for item in backlog_items]
     details_payload = {{'backlog_items': backlog_items, 'priority_rationale': priority_rationale, 'dependency_order': dependency_order, 'next_plugin_specs': next_plugin_specs}}
-    next_step = 'Build the highest-leverage plugin factory backlog item'
+    next_step = 'Build the highest-leverage capability factory backlog item'
 
-result['summary'] = plugin_name + ': created plugin-factory guidance for ' + desired_plugin + ' using focus ' + primary_signal + '.'
+result['summary'] = plugin_name + ': created capability-factory guidance for ' + desired_plugin + ' using focus ' + primary_signal + '.'
 result['primary_insights'] = [
     {{'title': 'Factory signals', 'detail': factory_signals or primary_signal}},
-    {{'title': 'Domain signals', 'detail': domain_signals or 'No domain-specific plugin risk signal detected.'}},
-    {{'title': 'Plugin keywords', 'detail': plugin_keywords}},
+    {{'title': 'Domain signals', 'detail': domain_signals or 'No domain-specific capability risk signal detected.'}},
+    {{'title': 'Capability keywords', 'detail': plugin_keywords}},
     {{'title': 'Profile output', 'detail': details_payload}},
 ]
 result['recommended_actions'] = [
     {{'action': next_step, 'profile_id': logic_profile_id, 'signals': factory_signals}},
-    {{'action': 'Reject random or duplicate plugin work', 'existing_plugins_checked': len(existing_plugins)}},
+    {{'action': 'Reject random or duplicate capability work', 'existing_plugins_checked': len(existing_plugins)}},
     {{'action': 'Verify with quality runner before publish', 'quality_failures_seen': len(quality_failures)}},
 ]
 signal_count = sum(len(item['signals']) for item in factory_signals)
 result['scores'] = {{'confidence': round(min(0.92, 0.44 + 0.03 * len(plugin_keywords) + 0.025 * signal_count + 0.013 * domain_signal_count), 2), 'factory_leverage': round(min(0.95, 0.5 + 0.06 * len(details_payload) + 0.02 * signal_count + 0.01 * domain_signal_count), 2), 'duplicate_risk': round(min(0.9, 0.08 * len(existing_plugins) + 0.06 * len(details_payload.get('duplicate_risks', []))), 2), 'domain_signal_count': domain_signal_count, 'risk': round(min(0.9, 0.16 + 0.04 * len(quality_failures) + 0.04 * len(details_payload.get('duplicate_risks', [])) + 0.025 * domain_signal_count), 2)}}
 details_payload['factory_signals'] = factory_signals
 details_payload['domain_signals'] = domain_signals
-details_payload['plugin_keywords'] = plugin_keywords
-details_payload['missing_inputs'] = ['plugin_name or task'] if not desired_plugin else []
+details_payload['capability_keywords'] = plugin_keywords
+details_payload['missing_inputs'] = ['capability name or task'] if not desired_plugin else []
 result['details'] = details_payload
 {_common_result_footer("next_step")}
 """.strip()

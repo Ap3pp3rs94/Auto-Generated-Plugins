@@ -1,16 +1,16 @@
-# Auto-Generated Plugins
+# Auto-Generated AI Capabilities
 
-A curated library of autonomous AI-generated Python plugins, plus the factory
-that produces and validates them.
+A curated library of autonomous AI capabilities, shipped as Python modules, plus
+the factory that produces and validates them.
 
-The lead artifact is the plugin library in `plugins/`. The supporting system is
-the factory pipeline that turns deterministic AI capability specs into generated
-Python modules, validates them, and keeps only plugins that fit the current
-quality guide.
+The lead artifact is the capability library in `plugins/`. The supporting
+system is the factory pipeline that turns deterministic AI capability specs into
+generated Python modules, validates them, and keeps only capabilities that fit
+the current quality guide.
 
 ## Current Library
 
-| Plugin | Capability | Status |
+| Capability Module | Purpose | Status |
 | --- | --- | --- |
 | [`ai_prompt_refinement_engine.py`](plugins/ai_prompt_refinement_engine.py) | Refines vague AI instructions into clearer, safer, testable prompts. | Generated and validated |
 | [`ai_agent_task_planner.py`](plugins/ai_agent_task_planner.py) | Breaks AI work into ordered planning, execution, review, and verification steps. | Generated and validated |
@@ -48,15 +48,16 @@ Checksum:
 5f36085a373b6aeb68b8e06ffa18569af5ab078dd3989e91b8be080437ff039e  ai_prompt_refinement_engine-0.1.2.zip
 ```
 
-Legacy plugins created before the current AI roadmap guide were removed. The
-tracked library should contain only plugins generated under the current rules:
+Legacy modules created before the current AI capability roadmap guide were
+removed. The tracked library should contain only capability modules generated
+under the current rules:
 
 - AI functionality first
 - deterministic Python logic
 - structured output for other agents/tools
 - validation before retention
 - no duplicate capabilities
-- no random sales/data/demo plugins
+- no random sales/data/demo modules
 - useful user-facing progress and optional fun-mode fields
 
 ## Example
@@ -282,14 +283,14 @@ journalctl --user -u francis-factory.service -f
 
 ## Quality Gates
 
-Generated plugins are kept only when they satisfy the current guide:
+Generated capability modules are kept only when they satisfy the current guide:
 
 - produced from the deterministic AI roadmap
 - unique slug and distinct capability
 - backed by a capability-specific profile when the roadmap has one
 - real Station B output, or a registered deterministic profile replacing timeout fallback output
 - Python syntax compiles
-- plugin contract validates
+- capability module contract validates
 - runtime smoke check passes
 - semantic-depth check passes across contrasting payloads
 - output includes structured AI-agent-friendly fields

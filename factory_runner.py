@@ -3,15 +3,15 @@ from __future__ import annotations
 """
 Francis Plugin Factory Runner (Station Orchestrator)
 
-This module orchestrates the Francis plugin factory:
+This module orchestrates the Francis AI capability factory:
 
-- Discovers existing plugins in the ./plugins directory.
+- Discovers existing capability modules in the ./plugins directory.
 - Uses a deterministic spec builder (spec_builder.build_next_spec)
   to propose a new PluginSpec across multiple domains
   (system_automation, monitoring, security, ecommerce, etc.).
-- Calls Station B to generate the plugin source code.
-- Writes the plugin file to disk.
-- Runs Station C's validator against the new plugin.
+- Calls Station B to generate the capability module source code.
+- Writes the module file to disk.
+- Runs Station C's validator against the new module.
 - Repeats according to RunnerConfig (max_plugins / loop_forever / sleep_seconds).
 
 Enhancements in this version:
@@ -346,10 +346,10 @@ def _release_runner_lock() -> None:
 @dataclass
 class RunnerConfig:
     """
-    Configuration for the Francis plugin factory runner.
+    Configuration for the Francis AI capability factory runner.
 
     The runner can either:
-    - build a finite number of plugins (max_plugins), or
+    - build a finite number of capability modules (max_plugins), or
     - run indefinitely (loop_forever=True) with periodic sleeps.
 
     It also controls:
@@ -522,7 +522,7 @@ def _next_ai_roadmap_index(existing_slugs: Set[str]) -> int:
     """
     Advance from existing AI-roadmap plugins only.
 
-    Old non-AI plugins do not push the factory deep into later AI phases.
+    Old non-AI modules do not push the factory deep into later AI phases.
     """
     existing_indexes = [
         idx for slug in existing_slugs
@@ -753,7 +753,7 @@ def _seed_ai_roadmap_state_from_existing(
                 by_slug[str(item["slug"])] = item
         seeded["completed"] = list(by_slug.values())
         _save_ai_roadmap_state(seeded)
-        LOG.info("Seeded AI roadmap handoff state from %d existing AI plugin(s).", len(seeded["completed"]))
+        LOG.info("Seeded AI roadmap handoff state from %d existing AI capability module(s).", len(seeded["completed"]))
         return seeded
 
     return state
@@ -970,10 +970,10 @@ async def _invoke_plugin_for_semantic_check(module: Any, payload: Dict[str, Any]
 
 async def _semantic_depth_check(plugin_path: Path, spec: PluginSpec) -> Tuple[bool, str]:
     """
-    Detect plugins that merely fill the expected shape with stock advice.
+    Detect capability modules that merely fill the expected shape with stock advice.
 
     The check compares two structurally similar but semantically different
-    payloads. A useful AI plugin should let payload values influence insight,
+    payloads. A useful AI capability should let payload values influence insight,
     action, progress, or guidance fields, not only echo values in details.
     """
     module_name = f"semantic_depth_{spec.slug}".replace("-", "_")
@@ -1337,11 +1337,11 @@ def _render_profile_base_source(spec: PluginSpec) -> str:
     return f'''from __future__ import annotations
 
 """
-Auto-generated Francis plugin module.
+Auto-generated Francis AI capability module.
 
 THIS FILE IS GENERATED. Manual edits may be overwritten by the factory.
 
-Plugin: {spec.name}
+Capability: {spec.name}
 Slug: {spec.slug}
 """
 
@@ -2339,18 +2339,18 @@ def _env_float(name: str, default: float) -> float:
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m factory.factory_runner",
-        description="Run the Francis autonomous AI plugin factory.",
+        description="Run the Francis autonomous AI capability factory.",
     )
     parser.add_argument(
         "--once",
         action="store_true",
-        help="Build one plugin and stop. Overrides loop mode unless --max-plugins is provided.",
+        help="Build one capability module and stop. Overrides loop mode unless --max-plugins is provided.",
     )
     parser.add_argument(
         "--max-plugins",
         type=int,
         default=_env_int("FRANCIS_FACTORY_MAX_PLUGINS", None),
-        help="Build a finite number of plugins and stop.",
+        help="Build a finite number of capability modules and stop.",
     )
     parser.add_argument(
         "--loop",
@@ -2367,7 +2367,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--user-id",
         default=_env("FRANCIS_FACTORY_USER_ID", "francis-factory"),
-        help="User/owner id recorded on generated plugin specs.",
+        help="User/owner id recorded on generated capability specs.",
     )
     parser.add_argument(
         "--model",
@@ -2431,18 +2431,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--max-per-category",
         type=int,
         default=_env_int("FRANCIS_FACTORY_MAX_PER_CATEGORY", None),
-        help="Maximum plugins per category during a loop run.",
+        help="Maximum capability modules per category during a loop run.",
     )
     parser.add_argument(
         "--no-github-publish",
         action="store_true",
         default=_env_bool("FRANCIS_FACTORY_NO_GITHUB_PUBLISH", False),
-        help="Disable automatic git commit/push for each validated plugin.",
+        help="Disable automatic git commit/push for each validated capability module.",
     )
     parser.add_argument(
         "--github-remote",
         default=_env("FRANCIS_FACTORY_GITHUB_REMOTE", "origin"),
-        help="Git remote used when publishing generated plugins.",
+        help="Git remote used when publishing generated capability modules.",
     )
     parser.add_argument(
         "--github-branch",

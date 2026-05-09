@@ -3,8 +3,8 @@ from __future__ import annotations
 """
 Francis factory quality runner.
 
-Audits generated plugins already in factory/plugins and repairs weak artifacts
-back to the current deterministic capability-profile standard.
+Audits generated AI capability modules already in factory/plugins and repairs
+weak artifacts back to the current deterministic capability-profile standard.
 """
 
 import argparse
@@ -55,24 +55,24 @@ QUALITY_BACKUP_DIR = FACTORY_DIR.parent / "junk_plugins" / "quality_backups"
 
 
 GITHUB_FACTORY_PAYLOAD: Dict[str, Any] = {
-    "task": "Ship an AI plugin factory change that pushes generated plugins to GitHub without duplicates.",
+    "task": "Ship an AI capability factory change that pushes generated modules to GitHub without duplicates.",
     "objective": "Keep production safe and make phone-visible GitHub progress.",
     "prompt": "make it better and do not break production auth or database migrations",
     "constraints": [
-        "No duplicate plugins",
+        "No duplicate capabilities",
         "Reject shallow output",
         "Push only after validation",
         "Include rollback checks",
     ],
     "current_plan": ["generate candidate", "validate plugin", "semantic depth check", "commit and push"],
     "completed_steps": ["added staged candidate folder", "pushed roadmap extension"],
-    "blocked_steps": ["need proof plugins are high quality"],
+    "blocked_steps": ["need proof capabilities are high quality"],
     "candidate_outputs": [
         {"summary": "This answer claims the current latest model is safe without citation."},
         {"summary": "A better answer includes verification and rollback evidence."},
     ],
-    "messages": [{"content": "User wants continuous autonomous plugin generation with no randoms."}],
-    "source_notes": ["Factory must land plugins in factory/plugins only after all gates pass."],
+    "messages": [{"content": "User wants continuous autonomous capability generation with no randoms."}],
+    "source_notes": ["Factory must land capability modules in factory/plugins only after all gates pass."],
     "trace": [
         {"error": "semantic_depth failed because outputs were too similar"},
         {"message": "git push succeeded"},
@@ -423,7 +423,7 @@ def _publish_repaired_plugins(paths: Sequence[Path], config: QualityConfig) -> b
     if diff_result.returncode == 0:
         LOG.info("No repaired plugin diff to publish.")
     elif diff_result.returncode == 1:
-        commit_result = _git_run(["commit", "-m", "Quality repair generated plugins", "--", *rels])
+        commit_result = _git_run(["commit", "-m", "Quality repair generated capabilities", "--", *rels])
         if commit_result.returncode != 0:
             LOG.error("Git commit failed for repaired plugins: %s", (commit_result.stderr or commit_result.stdout).strip())
             return False

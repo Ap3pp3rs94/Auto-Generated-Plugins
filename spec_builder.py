@@ -569,14 +569,14 @@ AI_CAPABILITY_ROADMAP: Tuple[AICapabilityBlueprint, ...] = (
         slug="ai_data_contract_mapper",
         name="AI Data Contract Mapper",
         category="ai_evaluation",
-        goal="Map expected AI plugin input and output contracts from task descriptions and examples.",
+        goal="Map expected AI capability input and output contracts from task descriptions and examples.",
         capability_type="enrichment",
         intended_domain="AI data contracts and schema planning",
-        tags=["ai", "schema", "contracts", "plugins"],
+        tags=["ai", "schema", "contracts", "capabilities"],
         use_cases=[
             "Extract expected payload fields and result fields.",
             "Flag schema ambiguity before implementation.",
-            "Recommend validation checks for plugin contracts.",
+            "Recommend validation checks for capability contracts.",
         ],
     ),
     AICapabilityBlueprint(
@@ -595,114 +595,114 @@ AI_CAPABILITY_ROADMAP: Tuple[AICapabilityBlueprint, ...] = (
     ),
     AICapabilityBlueprint(
         slug="ai_plugin_spec_architect",
-        name="AI Plugin Spec Architect",
+        name="AI Capability Spec Architect",
         category="ai_plugin_factory",
-        goal="Design precise, non-duplicate PluginSpecs for new AI plugins before generation starts.",
+        goal="Design precise, non-duplicate capability specs for new AI capabilities before generation starts.",
         capability_type="enrichment",
-        intended_domain="AI plugin specification design and capability boundaries",
-        tags=["ai", "plugins", "specs", "factory"],
+        intended_domain="AI capability specification design and capability boundaries",
+        tags=["ai", "capabilities", "specs", "factory"],
         use_cases=[
-            "Turn a loose plugin idea into a complete PluginSpec blueprint.",
-            "Define capability boundaries so the plugin does not duplicate existing plugins.",
+            "Turn a loose capability idea into a complete generation blueprint.",
+            "Define capability boundaries so the module does not duplicate existing capabilities.",
             "List required inputs, outputs, acceptance criteria, and quality signals before build.",
         ],
     ),
     AICapabilityBlueprint(
         slug="ai_plugin_logic_blueprint_designer",
-        name="AI Plugin Logic Blueprint Designer",
+        name="AI Capability Logic Blueprint Designer",
         category="ai_plugin_factory",
-        goal="Plan deterministic plugin core logic before code generation so the body performs the actual capability.",
+        goal="Plan deterministic capability logic before code generation so the body performs the actual capability.",
         capability_type="system_automation",
-        intended_domain="AI plugin deterministic logic planning and implementation design",
-        tags=["ai", "plugins", "logic", "factory"],
+        intended_domain="AI capability deterministic logic planning and implementation design",
+        tags=["ai", "capabilities", "logic", "factory"],
         use_cases=[
-            "Translate a PluginSpec into deterministic analysis steps.",
+            "Translate a capability spec into deterministic analysis steps.",
             "Define payload fields, scoring signals, and output constructors.",
             "Prevent generic template bodies by naming capability-specific algorithms.",
         ],
     ),
     AICapabilityBlueprint(
         slug="ai_plugin_quality_gate_designer",
-        name="AI Plugin Quality Gate Designer",
+        name="AI Capability Quality Gate Designer",
         category="ai_plugin_factory",
-        goal="Create semantic quality gates that reject shallow, duplicate, or off-capability generated plugins.",
+        goal="Create semantic quality gates that reject shallow, duplicate, or off-capability generated modules.",
         capability_type="scoring",
-        intended_domain="AI plugin validation, semantic depth, and rejection policy",
-        tags=["ai", "plugins", "quality", "validation"],
+        intended_domain="AI capability validation, semantic depth, and rejection policy",
+        tags=["ai", "capabilities", "quality", "validation"],
         use_cases=[
-            "Define required detail keys and pass/fail rules for a plugin capability.",
+            "Define required detail keys and pass/fail rules for a capability.",
             "Generate semantic probe payloads that force output differences.",
-            "Explain why a plugin should be accepted, repaired, or rejected.",
+            "Explain why a capability should be accepted, repaired, or rejected.",
         ],
     ),
     AICapabilityBlueprint(
         slug="ai_plugin_test_payload_generator",
-        name="AI Plugin Test Payload Generator",
+        name="AI Capability Test Payload Generator",
         category="ai_plugin_factory",
-        goal="Generate focused test payloads that prove a plugin reacts to payload meaning rather than structure alone.",
+        goal="Generate focused test payloads that prove a capability reacts to payload meaning rather than structure alone.",
         capability_type="data_insight",
-        intended_domain="AI plugin test design and semantic probe generation",
-        tags=["ai", "plugins", "tests", "semantic-depth"],
+        intended_domain="AI capability test design and semantic probe generation",
+        tags=["ai", "capabilities", "tests", "semantic-depth"],
         use_cases=[
-            "Create positive, edge, and adversarial payloads for a plugin.",
+            "Create positive, edge, and adversarial payloads for a capability.",
             "Define expected output differences across semantically different payloads.",
-            "Produce regression watchlists for future plugin repairs.",
+            "Produce regression watchlists for future capability repairs.",
         ],
     ),
     AICapabilityBlueprint(
         slug="ai_plugin_duplicate_detector",
-        name="AI Plugin Duplicate Detector",
+        name="AI Capability Duplicate Detector",
         category="ai_plugin_factory",
-        goal="Detect when a proposed plugin duplicates existing plugin behavior and recommend merge, reject, or redesign.",
+        goal="Detect when a proposed AI capability duplicates existing behavior and recommend merge, reject, or redesign.",
         capability_type="scoring",
-        intended_domain="AI plugin uniqueness, overlap analysis, and roadmap hygiene",
-        tags=["ai", "plugins", "duplicates", "roadmap"],
+        intended_domain="AI capability uniqueness, overlap analysis, and roadmap hygiene",
+        tags=["ai", "capabilities", "duplicates", "roadmap"],
         use_cases=[
-            "Compare a proposed plugin against existing plugin names, goals, and output contracts.",
-            "Create uniqueness fingerprints for plugin ideas.",
+            "Compare a proposed capability against existing capability names, goals, and output contracts.",
+            "Create uniqueness fingerprints for capability ideas.",
             "Recommend whether to merge, reject, or redesign overlapping capabilities.",
         ],
     ),
     AICapabilityBlueprint(
         slug="ai_plugin_repair_strategy_planner",
-        name="AI Plugin Repair Strategy Planner",
+        name="AI Capability Repair Strategy Planner",
         category="ai_plugin_factory",
-        goal="Plan targeted repairs for weak generated plugins based on validation failures and semantic gaps.",
+        goal="Plan targeted repairs for weak generated capabilities based on validation failures and semantic gaps.",
         capability_type="system_automation",
-        intended_domain="AI plugin repair planning and capability-specific improvement",
-        tags=["ai", "plugins", "repair", "quality"],
+        intended_domain="AI capability repair planning and capability-specific improvement",
+        tags=["ai", "capabilities", "repair", "quality"],
         use_cases=[
             "Turn quality-runner failures into a specific repair plan.",
             "Separate shallow output, missing keys, semantic similarity, and runtime errors.",
-            "Define acceptance checks before a repaired plugin can replace the old one.",
+            "Define acceptance checks before a repaired capability can replace the old one.",
         ],
     ),
     AICapabilityBlueprint(
         slug="ai_plugin_release_packager",
-        name="AI Plugin Release Packager",
+        name="AI Capability Release Packager",
         category="ai_plugin_factory",
-        goal="Package generated plugins for GitHub release with validation evidence, user-facing notes, and rollback guidance.",
+        goal="Package generated capability modules for GitHub release with validation evidence, user-facing notes, and rollback guidance.",
         capability_type="data_insight",
-        intended_domain="AI plugin release packaging, publishing, and operator visibility",
-        tags=["ai", "plugins", "release", "github"],
+        intended_domain="AI capability release packaging, publishing, and operator visibility",
+        tags=["ai", "capabilities", "release", "github"],
         use_cases=[
-            "Prepare commit-ready release notes for generated plugins.",
+            "Prepare commit-ready release notes for generated capabilities.",
             "Summarize validation, semantic depth, and quality-runner evidence.",
-            "Recommend publish, hold, or rollback actions for plugin releases.",
+            "Recommend publish, hold, or rollback actions for capability releases.",
         ],
     ),
     AICapabilityBlueprint(
         slug="ai_plugin_factory_backlog_planner",
-        name="AI Plugin Factory Backlog Planner",
+        name="AI Capability Factory Backlog Planner",
         category="ai_plugin_factory",
-        goal="Plan the next high-value AI plugin backlog so autonomous generation keeps improving itself intentionally.",
+        goal="Plan the next high-value AI capability backlog so autonomous generation keeps improving itself intentionally.",
         capability_type="research_synthesizer",
-        intended_domain="AI plugin factory roadmap planning and self-improvement backlog",
-        tags=["ai", "plugins", "backlog", "factory"],
+        intended_domain="AI capability factory roadmap planning and self-improvement backlog",
+        tags=["ai", "capabilities", "backlog", "factory"],
         use_cases=[
-            "Prioritize future plugins by factory leverage, uniqueness, and user value.",
-            "Define dependency order between spec, generation, validation, repair, and release plugins.",
-            "Generate next-plugin candidates that avoid random or duplicate roadmap expansion.",
+            "Prioritize future capabilities by factory leverage, uniqueness, and user value.",
+            "Define dependency order between spec, generation, validation, repair, and release capabilities.",
+            "Generate next-capability candidates that avoid random or duplicate roadmap expansion.",
         ],
     ),
 )
@@ -1028,7 +1028,7 @@ def _build_huge_ai_spec(
 ) -> PluginSpec:
     """
     Build a rich AI-focused PluginSpec with enough structure for Station B to
-    create a useful plugin instead of a generic/random utility.
+    create a useful AI capability instead of a generic/random utility.
     """
     name = _phase_name(blueprint.name, phase)
     slug = _phase_slug(blueprint.slug, phase)
@@ -1046,7 +1046,7 @@ def _build_huge_ai_spec(
         [
             f"Show a compact progress state for this AI capability during {phase_focus}.",
             "Return user-facing guidance that is useful, concise, and safe to act on.",
-            "Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.",
+            "Avoid duplicating existing AI capability behavior; identify what is unique about this capability.",
         ]
     )
 
@@ -1059,11 +1059,11 @@ def _build_huge_ai_spec(
     ]
 
     problem_statement = (
-        f"Francis needs a focused AI plugin for {blueprint.intended_domain}. The plugin must "
+        f"Francis needs a focused AI capability for {blueprint.intended_domain}. The generated module must "
         "turn messy user notes, model outputs, traces, or workflow state into structured, "
         "actionable AI assistance. It should improve autonomous progress by making the next "
         "step obvious, reducing duplicated work, and exposing risks before they become failures. "
-        "The plugin must stay deterministic, avoid hidden external side effects, and make its "
+        "The capability must stay deterministic, avoid hidden external side effects, and make its "
         "reasoning inspectable through concise details and scores."
     )
 
@@ -1082,7 +1082,7 @@ def _build_huge_ai_spec(
         "Do not execute tools, browse, mutate files, call external APIs, or claim facts not present "
         "in the payload. Prefer deterministic analysis. If data is missing, say what is missing and "
         "return a useful fallback. Keep recommendations concrete. Avoid creating a capability that "
-        "duplicates another AI roadmap plugin."
+        "duplicates another AI roadmap capability."
     )
 
     io_contract = (
