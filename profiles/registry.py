@@ -1249,9 +1249,9 @@ def _model_selection_scorecard(spec: PluginSpec, capability_type: Optional[str],
 surface = ' '.join([def_text, objective_text, str(payload_data.get('prompt') or ''), ' '.join(str(item) for item in constraints)]).lower()
 tiers = [
     {{'model_style': 'fast_small_model', 'cost': 'low', 'strength': 'simple routing, formatting, extraction', 'signals': ['simple', 'format', 'extract']}},
-    {{'model_style': 'standard_tool_model', 'cost': 'medium', 'strength': 'tool use, code edits, repo work', 'signals': ['tool', 'code', 'repo', 'github', 'plugin', 'test']}},
-    {{'model_style': 'reasoning_model', 'cost': 'high', 'strength': 'ambiguous planning, debugging, multi-step synthesis', 'signals': ['complex', 'multi-step', 'debug', 'architecture', 'risk']}},
-    {{'model_style': 'verified_grounded_model', 'cost': 'high', 'strength': 'source-sensitive factual answers', 'signals': ['citation', 'medical', 'legal', 'financial', 'latest', 'source']}},
+    {{'model_style': 'standard_tool_model', 'cost': 'medium', 'strength': 'tool use, code edits, repo work', 'signals': ['tool', 'code', 'repo', 'github', 'plugin', 'test', 'auth', 'database', 'rollback', 'production']}},
+    {{'model_style': 'reasoning_model', 'cost': 'high', 'strength': 'ambiguous planning, debugging, multi-step synthesis', 'signals': ['complex', 'multi-step', 'debug', 'architecture', 'risk', 'refactor', 'migration', 'owner']}},
+    {{'model_style': 'verified_grounded_model', 'cost': 'high', 'strength': 'source-sensitive factual answers', 'signals': ['citation', 'citations', 'medical', 'clinical', 'legal', 'financial', 'latest', 'source', 'claim', 'grounded']}},
 ]
 scorecard = []
 for tier in tiers:
@@ -1275,17 +1275,31 @@ if any(term in surface for term in ['production', 'auth', 'database', 'rollback'
 if any(term in surface for term in ['medical', 'legal', 'financial', 'citation', 'latest']):
     escalation_triggers.append('source_sensitive_claims')
 cost_risk_tradeoffs = [tier['model_style'] + ': cost=' + tier['cost'] + ', score=' + str(tier['score']) for tier in scorecard]
-result['summary'] = plugin_name + ': selected ' + selected['model_style'] + ' for ' + def_text[:120] + '.'
+selected_signals = selected.get('matched_signals', [])
+if selected['model_style'] == 'verified_grounded_model':
+    decision_mode = 'source_grounded_verification'
+    selected_next_step = selected_next_step + ' Prioritize source retrieval, citation inspection, and unsupported-claim caveats.'
+elif selected['model_style'] == 'standard_tool_model':
+    decision_mode = 'repo_tool_execution'
+    selected_next_step = selected_next_step + ' Prioritize repository inspection, targeted tests, rollback notes, and changed-file evidence.'
+elif selected['model_style'] == 'reasoning_model':
+    decision_mode = 'deep_reasoning_planning'
+    selected_next_step = selected_next_step + ' Prioritize decomposition, risk registers, and explicit assumption checks.'
+else:
+    decision_mode = 'low_ambiguity_fast_path'
+    selected_next_step = selected_next_step + ' Keep the task bounded to extraction, formatting, or classification.'
+result['summary'] = plugin_name + ': selected ' + selected['model_style'] + ' for ' + decision_mode + ' on ' + def_text[:120] + '.'
 result['primary_insights'] = [
-    {{'title': 'Model scorecard', 'detail': scorecard}},
+    {{'title': 'Selected model path', 'detail': {{'model_style': selected['model_style'], 'decision_mode': decision_mode, 'matched_signals': selected_signals, 'strength': selected['strength']}}}},
     {{'title': 'Escalation triggers', 'detail': escalation_triggers or 'No escalation trigger detected.'}},
+    {{'title': 'Why this path', 'detail': 'Matched signals: ' + (', '.join(selected_signals) if selected_signals else 'none') + '; task focus: ' + def_text[:120]}},
 ]
 result['recommended_actions'] = [
-    {{'action': selected_next_step, 'selected_model_style': selected}},
-    {{'action': 'Review cost/risk tradeoffs', 'tradeoffs': cost_risk_tradeoffs}},
+    {{'action': selected_next_step, 'selected_model_style': selected['model_style'], 'decision_mode': decision_mode, 'matched_signals': selected_signals}},
+    {{'action': 'Use escalation triggers before execution', 'triggers': escalation_triggers, 'decision_mode': decision_mode}},
 ]
 result['scores'] = {{'confidence': round(min(0.92, selected['score'] + 0.08 + 0.02 * len(selected.get('matched_signals', []))), 2), 'selection_score': selected['score'], 'risk': round(min(0.9, 0.18 + 0.12 * len(escalation_triggers) + (0.08 if selected['model_style'] == 'verified_grounded_model' else 0)), 2), 'cost_pressure': 0.25 if selected['cost'] == 'low' else 0.55 if selected['cost'] == 'medium' else 0.8}}
-result['details'] = {{'model_scorecard': scorecard, 'selected_model_style': selected, 'selected_next_step': selected_next_step, 'cost_risk_tradeoffs': cost_risk_tradeoffs, 'escalation_triggers': escalation_triggers, 'missing_inputs': ['task'] if not def_text else []}}
+result['details'] = {{'model_scorecard': scorecard, 'selected_model_style': selected, 'selected_next_step': selected_next_step, 'decision_mode': decision_mode, 'selected_signals': selected_signals, 'cost_risk_tradeoffs': cost_risk_tradeoffs, 'escalation_triggers': escalation_triggers, 'missing_inputs': ['task'] if not def_text else []}}
 {_common_result_footer("selected_next_step")}
 """.strip()
 
