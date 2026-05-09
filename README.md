@@ -52,6 +52,7 @@ under the current rules:
 - structured output for other agents/tools
 - validation before retention
 - no duplicate capabilities
+- no retained `_phase_N` duplicates; improvement attempts overwrite the canonical module only when they are better
 - no random sales/data/demo modules
 - useful user-facing progress and optional fun-mode fields
 

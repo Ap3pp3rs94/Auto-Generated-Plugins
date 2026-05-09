@@ -595,12 +595,12 @@ def _next_ai_roadmap_index(existing_slugs: Set[str]) -> int:
 
 def _randomized_ai_expansion_indexes(existing_slugs: Set[str]) -> list[int]:
     """
-    Return a bounded shuffled list of phase-expansion indexes.
+    Return a bounded shuffled list of internal upgrade-attempt indexes.
 
     This keeps autonomous mode varied after the curated roadmap is complete,
-    while still anchoring every new plugin to an approved capability family and
-    registered profile. It deliberately does not create unbounded arbitrary
-    domains.
+    while still anchoring every candidate to an approved capability family and
+    registered profile. These indexes may be named as phases internally, but a
+    retained artifact must overwrite the canonical base module or be discarded.
     """
     roadmap_size = len(AI_CAPABILITY_ROADMAP)
     existing_indexes = [
@@ -1967,7 +1967,7 @@ async def run_factory(config: RunnerConfig) -> None:
                     break
             else:
                 LOG.info(
-                    "AI roadmap complete at %d unique plugin(s); phase expansion and randomized expansion are disabled.",
+                    "AI roadmap complete at %d unique capability module(s); upgrade expansion and randomized expansion are disabled.",
                     len(AI_CAPABILITY_ROADMAP),
                 )
                 if config.loop_forever:
@@ -2689,13 +2689,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--allow-phase-expansion",
         action="store_true",
         default=_env_bool("FRANCIS_FACTORY_ALLOW_PHASE_EXPANSION", False),
-        help="Allow second-pass phase_N variants after the unique AI roadmap is complete.",
+        help="Allow internal second-pass upgrade attempts after the unique AI roadmap is complete.",
     )
     parser.add_argument(
         "--no-randomized-expansion",
         action="store_true",
         default=_env_bool("FRANCIS_FACTORY_NO_RANDOMIZED_EXPANSION", False),
-        help="Disable bounded randomized phase expansion after the curated roadmap is complete.",
+        help="Disable bounded randomized upgrade attempts after the curated roadmap is complete.",
     )
     parser.add_argument(
         "--print-config",
