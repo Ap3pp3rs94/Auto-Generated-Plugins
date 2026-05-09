@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import re
 import textwrap
 from typing import Any, Callable, Dict, Optional
@@ -40,8 +39,10 @@ generation_note = {_quote(reason or "capability profile registry")}
 use_cases = {use_cases!r}
 payload_data = payload if isinstance(payload, dict) else {{}}
 payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
-def_text = str(payload_data.get('task') or payload_data.get('objective') or payload_data.get('prompt') or goal).strip()
-objective_text = str(payload_data.get('objective') or goal).strip()
+task_text = str(payload_data.get('task') or '').strip()
+explicit_objective_text = str(payload_data.get('objective') or '').strip()
+def_text = str(task_text or explicit_objective_text or payload_data.get('prompt') or goal).strip()
+objective_text = str(explicit_objective_text or goal).strip()
 constraints = payload_data.get('constraints') if isinstance(payload_data.get('constraints'), list) else []
 messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
 candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
@@ -69,9 +70,9 @@ result['user_experience'] = {{
     'interaction_suggestions': [item.get('action', str(item)) for item in result.get('recommended_actions', [])[:3]],
 }}
 result['fun_mode'] = {{
-    'challenge_label': 'Capability Run',
+    'challenge_label': plugin_name,
     'score_badge': 'Strong Signal' if result.get('scores', {{}}).get('confidence', 0) >= 0.65 else 'Needs Context',
-    'microcopy': 'The result is structured so another agent can pick it up cleanly.',
+    'microcopy': result['summary'],
     'optional_next_challenge': {next_step_expr},
 }}
 """.strip()
@@ -393,7 +394,7 @@ identified_vagueness = [marker for marker in vague_markers if marker in prompt_l
 if raw_prompt and len(raw_prompt.split()) < 8:
     identified_vagueness.append('too short to communicate constraints')
 missing_constraints = []
-if not objective_text:
+if not explicit_objective_text:
     missing_constraints.append({{'category': 'objective', 'suggestion': 'State the concrete outcome.'}})
 if not payload_data.get('audience') and not payload_data.get('user_level'):
     missing_constraints.append({{'category': 'audience', 'suggestion': 'Name the target audience or operator.'}})
@@ -403,7 +404,7 @@ if not constraints:
     missing_constraints.append({{'category': 'acceptance_criteria', 'suggestion': 'Add success criteria and hard constraints.'}})
 if 'verify' not in prompt_lower and 'test' not in prompt_lower:
     missing_constraints.append({{'category': 'verification', 'suggestion': 'Say how the output should be checked.'}})
-refined_prompt = 'Task: ' + def_text + '\\nObjective: ' + objective_text + '\\nAudience: ' + str(payload_data.get('audience') or payload_data.get('user_level') or 'intended user') + '\\nOutput format: ' + str(payload_data.get('output_format') or payload_data.get('format') or 'structured checklist') + '\\nConstraints: ' + ('; '.join(str(item) for item in constraints) if constraints else 'list assumptions, include acceptance criteria, include verification') + '\\nOriginal request: ' + raw_prompt
+refined_prompt = 'Task: ' + def_text + '\\nObjective: ' + (explicit_objective_text or 'define the concrete outcome before execution') + '\\nAudience: ' + str(payload_data.get('audience') or payload_data.get('user_level') or 'intended user') + '\\nOutput format: ' + str(payload_data.get('output_format') or payload_data.get('format') or 'structured checklist') + '\\nConstraints: ' + ('; '.join(str(item) for item in constraints) if constraints else 'list assumptions, include acceptance criteria, include verification') + '\\nOriginal request: ' + raw_prompt
 rewrites = [
     {{'label': 'structured_refinement', 'rewrite': refined_prompt}},
     {{'label': 'strict_execution', 'rewrite': refined_prompt + '\\nDo not begin until missing inputs are listed.'}},
@@ -722,10 +723,9 @@ def build_profile_logic_body(
 
 def wrap_logic_body(logic_body: str) -> str:
     body = textwrap.dedent(logic_body).strip()
-    encoded = base64.b64encode(body.encode("utf-8", errors="replace")).decode("ascii")
+    indented_body = textwrap.indent(body, "    ")
     return f"""
-# Auto-generated capability-profile core logic envelope. Edits may be overwritten by the factory.
-import base64
+# Auto-generated readable capability-profile core logic. Edits may be overwritten by the factory.
 try:
     from schema_tools import infer_tabular_schema, pick_numeric_field
 except Exception:  # pragma: no cover
@@ -738,11 +738,6 @@ try:
         context.log_info('Executing capability-profile core logic.', plugin_slug=_PLUGIN_SLUG)
 except Exception:
     pass
-_profile_body_b64 = {encoded!r}
-try:
-    _profile_body_source = base64.b64decode(_profile_body_b64.encode('ascii')).decode('utf-8')
-except Exception:
-    _profile_body_source = ''
 result = {{
     'summary': '',
     'primary_insights': [],
@@ -751,27 +746,16 @@ result = {{
     'details': {{}},
 }}
 schema = infer_tabular_schema(payload.get('data') if isinstance(payload, dict) else None)
-local_vars = {{
-    'context': context,
-    'payload': payload,
-    'config': config,
-    'schema': schema,
-    'pick_numeric_field': pick_numeric_field,
-    'result': result,
-}}
-if _profile_body_source.strip():
-    try:
-        exec(_profile_body_source, local_vars, local_vars)
-        if isinstance(local_vars.get('result'), dict):
-            result = local_vars['result']
-    except Exception as _exc:
-        result = {{
-            'summary': 'Capability profile failed; fallback applied.',
-            'primary_insights': [],
-            'recommended_actions': ['Review payload and capability profile.'],
-            'scores': {{'confidence': 0.0}},
-            'details': {{'error': str(_exc), 'logic_profile_id': 'capability_profile_error'}},
-        }}
+try:
+{indented_body}
+except Exception as _exc:
+    result = {{
+        'summary': 'Capability profile failed; fallback applied.',
+        'primary_insights': [],
+        'recommended_actions': ['Review payload and capability profile.'],
+        'scores': {{'confidence': 0.0}},
+        'details': {{'error': str(_exc), 'logic_profile_id': 'capability_profile_error'}},
+    }}
 if not isinstance(result, dict):
     result = {{'summary': 'Capability profile returned non-dict output.', 'primary_insights': [], 'recommended_actions': [], 'scores': {{'confidence': 0.0}}, 'details': {{}}}}
 result.setdefault('summary', 'Capability profile completed.')
@@ -786,7 +770,7 @@ return result
 def update_logic_region(base_source: str, new_logic_body: str) -> str:
     pattern = rf"{re.escape(LOGIC_START)}.*?{re.escape(LOGIC_END)}"
     replacement = f"{LOGIC_START}\n{textwrap.indent(new_logic_body.strip(), '    ')}\n{LOGIC_END}"
-    updated, count = re.subn(pattern, replacement, base_source, flags=re.DOTALL)
+    updated, count = re.subn(pattern, lambda _match: replacement, base_source, flags=re.DOTALL)
     if count != 1:
         raise ValueError("Expected exactly one plugin logic region.")
     return updated

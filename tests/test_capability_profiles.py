@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import importlib.util
-import re
+import tempfile
 import unittest
 from pathlib import Path
 import sys
@@ -16,10 +15,10 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
         sys.path.insert(0, str(path))
 
 try:
-    from factory.profiles import registered_profile_id
+    from factory.profiles import build_profile_source, registered_profile_id
     from factory.spec_builder import AI_CAPABILITY_ROADMAP
 except ModuleNotFoundError:
-    from profiles import registered_profile_id
+    from profiles import build_profile_source, registered_profile_id
     from spec_builder import AI_CAPABILITY_ROADMAP
 
 
@@ -58,6 +57,68 @@ PROFILE_PAYLOADS = {
 }
 
 
+BASE_PLUGIN_SOURCE = '''
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+_PLUGIN_NAME = "Generated Test Plugin"
+_PLUGIN_SLUG = "generated_test_plugin"
+_PLUGIN_CATEGORY = "ai_test"
+_PLUGIN_VERSION = "0.0.0"
+_PLUGIN_OWNER_ID = "test"
+_PLUGIN_CAPABILITY_TYPE = "test"
+_PLUGIN_INTENDED_DOMAIN = "test"
+_PLUGIN_RESULT_SCHEMA_VERSION = "1.0.0"
+_PLUGIN_MANIFEST = {}
+
+
+class SkillContext:
+    def __init__(
+        self,
+        *,
+        user_id: str,
+        run_id: Optional[str],
+        plugin_slug: str,
+        plugin_name: str,
+        learning_profile: Optional[Dict[str, Any]] = None,
+        logger: Optional[Any] = None,
+        brain: Optional[Any] = None,
+    ) -> None:
+        self.user_id = user_id
+        self.run_id = run_id
+        self.plugin_slug = plugin_slug
+        self.plugin_name = plugin_name
+        self.learning_profile = learning_profile or {}
+        self.logger = logger
+        self.brain = brain
+
+    def log_info(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+    # === LOGIC START ===
+    return {"summary": "placeholder", "primary_insights": [], "recommended_actions": [], "scores": {"confidence": 0.0}, "details": {}}
+    # === LOGIC END ===
+
+
+async def invoke(user_id: str, payload: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+    context = SkillContext(
+        user_id=user_id,
+        run_id=kwargs.get("run_id"),
+        plugin_slug=_PLUGIN_SLUG,
+        plugin_name=_PLUGIN_NAME,
+    )
+    return {
+        "status": "succeeded",
+        "output": _run_core_logic(context, payload if isinstance(payload, dict) else {"_value": payload}, {}),
+        "error": "",
+        "meta": {"plugin_slug": _PLUGIN_SLUG},
+    }
+'''
+
+
 class CapabilityProfileTests(unittest.TestCase):
     def test_every_ai_roadmap_slug_has_registered_profile(self) -> None:
         missing = [item.slug for item in AI_CAPABILITY_ROADMAP if not registered_profile_id(item.slug)]
@@ -71,7 +132,7 @@ class CapabilityProfileTests(unittest.TestCase):
     def test_profile_plugins_run_with_registered_profile_ids(self) -> None:
         for slug, payload in PROFILE_PAYLOADS.items():
             with self.subTest(slug=slug):
-                module = self._load_plugin(slug)
+                module = self._build_and_load_profile_plugin(slug)
                 result = asyncio.run(module.invoke("profile-test", payload))
 
                 self.assertEqual(result["status"], "succeeded", result)
@@ -80,30 +141,44 @@ class CapabilityProfileTests(unittest.TestCase):
                 self.assertNotEqual(output["details"]["logic_profile_id"], "semantic_repair")
                 self.assertNotIn("capability_profile_error", str(output))
 
-    def test_inlined_profile_bodies_are_not_duplicates(self) -> None:
-        decoded_bodies = {
-            slug: self._decode_profile_body(REPO_ROOT / "plugins" / f"{slug}.py")
+    def test_profile_sources_are_readable_and_not_base64_exec_blobs(self) -> None:
+        sources = {
+            slug: self._build_profile_source_for_slug(slug)
             for slug in PROFILE_PAYLOADS
         }
 
-        self.assertEqual(len(set(decoded_bodies.values())), len(decoded_bodies))
-        for slug, body in decoded_bodies.items():
-            self.assertIn(str(registered_profile_id(slug)), body)
+        for slug, source in sources.items():
+            with self.subTest(slug=slug):
+                self.assertIn("# Auto-generated readable capability-profile core logic", source)
+                self.assertIn(str(registered_profile_id(slug)), source)
+                self.assertNotIn("_profile_body_b64", source)
+                self.assertNotIn("base64.b64decode", source)
+                self.assertNotIn("exec(", source)
 
-    def _load_plugin(self, slug: str):
-        path = REPO_ROOT / "plugins" / f"{slug}.py"
+    def _build_profile_source_for_slug(self, slug: str) -> str:
+        spec = next(item for item in AI_CAPABILITY_ROADMAP if item.slug == slug)
+        source = build_profile_source(
+            BASE_PLUGIN_SOURCE,
+            spec,
+            spec.capability_type,
+            None,
+            reason="test readable profile generation",
+        )
+        self.assertIsNotNone(source)
+        return str(source)
+
+    def _build_and_load_profile_plugin(self, slug: str):
+        source = self._build_profile_source_for_slug(slug)
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        path = Path(temp_dir.name) / f"{slug}.py"
+        path.write_text(source, encoding="utf-8")
         spec = importlib.util.spec_from_file_location(slug, path)
         self.assertIsNotNone(spec)
         self.assertIsNotNone(spec.loader)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)  # type: ignore[union-attr]
         return module
-
-    def _decode_profile_body(self, path: Path) -> str:
-        source = path.read_text(encoding="utf-8")
-        match = re.search(r"_profile_body_b64 = '([^']+)'", source)
-        self.assertIsNotNone(match, path)
-        return base64.b64decode(match.group(1).encode("ascii")).decode("utf-8")
 
 
 if __name__ == "__main__":

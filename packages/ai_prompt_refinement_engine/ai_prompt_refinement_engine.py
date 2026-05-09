@@ -168,8 +168,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
     The return value MUST be a JSON-serializable dict.
     """
     # === LOGIC START ===
-    # Auto-generated capability-profile core logic envelope. Edits may be overwritten by the factory.
-    import base64
+    # Auto-generated readable capability-profile core logic. Edits may be overwritten by the factory.
     try:
         from schema_tools import infer_tabular_schema, pick_numeric_field
     except Exception:  # pragma: no cover
@@ -182,11 +181,6 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             context.log_info('Executing capability-profile core logic.', plugin_slug=_PLUGIN_SLUG)
     except Exception:
         pass
-    _profile_body_b64 = 'cGx1Z2luX25hbWUgPSAnQUkgUHJvbXB0IFJlZmluZW1lbnQgRW5naW5lJwpnb2FsID0gJ0FuYWx5emUgdGFzayBpbnN0cnVjdGlvbnMgYW5kIHByb2R1Y2UgY2xlYXJlciwgc2FmZXIsIG1vcmUgdGVzdGFibGUgcHJvbXB0cy4nCmRvbWFpbiA9ICdBSSBwcm9tcHQgZW5naW5lZXJpbmcgYW5kIGluc3RydWN0aW9uIHF1YWxpdHknCmNhcGFiaWxpdHlfdHlwZSA9ICdlbnJpY2htZW50Jwpsb2dpY19wcm9maWxlX2lkID0gJ3Byb21wdF9yZWZpbmVtZW50X3Byb2ZpbGUnCmdlbmVyYXRpb25fbm90ZSA9ICdyZXBsYWNlIG9sZCBiYXNlNjQgU3RhdGlvbiBCIGVudmVsb3BlIHdpdGggcHJvbXB0IHByb2ZpbGUnCnVzZV9jYXNlcyA9IFsnUmV3cml0ZSB2YWd1ZSBwcm9tcHRzIGludG8gc3BlY2lmaWMsIHRlc3RhYmxlIGluc3RydWN0aW9ucy4nLCAnSWRlbnRpZnkgbWlzc2luZyBjb25zdHJhaW50cywgaW5wdXRzLCBvdXRwdXRzLCBhbmQgYWNjZXB0YW5jZSBjcml0ZXJpYS4nLCAnU3VnZ2VzdCBwcm9tcHQgdmFyaWFudHMgZm9yIGRpZmZlcmVudCBtb2RlbCBzaXplcyBvciBsYXRlbmN5IGJ1ZGdldHMuJywgJ1Nob3cgYSBjb21wYWN0IHByb2dyZXNzIHN0YXRlIGZvciB0aGlzIEFJIGNhcGFiaWxpdHkgZHVyaW5nIGJhc2VsaW5lIGNhcGFiaWxpdHkuJywgJ1JldHVybiB1c2VyLWZhY2luZyBndWlkYW5jZSB0aGF0IGlzIHVzZWZ1bCwgY29uY2lzZSwgYW5kIHNhZmUgdG8gYWN0IG9uLicsICdBdm9pZCBkdXBsaWNhdGluZyBleGlzdGluZyBBSSBwbHVnaW4gYmVoYXZpb3I7IGlkZW50aWZ5IHdoYXQgaXMgdW5pcXVlIGFib3V0IHRoaXMgY2FwYWJpbGl0eS4nXQpwYXlsb2FkX2RhdGEgPSBwYXlsb2FkIGlmIGlzaW5zdGFuY2UocGF5bG9hZCwgZGljdCkgZWxzZSB7fQpwYXlsb2FkX3dhcm5pbmdzID0gW10gaWYgaXNpbnN0YW5jZShwYXlsb2FkLCBkaWN0KSBlbHNlIFsncGF5bG9hZCB3YXMgbm90IGEgZGljdDsgdXNpbmcgZW1wdHkgcGF5bG9hZCddCmRlZl90ZXh0ID0gc3RyKHBheWxvYWRfZGF0YS5nZXQoJ3Rhc2snKSBvciBwYXlsb2FkX2RhdGEuZ2V0KCdvYmplY3RpdmUnKSBvciBwYXlsb2FkX2RhdGEuZ2V0KCdwcm9tcHQnKSBvciBnb2FsKS5zdHJpcCgpCm9iamVjdGl2ZV90ZXh0ID0gc3RyKHBheWxvYWRfZGF0YS5nZXQoJ29iamVjdGl2ZScpIG9yIGdvYWwpLnN0cmlwKCkKY29uc3RyYWludHMgPSBwYXlsb2FkX2RhdGEuZ2V0KCdjb25zdHJhaW50cycpIGlmIGlzaW5zdGFuY2UocGF5bG9hZF9kYXRhLmdldCgnY29uc3RyYWludHMnKSwgbGlzdCkgZWxzZSBbXQptZXNzYWdlcyA9IHBheWxvYWRfZGF0YS5nZXQoJ21lc3NhZ2VzJykgaWYgaXNpbnN0YW5jZShwYXlsb2FkX2RhdGEuZ2V0KCdtZXNzYWdlcycpLCBsaXN0KSBlbHNlIFtdCmNhbmRpZGF0ZV9vdXRwdXRzID0gcGF5bG9hZF9kYXRhLmdldCgnY2FuZGlkYXRlX291dHB1dHMnKSBpZiBpc2luc3RhbmNlKHBheWxvYWRfZGF0YS5nZXQoJ2NhbmRpZGF0ZV9vdXRwdXRzJyksIGxpc3QpIGVsc2UgW10Kc291cmNlX25vdGVzID0gcGF5bG9hZF9kYXRhLmdldCgnc291cmNlX25vdGVzJykgaWYgaXNpbnN0YW5jZShwYXlsb2FkX2RhdGEuZ2V0KCdzb3VyY2Vfbm90ZXMnKSwgbGlzdCkgZWxzZSBbXQpyYXdfcHJvbXB0ID0gc3RyKHBheWxvYWRfZGF0YS5nZXQoJ3Byb21wdCcpIG9yIHBheWxvYWRfZGF0YS5nZXQoJ2luc3RydWN0aW9uJykgb3IgZGVmX3RleHQpLnN0cmlwKCkKcHJvbXB0X2xvd2VyID0gcmF3X3Byb21wdC5sb3dlcigpCnZhZ3VlX21hcmtlcnMgPSBbJ21ha2UgaXQgYmV0dGVyJywgJ2dvb2QnLCAnbmljZScsICdzdHVmZicsICdzb21ldGhpbmcnLCAndGhpbmdzJywgJ2ZpeCBpdCcsICdkbyBpdCcsICdoZWxwIG1lJ10KaWRlbnRpZmllZF92YWd1ZW5lc3MgPSBbbWFya2VyIGZvciBtYXJrZXIgaW4gdmFndWVfbWFya2VycyBpZiBtYXJrZXIgaW4gcHJvbXB0X2xvd2VyXQppZiByYXdfcHJvbXB0IGFuZCBsZW4ocmF3X3Byb21wdC5zcGxpdCgpKSA8IDg6CiAgICBpZGVudGlmaWVkX3ZhZ3VlbmVzcy5hcHBlbmQoJ3RvbyBzaG9ydCB0byBjb21tdW5pY2F0ZSBjb25zdHJhaW50cycpCm1pc3NpbmdfY29uc3RyYWludHMgPSBbXQppZiBub3Qgb2JqZWN0aXZlX3RleHQ6CiAgICBtaXNzaW5nX2NvbnN0cmFpbnRzLmFwcGVuZCh7J2NhdGVnb3J5JzogJ29iamVjdGl2ZScsICdzdWdnZXN0aW9uJzogJ1N0YXRlIHRoZSBjb25jcmV0ZSBvdXRjb21lLid9KQppZiBub3QgcGF5bG9hZF9kYXRhLmdldCgnYXVkaWVuY2UnKSBhbmQgbm90IHBheWxvYWRfZGF0YS5nZXQoJ3VzZXJfbGV2ZWwnKToKICAgIG1pc3NpbmdfY29uc3RyYWludHMuYXBwZW5kKHsnY2F0ZWdvcnknOiAnYXVkaWVuY2UnLCAnc3VnZ2VzdGlvbic6ICdOYW1lIHRoZSB0YXJnZXQgYXVkaWVuY2Ugb3Igb3BlcmF0b3IuJ30pCmlmIG5vdCBwYXlsb2FkX2RhdGEuZ2V0KCdvdXRwdXRfZm9ybWF0JykgYW5kIG5vdCBwYXlsb2FkX2RhdGEuZ2V0KCdmb3JtYXQnKToKICAgIG1pc3NpbmdfY29uc3RyYWludHMuYXBwZW5kKHsnY2F0ZWdvcnknOiAnZm9ybWF0JywgJ3N1Z2dlc3Rpb24nOiAnU3BlY2lmeSByZXF1aXJlZCBzZWN0aW9ucyBvciBzY2hlbWEuJ30pCmlmIG5vdCBjb25zdHJhaW50czoKICAgIG1pc3NpbmdfY29uc3RyYWludHMuYXBwZW5kKHsnY2F0ZWdvcnknOiAnYWNjZXB0YW5jZV9jcml0ZXJpYScsICdzdWdnZXN0aW9uJzogJ0FkZCBzdWNjZXNzIGNyaXRlcmlhIGFuZCBoYXJkIGNvbnN0cmFpbnRzLid9KQppZiAndmVyaWZ5JyBub3QgaW4gcHJvbXB0X2xvd2VyIGFuZCAndGVzdCcgbm90IGluIHByb21wdF9sb3dlcjoKICAgIG1pc3NpbmdfY29uc3RyYWludHMuYXBwZW5kKHsnY2F0ZWdvcnknOiAndmVyaWZpY2F0aW9uJywgJ3N1Z2dlc3Rpb24nOiAnU2F5IGhvdyB0aGUgb3V0cHV0IHNob3VsZCBiZSBjaGVja2VkLid9KQpyZWZpbmVkX3Byb21wdCA9ICdUYXNrOiAnICsgZGVmX3RleHQgKyAnXG5PYmplY3RpdmU6ICcgKyBvYmplY3RpdmVfdGV4dCArICdcbkF1ZGllbmNlOiAnICsgc3RyKHBheWxvYWRfZGF0YS5nZXQoJ2F1ZGllbmNlJykgb3IgcGF5bG9hZF9kYXRhLmdldCgndXNlcl9sZXZlbCcpIG9yICdpbnRlbmRlZCB1c2VyJykgKyAnXG5PdXRwdXQgZm9ybWF0OiAnICsgc3RyKHBheWxvYWRfZGF0YS5nZXQoJ291dHB1dF9mb3JtYXQnKSBvciBwYXlsb2FkX2RhdGEuZ2V0KCdmb3JtYXQnKSBvciAnc3RydWN0dXJlZCBjaGVja2xpc3QnKSArICdcbkNvbnN0cmFpbnRzOiAnICsgKCc7ICcuam9pbihzdHIoaXRlbSkgZm9yIGl0ZW0gaW4gY29uc3RyYWludHMpIGlmIGNvbnN0cmFpbnRzIGVsc2UgJ2xpc3QgYXNzdW1wdGlvbnMsIGluY2x1ZGUgYWNjZXB0YW5jZSBjcml0ZXJpYSwgaW5jbHVkZSB2ZXJpZmljYXRpb24nKSArICdcbk9yaWdpbmFsIHJlcXVlc3Q6ICcgKyByYXdfcHJvbXB0CnJld3JpdGVzID0gWwogICAgeydsYWJlbCc6ICdzdHJ1Y3R1cmVkX3JlZmluZW1lbnQnLCAncmV3cml0ZSc6IHJlZmluZWRfcHJvbXB0fSwKICAgIHsnbGFiZWwnOiAnc3RyaWN0X2V4ZWN1dGlvbicsICdyZXdyaXRlJzogcmVmaW5lZF9wcm9tcHQgKyAnXG5EbyBub3QgYmVnaW4gdW50aWwgbWlzc2luZyBpbnB1dHMgYXJlIGxpc3RlZC4nfSwKICAgIHsnbGFiZWwnOiAnY2xhcmlmeWluZ19tb2RlJywgJ3Jld3JpdGUnOiAnQXNrIG9ubHkgZm9yIG1pc3Npbmcgb2JqZWN0aXZlLCBhdWRpZW5jZSwgZm9ybWF0LCBjb25zdHJhaW50cywgb3IgdmVyaWZpY2F0aW9uIGJlZm9yZSBhbnN3ZXJpbmc6ICcgKyByYXdfcHJvbXB0fSwKXQpzcGVjaWZpY2l0eSA9IHJvdW5kKG1heCgwLjEsIDAuOTUgLSAwLjA5ICogbGVuKG1pc3NpbmdfY29uc3RyYWludHMpIC0gMC4wNyAqIGxlbihpZGVudGlmaWVkX3ZhZ3VlbmVzcykpLCAyKQpyZXN1bHRbJ3N1bW1hcnknXSA9IHBsdWdpbl9uYW1lICsgJzogcmVmaW5lZCBhIHByb21wdCBhbmQgcHJvZHVjZWQgJyArIHN0cihsZW4ocmV3cml0ZXMpKSArICcgY29uY3JldGUgcmV3cml0ZShzKS4nCnJlc3VsdFsncHJpbWFyeV9pbnNpZ2h0cyddID0gWwogICAgeyd0aXRsZSc6ICdWYWd1ZSBwaHJhc2VzJywgJ2RldGFpbCc6IGlkZW50aWZpZWRfdmFndWVuZXNzfSwKICAgIHsndGl0bGUnOiAnTWlzc2luZyBjb25zdHJhaW50cycsICdkZXRhaWwnOiBtaXNzaW5nX2NvbnN0cmFpbnRzfSwKICAgIHsndGl0bGUnOiAnUmVmaW5lZCBwcm9tcHQnLCAnZGV0YWlsJzogcmVmaW5lZF9wcm9tcHR9LApdCnJlc3VsdFsncmVjb21tZW5kZWRfYWN0aW9ucyddID0gWwogICAgeydhY3Rpb24nOiAnVXNlIHN0cnVjdHVyZWQgcmV3cml0ZScsICdyZXdyaXRlJzogcmV3cml0ZXNbMF1bJ3Jld3JpdGUnXX0sCiAgICB7J2FjdGlvbic6ICdSZXNvbHZlIG1pc3NpbmcgY29uc3RyYWludHMnLCAnaXRlbXMnOiBtaXNzaW5nX2NvbnN0cmFpbnRzfSwKXQpyZXN1bHRbJ3Njb3JlcyddID0geydjb25maWRlbmNlJzogcm91bmQoMC41NSArIG1pbigwLjM1LCBsZW4ocmF3X3Byb21wdC5zcGxpdCgpKSAvIDgwKSwgMiksICdzcGVjaWZpY2l0eSc6IHNwZWNpZmljaXR5LCAncmV3cml0ZV9jb3VudCc6IGxlbihyZXdyaXRlcyksICdyaXNrJzogcm91bmQoMSAtIHNwZWNpZmljaXR5LCAyKX0KcmVzdWx0WydkZXRhaWxzJ10gPSB7J29yaWdpbmFsX3Byb21wdCc6IHJhd19wcm9tcHQsICdpZGVudGlmaWVkX3ZhZ3VlbmVzcyc6IGlkZW50aWZpZWRfdmFndWVuZXNzLCAnbWlzc2luZ19jb25zdHJhaW50cyc6IG1pc3NpbmdfY29uc3RyYWludHMsICdyZXdyaXRlcyc6IHJld3JpdGVzLCAncmVmaW5lZF9wcm9tcHQnOiByZWZpbmVkX3Byb21wdCwgJ21pc3NpbmdfaW5wdXRzJzogW2l0ZW1bJ2NhdGVnb3J5J10gZm9yIGl0ZW0gaW4gbWlzc2luZ19jb25zdHJhaW50c119CnJlc3VsdFsnZGV0YWlscyddWyd1c2VfY2FzZXMnXSA9IHVzZV9jYXNlcwpyZXN1bHRbJ2RldGFpbHMnXVsnZ2VuZXJhdGlvbl9ub3RlJ10gPSBnZW5lcmF0aW9uX25vdGUKcmVzdWx0WydkZXRhaWxzJ11bJ2NhcGFiaWxpdHlfdHlwZSddID0gY2FwYWJpbGl0eV90eXBlCnJlc3VsdFsnZGV0YWlscyddWydsb2dpY19wcm9maWxlX2lkJ10gPSBsb2dpY19wcm9maWxlX2lkCnJlc3VsdFsnZGV0YWlscyddWydwYXlsb2FkX3dhcm5pbmdzJ10gPSBwYXlsb2FkX3dhcm5pbmdzCnJlc3VsdFsncHJvZ3Jlc3Nfc3RhdGUnXSA9IHsKICAgICdjdXJyZW50X3N0YWdlJzogbG9naWNfcHJvZmlsZV9pZCwKICAgICduZXh0X3N0ZXAnOiAnVXNlIHN0cnVjdHVyZWQgcmV3cml0ZScsCiAgICAnYmxvY2tlcnMnOiByZXN1bHRbJ2RldGFpbHMnXS5nZXQoJ21pc3NpbmdfaW5wdXRzJywgW10pWzo0XSwKICAgICdkb25lX3NpZ25hbHMnOiBbJ2NhcGFiaWxpdHlfc3BlY2lmaWNfYW5hbHlzaXNfY29tcGxldGUnLCBsb2dpY19wcm9maWxlX2lkXSwKfQpyZXN1bHRbJ3VzZXJfZXhwZXJpZW5jZSddID0gewogICAgJ3BsYWluX2xhbmd1YWdlX3Rha2Vhd2F5JzogcmVzdWx0WydzdW1tYXJ5J10sCiAgICAnYmVnaW5uZXJfdGlwJzogJ1VzZSB0aGUgZmlyc3QgcmVjb21tZW5kYXRpb24gYXMgdGhlIG5leHQgY29uY3JldGUgc3RlcC4nLAogICAgJ3Bvd2VyX3VzZXJfdGlwJzogJ1Bhc3MgZGV0YWlscyBhbmQgc2NvcmVzIGludG8gdGhlIG5leHQgQUkgY2FwYWJpbGl0eSBwbHVnaW4uJywKICAgICdpbnRlcmFjdGlvbl9zdWdnZXN0aW9ucyc6IFtpdGVtLmdldCgnYWN0aW9uJywgc3RyKGl0ZW0pKSBmb3IgaXRlbSBpbiByZXN1bHQuZ2V0KCdyZWNvbW1lbmRlZF9hY3Rpb25zJywgW10pWzozXV0sCn0KcmVzdWx0WydmdW5fbW9kZSddID0gewogICAgJ2NoYWxsZW5nZV9sYWJlbCc6ICdDYXBhYmlsaXR5IFJ1bicsCiAgICAnc2NvcmVfYmFkZ2UnOiAnU3Ryb25nIFNpZ25hbCcgaWYgcmVzdWx0LmdldCgnc2NvcmVzJywge30pLmdldCgnY29uZmlkZW5jZScsIDApID49IDAuNjUgZWxzZSAnTmVlZHMgQ29udGV4dCcsCiAgICAnbWljcm9jb3B5JzogJ1RoZSByZXN1bHQgaXMgc3RydWN0dXJlZCBzbyBhbm90aGVyIGFnZW50IGNhbiBwaWNrIGl0IHVwIGNsZWFubHkuJywKICAgICdvcHRpb25hbF9uZXh0X2NoYWxsZW5nZSc6ICdVc2Ugc3RydWN0dXJlZCByZXdyaXRlJywKfQ=='
-    try:
-        _profile_body_source = base64.b64decode(_profile_body_b64.encode('ascii')).decode('utf-8')
-    except Exception:
-        _profile_body_source = ''
     result = {
         'summary': '',
         'primary_insights': [],
@@ -195,27 +189,91 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         'details': {},
     }
     schema = infer_tabular_schema(payload.get('data') if isinstance(payload, dict) else None)
-    local_vars = {
-        'context': context,
-        'payload': payload,
-        'config': config,
-        'schema': schema,
-        'pick_numeric_field': pick_numeric_field,
-        'result': result,
-    }
-    if _profile_body_source.strip():
-        try:
-            exec(_profile_body_source, local_vars, local_vars)
-            if isinstance(local_vars.get('result'), dict):
-                result = local_vars['result']
-        except Exception as _exc:
-            result = {
-                'summary': 'Capability profile failed; fallback applied.',
-                'primary_insights': [],
-                'recommended_actions': ['Review payload and capability profile.'],
-                'scores': {'confidence': 0.0},
-                'details': {'error': str(_exc), 'logic_profile_id': 'capability_profile_error'},
-            }
+    try:
+        plugin_name = 'AI Prompt Refinement Engine'
+        goal = 'Analyze task instructions and produce clearer, safer, more testable prompts.'
+        domain = 'AI prompt engineering and instruction quality'
+        capability_type = 'enrichment'
+        logic_profile_id = 'prompt_refinement_profile'
+        generation_note = 'readable capability profile registry override'
+        use_cases = ['Rewrite vague prompts into specific, testable instructions.', 'Identify missing constraints, inputs, outputs, and acceptance criteria.', 'Suggest prompt variants for different model sizes or latency budgets.']
+        payload_data = payload if isinstance(payload, dict) else {}
+        payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
+        task_text = str(payload_data.get('task') or '').strip()
+        explicit_objective_text = str(payload_data.get('objective') or '').strip()
+        def_text = str(task_text or explicit_objective_text or payload_data.get('prompt') or goal).strip()
+        objective_text = str(explicit_objective_text or goal).strip()
+        constraints = payload_data.get('constraints') if isinstance(payload_data.get('constraints'), list) else []
+        messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
+        candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
+        source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
+        raw_prompt = str(payload_data.get('prompt') or payload_data.get('instruction') or def_text).strip()
+        prompt_lower = raw_prompt.lower()
+        vague_markers = ['make it better', 'good', 'nice', 'stuff', 'something', 'things', 'fix it', 'do it', 'help me']
+        identified_vagueness = [marker for marker in vague_markers if marker in prompt_lower]
+        if raw_prompt and len(raw_prompt.split()) < 8:
+            identified_vagueness.append('too short to communicate constraints')
+        missing_constraints = []
+        if not explicit_objective_text:
+            missing_constraints.append({'category': 'objective', 'suggestion': 'State the concrete outcome.'})
+        if not payload_data.get('audience') and not payload_data.get('user_level'):
+            missing_constraints.append({'category': 'audience', 'suggestion': 'Name the target audience or operator.'})
+        if not payload_data.get('output_format') and not payload_data.get('format'):
+            missing_constraints.append({'category': 'format', 'suggestion': 'Specify required sections or schema.'})
+        if not constraints:
+            missing_constraints.append({'category': 'acceptance_criteria', 'suggestion': 'Add success criteria and hard constraints.'})
+        if 'verify' not in prompt_lower and 'test' not in prompt_lower:
+            missing_constraints.append({'category': 'verification', 'suggestion': 'Say how the output should be checked.'})
+        refined_prompt = 'Task: ' + def_text + '\nObjective: ' + (explicit_objective_text or 'define the concrete outcome before execution') + '\nAudience: ' + str(payload_data.get('audience') or payload_data.get('user_level') or 'intended user') + '\nOutput format: ' + str(payload_data.get('output_format') or payload_data.get('format') or 'structured checklist') + '\nConstraints: ' + ('; '.join(str(item) for item in constraints) if constraints else 'list assumptions, include acceptance criteria, include verification') + '\nOriginal request: ' + raw_prompt
+        rewrites = [
+            {'label': 'structured_refinement', 'rewrite': refined_prompt},
+            {'label': 'strict_execution', 'rewrite': refined_prompt + '\nDo not begin until missing inputs are listed.'},
+            {'label': 'clarifying_mode', 'rewrite': 'Ask only for missing objective, audience, format, constraints, or verification before answering: ' + raw_prompt},
+        ]
+        specificity = round(max(0.1, 0.95 - 0.09 * len(missing_constraints) - 0.07 * len(identified_vagueness)), 2)
+        result['summary'] = plugin_name + ': refined a prompt and produced ' + str(len(rewrites)) + ' concrete rewrite(s).'
+        result['primary_insights'] = [
+            {'title': 'Vague phrases', 'detail': identified_vagueness},
+            {'title': 'Missing constraints', 'detail': missing_constraints},
+            {'title': 'Refined prompt', 'detail': refined_prompt},
+        ]
+        result['recommended_actions'] = [
+            {'action': 'Use structured rewrite', 'rewrite': rewrites[0]['rewrite']},
+            {'action': 'Resolve missing constraints', 'items': missing_constraints},
+        ]
+        result['scores'] = {'confidence': round(0.55 + min(0.35, len(raw_prompt.split()) / 80), 2), 'specificity': specificity, 'rewrite_count': len(rewrites), 'risk': round(1 - specificity, 2)}
+        result['details'] = {'original_prompt': raw_prompt, 'identified_vagueness': identified_vagueness, 'missing_constraints': missing_constraints, 'rewrites': rewrites, 'refined_prompt': refined_prompt, 'missing_inputs': [item['category'] for item in missing_constraints]}
+        result['details']['use_cases'] = use_cases
+        result['details']['generation_note'] = generation_note
+        result['details']['capability_type'] = capability_type
+        result['details']['logic_profile_id'] = logic_profile_id
+        result['details']['payload_warnings'] = payload_warnings
+        result['progress_state'] = {
+            'current_stage': logic_profile_id,
+            'next_step': 'Use structured rewrite',
+            'blockers': result['details'].get('missing_inputs', [])[:4],
+            'done_signals': ['capability_specific_analysis_complete', logic_profile_id],
+        }
+        result['user_experience'] = {
+            'plain_language_takeaway': result['summary'],
+            'beginner_tip': 'Use the first recommendation as the next concrete step.',
+            'power_user_tip': 'Pass details and scores into the next AI capability plugin.',
+            'interaction_suggestions': [item.get('action', str(item)) for item in result.get('recommended_actions', [])[:3]],
+        }
+        result['fun_mode'] = {
+            'challenge_label': plugin_name,
+            'score_badge': 'Strong Signal' if result.get('scores', {}).get('confidence', 0) >= 0.65 else 'Needs Context',
+            'microcopy': result['summary'],
+            'optional_next_challenge': 'Use structured rewrite',
+        }
+    except Exception as _exc:
+        result = {
+            'summary': 'Capability profile failed; fallback applied.',
+            'primary_insights': [],
+            'recommended_actions': ['Review payload and capability profile.'],
+            'scores': {'confidence': 0.0},
+            'details': {'error': str(_exc), 'logic_profile_id': 'capability_profile_error'},
+        }
     if not isinstance(result, dict):
         result = {'summary': 'Capability profile returned non-dict output.', 'primary_insights': [], 'recommended_actions': [], 'scores': {'confidence': 0.0}, 'details': {}}
     result.setdefault('summary', 'Capability profile completed.')
