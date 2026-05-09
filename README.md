@@ -14,6 +14,33 @@ quality guide.
 | --- | --- | --- |
 | [`ai_prompt_refinement_engine.py`](plugins/ai_prompt_refinement_engine.py) | Refines vague AI instructions into clearer, safer, testable prompts. | Generated and validated |
 
+## Download
+
+The current plugin is packaged as a GitHub-downloadable zip:
+
+```text
+dist/ai_prompt_refinement_engine-0.1.0.zip
+```
+
+Direct GitHub download URL after this repository is pushed:
+
+```text
+https://github.com/Ap3pp3rs94/Auto-Generated-Plugins/raw/main/dist/ai_prompt_refinement_engine-0.1.0.zip
+```
+
+The package contains:
+
+- `ai_prompt_refinement_engine.py`
+- `plugin.json`
+- `README.md`
+- `LICENSE`
+
+Checksum:
+
+```text
+0dc62ad71e7ede5b5fa33b86916db347fb0277fda6571f3d17ff2b48c7f7438a  ai_prompt_refinement_engine-0.1.0.zip
+```
+
 Legacy plugins created before the current AI roadmap guide were removed. The
 tracked library should contain only plugins generated under the current rules:
 
