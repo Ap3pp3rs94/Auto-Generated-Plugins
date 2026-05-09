@@ -379,7 +379,10 @@ result['details'] = {{'kept_context': kept[:10], 'compressed_context': compresse
 def _output_quality(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
-response_text = str(payload_data.get('response') or payload_data.get('answer') or (candidate_outputs[0] if candidate_outputs else '')).strip()
+raw_response = payload_data.get('response') or payload_data.get('answer')
+if raw_response is None and candidate_outputs:
+    raw_response = ' '.join(str(item.get('summary') or item.get('text') or item) if isinstance(item, dict) else str(item) for item in candidate_outputs[:4])
+response_text = str(raw_response or '').strip()
 rubric = payload_data.get('rubric') if isinstance(payload_data.get('rubric'), list) else []
 requirements = rubric or constraints or [objective_text, def_text]
 missing_requirements = []
@@ -393,6 +396,15 @@ for requirement in requirements:
         covered_requirements.append({{'requirement': req, 'matched_terms': hits}})
     else:
         missing_requirements.append(req)
+domain_risk_flags = []
+for label, terms in [
+    ('release_or_auth', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
+    ('factual_or_medical', ['medical', 'clinical', 'citation', 'claim', 'source', 'unsupported', 'dosage']),
+    ('tooling_or_trace', ['tool', 'retrieval', 'trace', 'consistency', 'browse']),
+]:
+    hits = sorted(set(term for term in terms if term in (lower_response + ' ' + def_text.lower() + ' ' + objective_text.lower())))
+    if hits:
+        domain_risk_flags.append({{'category': label, 'signals': hits}})
 clarity_flags = []
 if len(response_text.split()) < 20:
     clarity_flags.append('response is very short')
@@ -400,13 +412,20 @@ if any(marker in lower_response for marker in ['maybe', 'probably', 'i think', '
     clarity_flags.append('uncertainty is not resolved')
 if 'test' not in lower_response and 'verify' not in lower_response and 'check' not in lower_response:
     clarity_flags.append('verification step is missing')
+if any(flag['category'] == 'factual_or_medical' for flag in domain_risk_flags) and not any(word in lower_response for word in ['citation', 'source', 'grounded', 'unsupported']):
+    clarity_flags.append('factual grounding evidence is missing')
+if any(flag['category'] == 'release_or_auth' for flag in domain_risk_flags) and not any(word in lower_response for word in ['rollback', 'test', 'migration', 'session']):
+    clarity_flags.append('release safety evidence is missing')
 coverage = len(covered_requirements) / max(1, len(requirements))
-quality_score = round(min(0.95, 0.35 + 0.45 * coverage + (0.12 if not clarity_flags else 0)), 2)
+risk_signal_count = sum(len(flag['signals']) for flag in domain_risk_flags)
+quality_score = round(min(0.95, 0.28 + 0.42 * coverage + (0.12 if not clarity_flags else 0) + min(0.1, len(response_text.split()) / 250)), 2)
 improvement_checklist = []
 for req in missing_requirements[:5]:
     improvement_checklist.append('Address requirement: ' + req[:140])
 for flag in clarity_flags:
     improvement_checklist.append('Fix quality issue: ' + flag)
+for flag in domain_risk_flags[:3]:
+    improvement_checklist.append('Add evidence for ' + flag['category'] + ': ' + ', '.join(flag['signals'][:5]))
 if not improvement_checklist:
     improvement_checklist.append('Preserve covered requirements and add evidence for the strongest claim.')
 result['summary'] = plugin_name + ': scored output quality at ' + str(quality_score) + ' for ' + def_text[:130] + '.'
@@ -414,10 +433,11 @@ result['primary_insights'] = [
     {{'title': 'Covered requirements', 'detail': covered_requirements[:6]}},
     {{'title': 'Missing requirements', 'detail': missing_requirements[:6]}},
     {{'title': 'Clarity flags', 'detail': clarity_flags or 'No major clarity flags.'}},
+    {{'title': 'Domain risk flags', 'detail': domain_risk_flags or 'No high-risk domain flags.'}},
 ]
 result['recommended_actions'] = [{{'action': item}} for item in improvement_checklist[:6]]
-result['scores'] = {{'confidence': round(0.45 + min(0.4, 0.08 * len(requirements)), 2), 'quality': quality_score, 'coverage': round(coverage, 2), 'risk': round(0.18 + 0.1 * len(missing_requirements[:4]) + 0.05 * len(clarity_flags), 2)}}
-result['details'] = {{'covered_requirements': covered_requirements, 'missing_requirements': missing_requirements, 'clarity_flags': clarity_flags, 'improvement_checklist': improvement_checklist, 'missing_inputs': ['response or candidate_outputs'] if not response_text else []}}
+result['scores'] = {{'confidence': round(min(0.92, 0.38 + min(0.28, 0.055 * len(requirements)) + min(0.18, len(response_text.split()) / 180) + 0.035 * len(covered_requirements)), 2), 'quality': quality_score, 'coverage': round(coverage, 2), 'risk': round(min(0.92, 0.16 + 0.08 * len(missing_requirements[:4]) + 0.05 * len(clarity_flags) + 0.025 * risk_signal_count), 2), 'domain_risk_signal_count': risk_signal_count}}
+result['details'] = {{'evaluated_response': response_text[:1200], 'covered_requirements': covered_requirements, 'missing_requirements': missing_requirements, 'clarity_flags': clarity_flags, 'domain_risk_flags': domain_risk_flags, 'improvement_checklist': improvement_checklist, 'missing_inputs': ['response or candidate_outputs'] if not response_text else []}}
 {_common_result_footer("improvement_checklist[0] if improvement_checklist else 'Keep the output as-is.'")}
 """.strip()
 
