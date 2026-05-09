@@ -238,10 +238,11 @@ except Exception:  # pragma: no cover
 # Paths / event constants
 # =====================================================================
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-PLUGINS_DIR = ROOT_DIR / "plugins"
-RUN_LOCK_PATH = ROOT_DIR / ".factory_runner.lock"
-AI_ROADMAP_STATE_PATH = ROOT_DIR / "registry" / "ai_roadmap_state.json"
+FACTORY_DIR = Path(__file__).resolve().parent
+ROOT_DIR = FACTORY_DIR.parent
+PLUGINS_DIR = FACTORY_DIR / "plugins"
+RUN_LOCK_PATH = FACTORY_DIR / ".factory_runner.lock"
+AI_ROADMAP_STATE_PATH = FACTORY_DIR / "registry" / "ai_roadmap_state.json"
 
 EVENT_FACTORY_RUN_STARTED = "factory_run_started"
 EVENT_FACTORY_RUN_COMPLETED = "factory_run_completed"

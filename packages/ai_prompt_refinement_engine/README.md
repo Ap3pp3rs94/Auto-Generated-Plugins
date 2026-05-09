@@ -52,12 +52,13 @@ result = asyncio.run(invoke("demo-user", payload))
 print(result["output"]["summary"])
 ```
 
-## Install Into Francis
+## Install Into The Factory Plugin Library
 
-Copy `ai_prompt_refinement_engine.py` into the Francis `plugins/` directory.
+Copy `ai_prompt_refinement_engine.py` into the factory repository's `plugins/`
+directory.
 
 ```bash
-cp ai_prompt_refinement_engine.py /path/to/francis/plugins/
+cp ai_prompt_refinement_engine.py /path/to/francis/factory/plugins/
 ```
 
 Then invoke it through the Francis plugin runtime or import it directly for

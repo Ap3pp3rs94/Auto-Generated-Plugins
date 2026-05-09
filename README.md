@@ -13,6 +13,13 @@ quality guide.
 | Plugin | Capability | Status |
 | --- | --- | --- |
 | [`ai_prompt_refinement_engine.py`](plugins/ai_prompt_refinement_engine.py) | Refines vague AI instructions into clearer, safer, testable prompts. | Generated and validated |
+| [`ai_agent_task_planner.py`](plugins/ai_agent_task_planner.py) | Breaks AI work into ordered planning, execution, review, and verification steps. | Generated and validated |
+| [`ai_tool_selection_advisor.py`](plugins/ai_tool_selection_advisor.py) | Recommends appropriate AI tools from task requirements and constraints. | Generated and validated |
+| [`ai_memory_compression_synthesizer.py`](plugins/ai_memory_compression_synthesizer.py) | Compresses context into durable AI memory summaries. | Generated and validated |
+| [`ai_context_window_optimizer.py`](plugins/ai_context_window_optimizer.py) | Prioritizes and trims context for limited model windows. | Generated and validated |
+| [`ai_output_quality_scorer.py`](plugins/ai_output_quality_scorer.py) | Scores AI responses against requests, rubrics, and missing requirements. | Generated and validated |
+| [`ai_hallucination_risk_auditor.py`](plugins/ai_hallucination_risk_auditor.py) | Flags factual-risk areas and verification needs in AI output. | Generated and validated |
+| [`ai_retrieval_query_expander.py`](plugins/ai_retrieval_query_expander.py) | Expands retrieval queries for stronger AI search and grounding. | Generated and validated |
 
 ## Download
 
@@ -38,7 +45,7 @@ The package contains:
 Checksum:
 
 ```text
-4472cb3d24e420041683bbbeda692e2b73624449b517f668c2362ca927137d02  ai_prompt_refinement_engine-0.1.2.zip
+dfaa17d50b98435fe81310ec55abcc35c9d876c1352c819870d5482b8e2b2f0f  ai_prompt_refinement_engine-0.1.2.zip
 ```
 
 Legacy plugins created before the current AI roadmap guide were removed. The
@@ -148,6 +155,14 @@ Canonical current path:
 spec_builder.py -> factory_runner.py -> Station B -> plugin_template.py -> station_c_validator.py -> plugins/
 ```
 
+When this repository lives at `/home/peppera091/francis/factory`, generated
+plugins land in:
+
+```text
+/home/peppera091/francis/factory/plugins
+\\wsl$\Ubuntu\home\peppera091\francis\factory\plugins
+```
+
 ## Quick Start
 
 Clone and set up a local environment:
@@ -201,6 +216,9 @@ From the parent Francis project:
 ```bash
 python -m factory.factory_runner --once
 ```
+
+Generated plugins still land in the sidecar repository's own `factory/plugins/`
+directory, not the parent Francis `plugins/` directory.
 
 The same runner also supports batch or continuous side-project operation:
 
