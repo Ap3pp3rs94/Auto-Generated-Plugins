@@ -36,6 +36,7 @@ Enhancements in this version:
 import argparse
 import asyncio
 import atexit
+import hashlib
 import importlib.util
 import inspect
 import json
@@ -44,6 +45,7 @@ import os
 import random
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Set, Tuple
@@ -657,6 +659,9 @@ def _load_ai_roadmap_state() -> Dict[str, Any]:
         return {"completed": [], "next_directive": ""}
     data.setdefault("completed", [])
     data.setdefault("next_directive", "")
+    data.setdefault("upgrade_attempts", {})
+    data.setdefault("upgrade_attempt_order", [])
+    _normalize_ai_roadmap_state(data)
     return data
 
 
@@ -665,6 +670,127 @@ def _save_ai_roadmap_state(state: Dict[str, Any]) -> None:
     tmp = AI_ROADMAP_STATE_PATH.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
     tmp.replace(AI_ROADMAP_STATE_PATH)
+
+
+def _normalize_ai_roadmap_state(state: Dict[str, Any]) -> None:
+    completed = state.get("completed")
+    if not isinstance(completed, list):
+        state["completed"] = []
+        completed = state["completed"]
+
+    by_slug: Dict[str, Dict[str, Any]] = {}
+    for item in completed:
+        if not isinstance(item, dict):
+            continue
+        slug = str(item.get("slug") or "")
+        if not slug or "_phase_" in slug:
+            continue
+        by_slug[slug] = item
+    state["completed"] = list(by_slug.values())[-100:]
+
+    attempts = state.get("upgrade_attempts")
+    if not isinstance(attempts, dict):
+        attempts = {}
+    normalized_attempts: Dict[str, Dict[str, Any]] = {}
+    for key, item in attempts.items():
+        if isinstance(item, dict) and key:
+            normalized_attempts[str(key)] = item
+    state["upgrade_attempts"] = normalized_attempts
+
+    order = state.get("upgrade_attempt_order")
+    if not isinstance(order, list):
+        order = []
+    state["upgrade_attempt_order"] = [str(item) for item in order if str(item) in normalized_attempts][-500:]
+
+
+def _upgrade_knowledge_fingerprint() -> str:
+    """
+    Fingerprint the factory knowledge that determines upgrade behavior.
+
+    A failed upgrade attempt should not be retried under the same factory/profile
+    logic. If these files change, the factory has plausibly learned a new way and
+    may re-evaluate prior rejected attempts.
+    """
+    digest = hashlib.sha256()
+    for rel in [
+        "factory_runner.py",
+        "spec_builder.py",
+        "profiles/registry.py",
+        "quality_runner.py",
+    ]:
+        path = FACTORY_DIR / rel
+        digest.update(rel.encode("utf-8"))
+        try:
+            digest.update(path.read_bytes())
+        except FileNotFoundError:
+            digest.update(b"<missing>")
+    return digest.hexdigest()[:16]
+
+
+def _upgrade_attempt_key(source_spec: PluginSpec) -> str:
+    return str(getattr(source_spec, "slug", "") or "")
+
+
+def _upgrade_attempt_record(
+    *,
+    state: Dict[str, Any],
+    source_spec: PluginSpec,
+    canonical_spec: PluginSpec,
+    status: str,
+    reason: str,
+    persist: bool = True,
+) -> Dict[str, Any]:
+    attempts = state.setdefault("upgrade_attempts", {})
+    if not isinstance(attempts, dict):
+        attempts = {}
+        state["upgrade_attempts"] = attempts
+    order = state.setdefault("upgrade_attempt_order", [])
+    if not isinstance(order, list):
+        order = []
+        state["upgrade_attempt_order"] = order
+
+    key = _upgrade_attempt_key(source_spec)
+    record = {
+        "source_slug": key,
+        "canonical_slug": canonical_spec.slug,
+        "source_name": source_spec.name,
+        "canonical_name": canonical_spec.name,
+        "phase": _spec_phase(source_spec),
+        "status": status,
+        "reason": reason[:1000],
+        "knowledge_fingerprint": _upgrade_knowledge_fingerprint(),
+        "attempted_at_unix": int(time.time()),
+    }
+    attempts[key] = record
+    if key in order:
+        order.remove(key)
+    order.append(key)
+    for stale_key in order[:-500]:
+        attempts.pop(stale_key, None)
+    state["upgrade_attempt_order"] = order[-500:]
+    if persist:
+        _save_ai_roadmap_state(state)
+    return record
+
+
+def _upgrade_attempt_skip_reason(state: Dict[str, Any], source_spec: PluginSpec) -> Optional[str]:
+    if not _is_upgrade_attempt_spec(source_spec):
+        return None
+    attempts = state.get("upgrade_attempts")
+    if not isinstance(attempts, dict):
+        return None
+    record = attempts.get(_upgrade_attempt_key(source_spec))
+    if not isinstance(record, dict):
+        return None
+    current_fp = _upgrade_knowledge_fingerprint()
+    if record.get("knowledge_fingerprint") != current_fp:
+        return None
+    status = str(record.get("status") or "attempted")
+    reason = str(record.get("reason") or "")
+    return (
+        f"already {status} under current factory knowledge "
+        f"(fingerprint={current_fp}, reason={reason[:240]})"
+    )
 
 
 def _build_ai_handoff_context(state: Dict[str, Any], spec: PluginSpec) -> str:
@@ -695,6 +821,26 @@ def _build_ai_handoff_context(state: Dict[str, Any], spec: PluginSpec) -> str:
                     role=item.get("handoff_role", ""),
                 )
             )
+    attempts = state.get("upgrade_attempts")
+    order = state.get("upgrade_attempt_order")
+    if isinstance(attempts, dict) and isinstance(order, list):
+        recent_attempts = [
+            attempts.get(str(key))
+            for key in order[-8:]
+            if isinstance(attempts.get(str(key)), dict)
+        ]
+        if recent_attempts:
+            lines.append("")
+            lines.append("Recent canonical upgrade attempts:")
+            for item in recent_attempts:
+                lines.append(
+                    "- {source} -> {canonical}: {status}; {reason}".format(
+                        source=item.get("source_slug", ""),
+                        canonical=item.get("canonical_slug", ""),
+                        status=item.get("status", ""),
+                        reason=str(item.get("reason", ""))[:180],
+                    )
+                )
     lines.append("")
     lines.append(
         "Current task must be complementary: implement {slug} ({name}) and consume prior outputs "
@@ -1893,6 +2039,7 @@ async def run_factory(config: RunnerConfig) -> None:
     existing_signatures = _load_existing_capability_signatures()
     ai_roadmap_state = _load_ai_roadmap_state()
     ai_roadmap_state = _seed_ai_roadmap_state_from_existing(ai_roadmap_state, existing_slugs)
+    _save_ai_roadmap_state(ai_roadmap_state)
     LOG.info("Loaded %d existing plugin(s) from plugins/", len(existing_slugs))
     LOG.info(
         "Loaded AI roadmap handoff state with %d completed item(s).",
@@ -1988,6 +2135,14 @@ async def run_factory(config: RunnerConfig) -> None:
         selected_index = index_counter
         for candidate_index in candidate_indexes:
             candidate_spec, candidate_capability, candidate_domain = build_next_spec(candidate_index)
+            skip_reason = _upgrade_attempt_skip_reason(ai_roadmap_state, candidate_spec)
+            if skip_reason:
+                LOG.info(
+                    "Skipping remembered upgrade attempt %r → %s",
+                    candidate_spec.slug,
+                    skip_reason,
+                )
+                continue
             if (
                 not config.allow_phase_expansion
                 and not randomized_indexes
@@ -2023,7 +2178,18 @@ async def run_factory(config: RunnerConfig) -> None:
             break
 
         if spec is None or source_spec is None or capability_type is None or intended_domain is None:
-            LOG.error("Unable to find a non-duplicate AI roadmap spec; stopping factory run.")
+            LOG.warning("Unable to find a new or untried AI roadmap candidate.")
+            if config.loop_forever:
+                LOG.info(
+                    "Factory will stay alive and recheck after %.1f seconds.",
+                    config.sleep_seconds,
+                )
+                await asyncio.sleep(config.sleep_seconds)
+                existing_slugs = _load_existing_plugin_slugs()
+                existing_signatures = _load_existing_capability_signatures()
+                ai_roadmap_state = _load_ai_roadmap_state()
+                index_counter = _next_ai_roadmap_index(existing_slugs)
+                continue
             break
 
         spec.owner_id = config.user_id
@@ -2305,6 +2471,14 @@ async def run_factory(config: RunnerConfig) -> None:
                 LOG.info("Rejected structurally invalid candidate moved to %s", rejected_path)
             except Exception:
                 LOG.warning("Unable to discard structurally invalid candidate %r", spec.slug, exc_info=True)
+            if is_upgrade_attempt and source_spec is not None:
+                _upgrade_attempt_record(
+                    state=ai_roadmap_state,
+                    source_spec=source_spec,
+                    canonical_spec=spec,
+                    status="rejected",
+                    reason=f"structural_validation: {reason}",
+                )
 
             if not config.loop_forever:
                 break
@@ -2379,6 +2553,14 @@ async def run_factory(config: RunnerConfig) -> None:
                         LOG.info("Rejected shallow candidate moved to %s", quarantine_path)
                     except Exception:
                         LOG.warning("Unable to discard rejected candidate %r", spec.slug, exc_info=True)
+                    if is_upgrade_attempt and source_spec is not None:
+                        _upgrade_attempt_record(
+                            state=ai_roadmap_state,
+                            source_spec=source_spec,
+                            canonical_spec=spec,
+                            status="rejected",
+                            reason=semantic_reason,
+                        )
 
                     _se_record(
                         EVENT_FACTORY_PLUGIN_LOW_SCORE,
@@ -2431,6 +2613,14 @@ async def run_factory(config: RunnerConfig) -> None:
                     LOG.info("Rejected non-improving phase candidate moved to %s", rejected_path)
                 except Exception:
                     LOG.warning("Unable to discard non-improving candidate %r", spec.slug, exc_info=True)
+                if source_spec is not None:
+                    _upgrade_attempt_record(
+                        state=ai_roadmap_state,
+                        source_spec=source_spec,
+                        canonical_spec=spec,
+                        status="rejected",
+                        reason=upgrade_reason,
+                    )
 
                 if not config.loop_forever:
                     break
@@ -2441,6 +2631,14 @@ async def run_factory(config: RunnerConfig) -> None:
         LOG.info("✅ Plugin built: %s", plugin_path)
         existing_slugs.add(spec.slug)
         existing_signatures.add(_spec_signature(spec))
+        if is_upgrade_attempt and source_spec is not None:
+            _upgrade_attempt_record(
+                state=ai_roadmap_state,
+                source_spec=source_spec,
+                canonical_spec=spec,
+                status="accepted",
+                reason="candidate improved canonical capability and overwrote the base module",
+            )
 
         # -----------------------------------------------------
         # OPTIONAL EVALUATION (Station D critic)

@@ -14,9 +14,11 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
 try:
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
     from factory.factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
+    from factory.factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
 except ModuleNotFoundError:
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
     from factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
+    from factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
 
 
 class SpecBuilderTests(unittest.TestCase):
@@ -69,6 +71,24 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertNotIn(sample_spec.slug, existing)
         self.assertIn(retention_spec.slug, existing)
         self.assertIn(sample_spec.extra["phase"], {2, 3})
+
+    def test_upgrade_attempt_memory_skips_repeated_phase_under_same_knowledge(self) -> None:
+        phase_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]
+        retention_spec = _canonical_retention_spec(phase_spec)
+        state = {"completed": [], "next_directive": "", "upgrade_attempts": {}, "upgrade_attempt_order": []}
+
+        _upgrade_attempt_record(
+            state=state,
+            source_spec=phase_spec,
+            canonical_spec=retention_spec,
+            status="rejected",
+            reason="not better than canonical",
+            persist=False,
+        )
+
+        reason = _upgrade_attempt_skip_reason(state, phase_spec)
+        self.assertIsNotNone(reason)
+        self.assertIn("already rejected", reason or "")
 
 
 if __name__ == "__main__":
