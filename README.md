@@ -1,25 +1,20 @@
 # Auto-Generated AI Capabilities
 
-A curated library of autonomous AI capabilities, shipped as Python modules, plus
-the factory that produces and validates them.
+An autonomous AI capability factory that designs, generates, validates, repairs,
+and publishes Python capability modules.
 
-The lead artifact is the capability library in `plugins/`. The supporting
-system is the factory pipeline that turns deterministic AI capability specs into
-generated Python modules, validates them, and keeps only capabilities that fit
-the current quality guide.
+The stable part of this project is the production loop: deterministic capability
+specs, Ollama-assisted generation, semantic validation, repair passes, and
+GitHub publishing. The generated modules in `plugins/` are intentionally
+dynamic and will change as the factory learns, expands, and tightens its quality
+bar.
 
-## Current Library
+## Current Output
 
-| Capability Module | Purpose | Status |
-| --- | --- | --- |
-| [`ai_prompt_refinement_engine.py`](plugins/ai_prompt_refinement_engine.py) | Refines vague AI instructions into clearer, safer, testable prompts. | Generated and validated |
-| [`ai_agent_task_planner.py`](plugins/ai_agent_task_planner.py) | Breaks AI work into ordered planning, execution, review, and verification steps. | Generated and validated |
-| [`ai_tool_selection_advisor.py`](plugins/ai_tool_selection_advisor.py) | Recommends appropriate AI tools from task requirements and constraints. | Generated and validated |
-| [`ai_memory_compression_synthesizer.py`](plugins/ai_memory_compression_synthesizer.py) | Compresses context into durable AI memory summaries. | Generated and validated |
-| [`ai_context_window_optimizer.py`](plugins/ai_context_window_optimizer.py) | Prioritizes and trims context for limited model windows. | Generated and validated |
-| [`ai_output_quality_scorer.py`](plugins/ai_output_quality_scorer.py) | Scores AI responses against requests, rubrics, and missing requirements. | Generated and validated |
-| [`ai_hallucination_risk_auditor.py`](plugins/ai_hallucination_risk_auditor.py) | Flags factual-risk areas and verification needs in AI output. | Generated and validated |
-| [`ai_retrieval_query_expander.py`](plugins/ai_retrieval_query_expander.py) | Expands retrieval queries for stronger AI search and grounding. | Generated and validated |
+Generated capability modules land in `plugins/` after validation. This folder is
+an output surface, not the permanent definition of the project. Each retained
+module must import, invoke, return the expected envelope, expose a registered
+capability profile, produce non-empty actions, and pass semantic-depth checks.
 
 ## Download
 
@@ -298,7 +293,7 @@ Generated capability modules are kept only when they satisfy the current guide:
 
 ## Roadmap
 
-The library is designed to grow into complementary AI capabilities:
+The factory is designed to grow into complementary AI capability areas:
 
 - prompt refinement
 - agent task planning
