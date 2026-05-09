@@ -694,7 +694,9 @@ def _normalize_ai_roadmap_state(state: Dict[str, Any]) -> None:
     normalized_attempts: Dict[str, Dict[str, Any]] = {}
     for key, item in attempts.items():
         if isinstance(item, dict) and key:
-            normalized_attempts[str(key)] = item
+            canonical = str(item.get("canonical_slug") or key)
+            if canonical:
+                normalized_attempts[canonical] = item
     state["upgrade_attempts"] = normalized_attempts
 
     order = state.get("upgrade_attempt_order")
@@ -728,7 +730,8 @@ def _upgrade_knowledge_fingerprint() -> str:
 
 
 def _upgrade_attempt_key(source_spec: PluginSpec) -> str:
-    return str(getattr(source_spec, "slug", "") or "")
+    canonical = _canonical_retention_spec(source_spec)
+    return str(getattr(canonical, "slug", "") or getattr(source_spec, "slug", "") or "")
 
 
 def _upgrade_attempt_record(

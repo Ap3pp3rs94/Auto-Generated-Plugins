@@ -74,6 +74,7 @@ class SpecBuilderTests(unittest.TestCase):
 
     def test_upgrade_attempt_memory_skips_repeated_phase_under_same_knowledge(self) -> None:
         phase_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]
+        later_phase_spec = build_next_spec((2 * len(AI_CAPABILITY_ROADMAP)) + 1)[0]
         retention_spec = _canonical_retention_spec(phase_spec)
         state = {"completed": [], "next_directive": "", "upgrade_attempts": {}, "upgrade_attempt_order": []}
 
@@ -89,6 +90,9 @@ class SpecBuilderTests(unittest.TestCase):
         reason = _upgrade_attempt_skip_reason(state, phase_spec)
         self.assertIsNotNone(reason)
         self.assertIn("already rejected", reason or "")
+        later_reason = _upgrade_attempt_skip_reason(state, later_phase_spec)
+        self.assertIsNotNone(later_reason)
+        self.assertIn("already rejected", later_reason or "")
 
 
 if __name__ == "__main__":
