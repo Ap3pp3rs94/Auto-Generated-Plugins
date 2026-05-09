@@ -1506,6 +1506,16 @@ plugin_keywords = sorted(set(
     for word in factory_surface.split()
     if len(word.strip('.,:;!?')) > 6
 ))[:14]
+domain_signals = []
+for label, terms in [
+    ('release_auth_plugin', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
+    ('grounded_medical_plugin', ['medical', 'clinical', 'citation', 'source', 'unsupported', 'claim']),
+    ('tool_trace_plugin', ['tool', 'trace', 'retrieval', 'mismatch', 'consistency']),
+]:
+    hits = [term for term in terms if term in factory_surface]
+    if hits:
+        domain_signals.append({{'category': label, 'signals': hits}})
+domain_signal_count = sum(len(item['signals']) for item in domain_signals)
 
 if logic_profile_id == 'plugin_spec_architect_profile':
     spec_blueprint = {{
@@ -1603,6 +1613,7 @@ else:
 result['summary'] = plugin_name + ': created plugin-factory guidance for ' + desired_plugin + ' using focus ' + primary_signal + '.'
 result['primary_insights'] = [
     {{'title': 'Factory signals', 'detail': factory_signals or primary_signal}},
+    {{'title': 'Domain signals', 'detail': domain_signals or 'No domain-specific plugin risk signal detected.'}},
     {{'title': 'Plugin keywords', 'detail': plugin_keywords}},
     {{'title': 'Profile output', 'detail': details_payload}},
 ]
@@ -1612,8 +1623,9 @@ result['recommended_actions'] = [
     {{'action': 'Verify with quality runner before publish', 'quality_failures_seen': len(quality_failures)}},
 ]
 signal_count = sum(len(item['signals']) for item in factory_signals)
-result['scores'] = {{'confidence': round(min(0.92, 0.44 + 0.03 * len(plugin_keywords) + 0.025 * signal_count), 2), 'factory_leverage': round(min(0.95, 0.5 + 0.06 * len(details_payload) + 0.02 * signal_count), 2), 'duplicate_risk': round(min(0.9, 0.08 * len(existing_plugins) + 0.06 * len(details_payload.get('duplicate_risks', []))), 2), 'risk': round(min(0.9, 0.16 + 0.04 * len(quality_failures) + 0.04 * len(details_payload.get('duplicate_risks', []))), 2)}}
+result['scores'] = {{'confidence': round(min(0.92, 0.44 + 0.03 * len(plugin_keywords) + 0.025 * signal_count + 0.013 * domain_signal_count), 2), 'factory_leverage': round(min(0.95, 0.5 + 0.06 * len(details_payload) + 0.02 * signal_count + 0.01 * domain_signal_count), 2), 'duplicate_risk': round(min(0.9, 0.08 * len(existing_plugins) + 0.06 * len(details_payload.get('duplicate_risks', []))), 2), 'domain_signal_count': domain_signal_count, 'risk': round(min(0.9, 0.16 + 0.04 * len(quality_failures) + 0.04 * len(details_payload.get('duplicate_risks', [])) + 0.025 * domain_signal_count), 2)}}
 details_payload['factory_signals'] = factory_signals
+details_payload['domain_signals'] = domain_signals
 details_payload['plugin_keywords'] = plugin_keywords
 details_payload['missing_inputs'] = ['plugin_name or task'] if not desired_plugin else []
 result['details'] = details_payload
