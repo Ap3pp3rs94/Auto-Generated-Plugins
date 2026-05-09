@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI requirements analysis and task readiness'
         capability_type = 'research_synthesizer'
         logic_profile_id = 'requirement_gap_analyzer_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: missing_detail_keys: assumptions, clarification_questions, readiness_decision, requirement_gaps'
         use_cases = ['Identify missing inputs that block reliable execution.', 'Separate hard requirements from assumptions.', 'Recommend clarification questions only when necessary.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -207,52 +207,32 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
         candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
-        rubric_surface = ' '.join([def_text, objective_text, str(payload_data.get('prompt') or ''), ' '.join(str(item) for item in constraints)]).lower()
-        risk_tags = []
-        for label, terms in [
-            ('release_or_auth_eval', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
-            ('factual_grounding_eval', ['medical', 'clinical', 'citation', 'claim', 'source', 'unsupported', 'hallucination']),
-            ('tooling_eval', ['tool', 'retrieval', 'browse', 'trace', 'consistency']),
-            ('planning_eval', ['agent', 'handoff', 'blocked', 'owner', 'plan']),
-        ]:
-            hits = [term for term in terms if term in rubric_surface]
-            if hits:
-                risk_tags.append({'category': label, 'signals': hits})
-        criteria = [
-            {'name': 'instruction_adherence', 'weight': 0.3, 'pass_check': 'Satisfies the explicit task and constraints.'},
-            {'name': 'completeness', 'weight': 0.25, 'pass_check': 'Covers required outputs and edge cases.'},
-            {'name': 'evidence', 'weight': 0.2, 'pass_check': 'States assumptions, citations, or verification evidence where needed.'},
-            {'name': 'actionability', 'weight': 0.15, 'pass_check': 'Produces concrete next steps.'},
-            {'name': 'safety', 'weight': 0.1, 'pass_check': 'Avoids unsafe side effects and unsupported claims.'},
+        surface = ' '.join([def_text, objective_text, str(payload_data.get('prompt') or ''), ' '.join(str(item) for item in constraints)]).lower()
+        checks = [
+            ('objective', bool(explicit_objective_text), 'State the concrete outcome.'),
+            ('audience', bool(payload_data.get('audience') or payload_data.get('user_level')), 'Name who the result is for.'),
+            ('output_format', bool(payload_data.get('output_format') or payload_data.get('format') or 'json' in surface or 'checklist' in surface), 'Specify output format or schema.'),
+            ('acceptance_criteria', bool(constraints or 'must' in surface or 'pass' in surface), 'Define pass/fail criteria.'),
+            ('evidence_policy', bool(any(term in surface for term in ['citation', 'source', 'verify', 'evidence'])), 'Define evidence or verification policy.'),
+            ('owner_or_next_step', bool(payload_data.get('owner') or payload_data.get('current_plan')), 'Name owner or next execution step.'),
         ]
-        if any(tag['category'] == 'factual_grounding_eval' for tag in risk_tags):
-            criteria.append({'name': 'source_grounding', 'weight': 0.18, 'pass_check': 'Cites sources or clearly flags unsupported claims for ' + ', '.join(risk_tags[0]['signals'][:4]) + '.'})
-        if any(tag['category'] == 'release_or_auth_eval' for tag in risk_tags):
-            criteria.append({'name': 'release_safety', 'weight': 0.18, 'pass_check': 'Includes rollback, regression tests, and owner checks for auth/database changes.'})
-        if any(tag['category'] == 'tooling_eval' for tag in risk_tags):
-            criteria.append({'name': 'tool_trace_validity', 'weight': 0.14, 'pass_check': 'Explains tool choice, trace evidence, and consistency checks.'})
-        total_weight = sum(item['weight'] for item in criteria) or 1
-        for item in criteria:
-            item['weight'] = round(item['weight'] / total_weight, 3)
-        hard_failures = ['ignores a hard constraint', 'invents facts not in evidence', 'omits required output format']
-        if any(tag['category'] == 'factual_grounding_eval' for tag in risk_tags):
-            hard_failures.append('presents high-risk factual claims without citation or uncertainty')
-        if any(tag['category'] == 'release_or_auth_eval' for tag in risk_tags):
-            hard_failures.append('changes release-sensitive behavior without rollback or regression checks')
-        result['summary'] = plugin_name + ': generated a weighted evaluation rubric for ' + def_text[:140] + '.'
+        requirement_gaps = [{'category': name, 'suggestion': suggestion} for name, ok, suggestion in checks if not ok]
+        assumptions = [{'assumption': 'Use payload task as the primary requirement', 'source': def_text[:180]}]
+        clarification_questions = ['What is the expected ' + gap['category'] + '?' for gap in requirement_gaps[:3]]
+        readiness_score = round(max(0.05, 1 - len(requirement_gaps) / max(1, len(checks))), 2)
+        readiness_decision = 'ready' if readiness_score >= 0.75 else 'needs_clarification' if readiness_score >= 0.45 else 'not_ready'
+        result['summary'] = plugin_name + ': found ' + str(len(requirement_gaps)) + ' requirement gap(s); readiness=' + readiness_decision + '.'
         result['primary_insights'] = [
-            {'title': 'Rubric criteria', 'detail': criteria},
-            {'title': 'Hard failures', 'detail': hard_failures},
-            {'title': 'Rubric risk tags', 'detail': risk_tags or 'No specialized rubric risk tags.'},
+            {'title': 'Requirement gaps', 'detail': requirement_gaps},
+            {'title': 'Assumptions', 'detail': assumptions},
+            {'title': 'Clarification questions', 'detail': clarification_questions},
         ]
         result['recommended_actions'] = [
-            {'action': 'Score output with rubric', 'criteria': criteria},
-            {'action': 'Reject on hard failure', 'hard_failures': hard_failures},
-            {'action': 'Apply specialized risk checks', 'risk_tags': risk_tags},
+            {'action': 'Resolve requirement gaps', 'gaps': requirement_gaps},
+            {'action': 'Ask targeted clarification questions', 'questions': clarification_questions},
         ]
-        risk_signal_count = sum(len(tag['signals']) for tag in risk_tags)
-        result['scores'] = {'confidence': round(min(0.92, 0.48 + min(0.22, len(def_text.split()) / 120) + min(0.14, 0.025 * len(criteria))), 2), 'rubric_coverage': round(min(0.96, 0.58 + 0.04 * len(criteria) + 0.025 * len(risk_tags)), 2), 'risk': round(min(0.85, 0.14 + 0.028 * risk_signal_count + 0.035 * len(hard_failures[3:])), 2), 'risk_signal_count': risk_signal_count}
-        result['details'] = {'rubric': criteria, 'hard_failures': hard_failures, 'risk_tags': risk_tags, 'scoring_scale': '0 to 1 weighted average', 'missing_inputs': [] if def_text else ['task']}
+        result['scores'] = {'confidence': round(min(0.92, 0.42 + 0.07 * (len(checks) - len(requirement_gaps))), 2), 'readiness_score': readiness_score, 'risk': round(min(0.9, 0.12 + 0.11 * len(requirement_gaps)), 2), 'gap_count': len(requirement_gaps)}
+        result['details'] = {'requirement_gaps': requirement_gaps, 'assumptions': assumptions, 'clarification_questions': clarification_questions, 'readiness_decision': readiness_decision, 'readiness_score': readiness_score, 'missing_inputs': [gap['category'] for gap in requirement_gaps]}
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type
@@ -260,7 +240,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         result['details']['payload_warnings'] = payload_warnings
         result['progress_state'] = {
             'current_stage': logic_profile_id,
-            'next_step': 'Score output with rubric',
+            'next_step': 'Resolve requirement gaps',
             'blockers': result['details'].get('missing_inputs', [])[:4],
             'done_signals': ['capability_specific_analysis_complete', logic_profile_id],
         }
@@ -274,7 +254,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'challenge_label': plugin_name,
             'score_badge': 'Strong Signal' if result.get('scores', {}).get('confidence', 0) >= 0.65 else 'Needs Context',
             'microcopy': result['summary'],
-            'optional_next_challenge': 'Score output with rubric',
+            'optional_next_challenge': 'Resolve requirement gaps',
         }
     except Exception as _exc:
         result = {

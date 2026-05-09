@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI data contracts and schema planning'
         capability_type = 'enrichment'
         logic_profile_id = 'data_contract_mapper_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: missing_detail_keys: input_contract, output_contract, schema_gaps, validation_rules'
         use_cases = ['Extract expected payload fields and result fields.', 'Flag schema ambiguity before implementation.', 'Recommend validation checks for plugin contracts.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -207,40 +207,48 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
         candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
-        requirements = payload_data.get('requirements') if isinstance(payload_data.get('requirements'), list) else constraints
-        role = str(payload_data.get('role') or 'expert AI assistant')
-        inputs = payload_data.get('inputs') if isinstance(payload_data.get('inputs'), list) else ['task', 'context', 'constraints']
-        output_schema = payload_data.get('output_schema') if isinstance(payload_data.get('output_schema'), dict) else {'summary': 'string', 'steps': 'list', 'checks': 'list'}
-        prompt_surface = ' '.join([def_text, objective_text, ' '.join(str(item) for item in requirements), str(payload_data.get('prompt') or '')]).lower()
-        prompt_risk_tags = []
-        for label, terms in [
-            ('release_or_auth_prompt', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
-            ('factual_grounding_prompt', ['medical', 'clinical', 'citation', 'claim', 'source', 'unsupported']),
-            ('tooling_prompt', ['tool', 'retrieval', 'browse', 'trace', 'consistency']),
-        ]:
-            hits = [term for term in terms if term in prompt_surface]
-            if hits:
-                prompt_risk_tags.append({'category': label, 'signals': hits})
-        checklist = ['list assumptions', 'risks', 'verification steps']
-        if any(tag['category'] == 'factual_grounding_prompt' for tag in prompt_risk_tags):
-            checklist.append('cite or flag unsupported factual claims')
-        if any(tag['category'] == 'release_or_auth_prompt' for tag in prompt_risk_tags):
-            checklist.append('include rollback and regression-test checks')
-        structured_prompt = 'Role: ' + role + '\nTask: ' + def_text + '\nObjective: ' + objective_text + '\nInputs: ' + ', '.join(str(item) for item in inputs) + '\nRequirements: ' + '; '.join(str(item) for item in requirements) + '\nOutput schema: ' + str(output_schema) + '\nChecks: ' + '; '.join(checklist) + '.'
-        result['summary'] = plugin_name + ': built a structured prompt template with role, inputs, outputs, and checks.'
+        sample_payload = payload_data.get('example_payload') if isinstance(payload_data.get('example_payload'), dict) else payload_data
+        input_fields = []
+        for key, value in sample_payload.items():
+            if key in ['customer_config', 'config']:
+                continue
+            input_fields.append({'name': key, 'type': type(value).__name__, 'required': key in ['task', 'objective', 'prompt'], 'preview': str(value)[:140]})
+        output_contract = {
+            'summary': 'string',
+            'primary_insights': 'list',
+            'recommended_actions': 'list',
+            'scores': 'dict',
+            'details': 'dict',
+            'progress_state': 'dict',
+            'user_experience': 'dict',
+            'fun_mode': 'dict',
+        }
+        schema_gaps = []
+        for required in ['task', 'objective']:
+            if required not in sample_payload:
+                schema_gaps.append({'field': required, 'issue': 'missing common AI workflow input'})
+        if 'constraints' not in sample_payload:
+            schema_gaps.append({'field': 'constraints', 'issue': 'missing hard constraints list'})
+        validation_rules = [
+            {'field': 'payload', 'rule': 'must be dict or coerced to dict'},
+            {'field': 'scores.confidence', 'rule': 'float between 0 and 1'},
+            {'field': 'recommended_actions', 'rule': 'non-empty actionable list'},
+        ]
+        input_contract = {'fields': input_fields, 'required_fields': [item['name'] for item in input_fields if item['required']], 'optional_fields': [item['name'] for item in input_fields if not item['required']]}
+        result['summary'] = plugin_name + ': mapped data contract with ' + str(len(input_fields)) + ' input field(s) and ' + str(len(schema_gaps)) + ' gap(s).'
         result['primary_insights'] = [
-            {'title': 'Structured prompt', 'detail': structured_prompt},
-            {'title': 'Output schema', 'detail': output_schema},
-            {'title': 'Prompt risk tags', 'detail': prompt_risk_tags or 'No specialized prompt risk tags.'},
+            {'title': 'Input contract', 'detail': input_contract},
+            {'title': 'Output contract', 'detail': output_contract},
+            {'title': 'Schema gaps', 'detail': schema_gaps},
         ]
         result['recommended_actions'] = [
-            {'action': 'Use structured prompt', 'prompt': structured_prompt},
-            {'action': 'Validate output against schema', 'schema': output_schema},
-            {'action': 'Run specialized checks', 'checks': checklist, 'risk_tags': prompt_risk_tags},
+            {'action': 'Use mapped input contract', 'input_contract': input_contract},
+            {'action': 'Validate output contract', 'output_contract': output_contract},
+            {'action': 'Close schema gaps', 'schema_gaps': schema_gaps},
         ]
-        risk_signal_count = sum(len(tag['signals']) for tag in prompt_risk_tags)
-        result['scores'] = {'confidence': round(min(0.92, 0.48 + 0.06 * len([role, inputs, output_schema]) + min(0.16, len(def_text.split()) / 140) + 0.025 * len(checklist)), 2), 'structure_completeness': round(min(0.98, 0.5 + 0.08 * len([role, inputs, output_schema, requirements]) + 0.03 * len(checklist)), 2), 'risk': round(min(0.85, 0.14 + 0.035 * risk_signal_count + (0.08 if not requirements else 0)), 2), 'risk_signal_count': risk_signal_count}
-        result['details'] = {'structured_prompt': structured_prompt, 'role': role, 'inputs': inputs, 'output_schema': output_schema, 'requirements': requirements, 'checklist': checklist, 'prompt_risk_tags': prompt_risk_tags, 'missing_inputs': ['requirements'] if not requirements else []}
+        contract_score = round(max(0.1, 1 - 0.1 * len(schema_gaps)), 2)
+        result['scores'] = {'confidence': round(min(0.92, 0.45 + 0.025 * len(input_fields) + 0.08 * bool(output_contract)), 2), 'contract_completeness': contract_score, 'risk': round(min(0.9, 0.12 + 0.09 * len(schema_gaps)), 2), 'field_count': len(input_fields)}
+        result['details'] = {'input_contract': input_contract, 'output_contract': output_contract, 'validation_rules': validation_rules, 'schema_gaps': schema_gaps, 'missing_inputs': ['example_payload'] if not input_fields else []}
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type
@@ -248,7 +256,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         result['details']['payload_warnings'] = payload_warnings
         result['progress_state'] = {
             'current_stage': logic_profile_id,
-            'next_step': 'Use structured prompt',
+            'next_step': 'Use mapped input contract',
             'blockers': result['details'].get('missing_inputs', [])[:4],
             'done_signals': ['capability_specific_analysis_complete', logic_profile_id],
         }
@@ -262,7 +270,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'challenge_label': plugin_name,
             'score_badge': 'Strong Signal' if result.get('scores', {}).get('confidence', 0) >= 0.65 else 'Needs Context',
             'microcopy': result['summary'],
-            'optional_next_challenge': 'Use structured prompt',
+            'optional_next_challenge': 'Use mapped input contract',
         }
     except Exception as _exc:
         result = {

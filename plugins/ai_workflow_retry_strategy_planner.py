@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI workflow retry planning and failure recovery'
         capability_type = 'system_automation'
         logic_profile_id = 'workflow_retry_strategy_planner_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: missing_detail_keys: failure_clusters, retry_decision, retry_strategy, stop_conditions'
         use_cases = ['Convert failure traces into retry strategies.', 'Change one variable at a time for safer debugging.', 'Recommend when to stop retrying and ask for input.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -207,40 +207,43 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
         candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
-        trace_items = payload_data.get('trace') if isinstance(payload_data.get('trace'), list) else candidate_outputs + messages
-        context_items = []
-        for key in ['task', 'objective', 'prompt', 'constraints', 'current_plan', 'completed_steps', 'blocked_steps']:
-            value = payload_data.get(key)
-            if value not in (None, '', [], {}):
-                context_items.append({'source': key, 'text': str(value)})
-        trace_items = list(trace_items) + context_items
+        trace_items = payload_data.get('trace') if isinstance(payload_data.get('trace'), list) else []
         failures = []
-        signals_by_stage = {}
-        for idx, item in enumerate(trace_items):
-            text = str(item.get('error') or item.get('content') or item.get('message') or item.get('text') or item if isinstance(item, dict) else item)
+        blocked = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []
+        plan = payload_data.get('current_plan') if isinstance(payload_data.get('current_plan'), list) else []
+        scan_items = trace_items + candidate_outputs + messages + blocked + plan + constraints
+        for idx, item in enumerate(scan_items):
+            text = str(item.get('error') or item.get('message') or item.get('summary') or item.get('content') or item if isinstance(item, dict) else item)
             lower = text.lower()
-            signal_terms = [token for token in ['error', 'failed', 'timeout', 'invalid', 'empty', 'exception', 'blocked', 'mismatch', 'unsupported', 'citation', 'auth', 'database', 'migration', 'rollback', 'tool', 'schema', 'model', 'llm'] if token in lower]
-            if signal_terms:
-                stage = 'tool' if 'tool' in lower else 'model' if 'model' in lower or 'llm' in lower else 'validation' if 'schema' in lower or 'invalid' in lower else 'retrieval' if 'citation' in lower or 'unsupported' in lower else 'release' if 'auth' in lower or 'database' in lower or 'migration' in lower else 'workflow'
-                signals_by_stage.setdefault(stage, 0)
-                signals_by_stage[stage] += len(signal_terms)
-                failures.append({'index': idx, 'stage': stage, 'signals': signal_terms, 'evidence': text[:220]})
-        root_cause = failures[0]['stage'] if failures else 'unknown'
-        retry_plan = [
-            'Reproduce the first failing stage: ' + root_cause + ' using evidence: ' + (failures[0]['evidence'][:140] if failures else def_text[:140]),
-            'Add a checkpoint before ' + root_cause + ' that captures signals: ' + ', '.join(failures[0]['signals'][:6]) if failures else 'Add a checkpoint before the unknown stage.',
-            'Retry with the smallest changed input tied to ' + root_cause + '.',
+            hits = [term for term in ['timeout', 'failed', 'error', 'invalid', 'empty', 'shallow', 'duplicate', 'mismatch', 'blocked', 'citation', 'migration', 'rollback', 'unsupported', 'clinical'] if term in lower]
+            if hits:
+                failures.append({'index': idx, 'signals': hits, 'evidence': text[:220]})
+        failure_clusters = {}
+        for failure in failures:
+            for signal in failure['signals']:
+                failure_clusters[signal] = failure_clusters.get(signal, 0) + 1
+        retry_decision = 'repair_then_retry' if failures else 'continue_with_checkpoint'
+        if failure_clusters.get('duplicate', 0) or failure_clusters.get('shallow', 0):
+            retry_decision = 'change_spec_or_profile_before_retry'
+        if failure_clusters.get('timeout', 0) >= 2:
+            retry_decision = 'pause_and_reduce_model_load'
+        top_cluster = sorted(failure_clusters, key=failure_clusters.get, reverse=True)[0] if failure_clusters else 'no_failure'
+        first_failure_preview = failures[0]['evidence'] if failures else def_text[:180]
+        retry_strategy = [
+            {'step': 1, 'action': 'Change one variable for ' + top_cluster, 'target': sorted(failure_clusters, key=failure_clusters.get, reverse=True)[:3], 'evidence': first_failure_preview},
+            {'step': 2, 'action': 'Re-run checks that address ' + top_cluster, 'target': ['structural_validation', 'semantic_depth', top_cluster]},
+            {'step': 3, 'action': 'Stop if ' + top_cluster + ' repeats', 'target': list(failure_clusters.keys())[:5]},
         ]
-        result['summary'] = plugin_name + ': identified ' + str(len(failures)) + ' workflow failure signal(s).'
+        stop_conditions = ['same failure repeats twice', 'repair candidate fails validation', 'risk controls are missing for production-affecting work']
+        result['summary'] = plugin_name + ': selected retry decision ' + retry_decision + ' for top signal ' + top_cluster + ' from ' + str(len(failures)) + ' failure signal(s).'
         result['primary_insights'] = [
-            {'title': 'Likely failure stage', 'detail': root_cause},
-            {'title': 'Failure evidence', 'detail': failures[:6]},
-            {'title': 'Signals by stage', 'detail': signals_by_stage},
-            {'title': 'Retry plan', 'detail': retry_plan},
+            {'title': 'Failure clusters', 'detail': failure_clusters},
+            {'title': 'Retry decision', 'detail': retry_decision},
+            {'title': 'Retry strategy', 'detail': retry_strategy},
         ]
-        result['recommended_actions'] = [{'action': item} for item in retry_plan]
-        result['scores'] = {'confidence': round(min(0.92, 0.38 + min(0.28, 0.055 * len(failures)) + min(0.16, 0.035 * len(signals_by_stage))), 2), 'debuggability': round(min(0.92, 0.42 + min(0.32, 0.06 * len(trace_items)) + min(0.12, 0.025 * sum(signals_by_stage.values()))), 2), 'risk': round(min(0.9, 0.18 + 0.055 * len(failures) + 0.025 * sum(signals_by_stage.values())), 2), 'signal_count': sum(signals_by_stage.values())}
-        result['details'] = {'failure_points': failures, 'signals_by_stage': signals_by_stage, 'root_cause_stage': root_cause, 'retry_plan': retry_plan, 'missing_inputs': ['trace'] if not trace_items else []}
+        result['recommended_actions'] = [{'action': item['action'], 'target': item['target']} for item in retry_strategy]
+        result['scores'] = {'confidence': round(min(0.92, 0.46 + 0.06 * len(failures) + 0.05 * len(failure_clusters)), 2), 'retry_readiness': round(max(0.1, 0.86 - 0.08 * len(failure_clusters)), 2), 'risk': round(min(0.9, 0.18 + 0.1 * len(failure_clusters)), 2), 'failure_signal_count': len(failures)}
+        result['details'] = {'retry_strategy': retry_strategy, 'failure_clusters': failure_clusters, 'retry_decision': retry_decision, 'stop_conditions': stop_conditions, 'failure_signals': failures, 'top_cluster': top_cluster, 'missing_inputs': ['trace'] if not trace_items else []}
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type
@@ -248,7 +251,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         result['details']['payload_warnings'] = payload_warnings
         result['progress_state'] = {
             'current_stage': logic_profile_id,
-            'next_step': retry_plan[0],
+            'next_step': retry_strategy[0]['action'],
             'blockers': result['details'].get('missing_inputs', [])[:4],
             'done_signals': ['capability_specific_analysis_complete', logic_profile_id],
         }
@@ -262,7 +265,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'challenge_label': plugin_name,
             'score_badge': 'Strong Signal' if result.get('scores', {}).get('confidence', 0) >= 0.65 else 'Needs Context',
             'microcopy': result['summary'],
-            'optional_next_challenge': retry_plan[0],
+            'optional_next_challenge': retry_strategy[0]['action'],
         }
     except Exception as _exc:
         result = {

@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI model selection and task-fit scoring'
         capability_type = 'scoring'
         logic_profile_id = 'model_selection_scorecard_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: missing_detail_keys: cost_risk_tradeoffs, escalation_triggers, model_scorecard, selected_model_style'
         use_cases = ['Choose between fast, cheap, reasoning-heavy, or tool-using workflows.', 'Flag tasks that need stronger verification.', 'Recommend the lowest sufficient capability tier.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -207,33 +207,46 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
         candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
-        text = ' '.join([def_text, objective_text]).lower()
-        routes = [
-            ('coding_agent', ['code', 'bug', 'repo', 'repository', 'test', 'file', 'plugin', 'factory']),
-            ('github_publish_agent', ['git', 'github', 'commit', 'push', 'branch', 'remote', 'origin', 'pr', 'pull request']),
-            ('research_agent', ['research', 'latest', 'source', 'docs', 'citation']),
-            ('evaluation_agent', ['score', 'rubric', 'compare', 'quality', 'validate', 'validation', 'semantic', 'pass', 'fail', 'reject']),
-            ('planning_agent', ['plan', 'workflow', 'handoff', 'multi-step', 'autonomous', 'continuous']),
-            ('safety_agent', ['risk', 'delete', 'approval', 'unsafe', 'production', 'rollback']),
+        surface = ' '.join([def_text, objective_text, str(payload_data.get('prompt') or ''), ' '.join(str(item) for item in constraints)]).lower()
+        tiers = [
+            {'model_style': 'fast_small_model', 'cost': 'low', 'strength': 'simple routing, formatting, extraction', 'signals': ['simple', 'format', 'extract']},
+            {'model_style': 'standard_tool_model', 'cost': 'medium', 'strength': 'tool use, code edits, repo work', 'signals': ['tool', 'code', 'repo', 'github', 'plugin', 'test']},
+            {'model_style': 'reasoning_model', 'cost': 'high', 'strength': 'ambiguous planning, debugging, multi-step synthesis', 'signals': ['complex', 'multi-step', 'debug', 'architecture', 'risk']},
+            {'model_style': 'verified_grounded_model', 'cost': 'high', 'strength': 'source-sensitive factual answers', 'signals': ['citation', 'medical', 'legal', 'financial', 'latest', 'source']},
         ]
-        matches = []
-        for route, terms in routes:
-            hits = [term for term in terms if term in text]
-            if hits:
-                matches.append({'route': route, 'signals': hits, 'priority': len(hits)})
-        matches = sorted(matches, key=lambda item: item['priority'], reverse=True) or [{'route': 'clarifier', 'signals': [], 'priority': 0}]
-        split_needed = len(matches) > 1 and matches[0]['priority'] == matches[1]['priority']
-        result['summary'] = plugin_name + ': routed task to ' + matches[0]['route'] + '.'
+        scorecard = []
+        for tier in tiers:
+            hits = [signal for signal in tier['signals'] if signal in surface]
+            score = round(0.25 + 0.16 * len(hits), 2)
+            if tier['model_style'] == 'reasoning_model' and len(surface.split()) > 45:
+                score += 0.12
+            scorecard.append(dict(tier, matched_signals=hits, score=round(min(0.95, score), 2)))
+        scorecard = sorted(scorecard, key=lambda item: item['score'], reverse=True)
+        selected = scorecard[0]
+        selected_next_steps = {
+            'fast_small_model': 'Use fast_small_model only for extraction or formatting with low ambiguity.',
+            'standard_tool_model': 'Use standard_tool_model with repo/tool checks before finalizing.',
+            'reasoning_model': 'Use reasoning_model for decomposition, risk review, and multi-step debugging.',
+            'verified_grounded_model': 'Use verified_grounded_model with citations and claim checks before answering.',
+        }
+        selected_next_step = selected_next_steps.get(selected['model_style'], 'Use selected model style with validation.')
+        escalation_triggers = []
+        if any(term in surface for term in ['production', 'auth', 'database', 'rollback']):
+            escalation_triggers.append('production_or_release_risk')
+        if any(term in surface for term in ['medical', 'legal', 'financial', 'citation', 'latest']):
+            escalation_triggers.append('source_sensitive_claims')
+        cost_risk_tradeoffs = [tier['model_style'] + ': cost=' + tier['cost'] + ', score=' + str(tier['score']) for tier in scorecard]
+        result['summary'] = plugin_name + ': selected ' + selected['model_style'] + ' for ' + def_text[:120] + '.'
         result['primary_insights'] = [
-            {'title': 'Route matches', 'detail': matches},
-            {'title': 'Split needed', 'detail': split_needed},
+            {'title': 'Model scorecard', 'detail': scorecard},
+            {'title': 'Escalation triggers', 'detail': escalation_triggers or 'No escalation trigger detected.'},
         ]
         result['recommended_actions'] = [
-            {'action': 'Route to ' + matches[0]['route'], 'signals': matches[0]['signals']},
-            {'action': 'Split task across top routes' if split_needed else 'Keep task with primary route', 'routes': matches[:3]},
+            {'action': selected_next_step, 'selected_model_style': selected},
+            {'action': 'Review cost/risk tradeoffs', 'tradeoffs': cost_risk_tradeoffs},
         ]
-        result['scores'] = {'confidence': round(0.5 + min(0.4, 0.12 * matches[0]['priority']), 2), 'routing_specificity': round(min(1.0, 0.3 + 0.1 * sum(len(item['signals']) for item in matches)), 2), 'risk': 0.22 if not split_needed else 0.38}
-        result['details'] = {'routes': matches, 'selected_route': matches[0]['route'], 'split_needed': split_needed, 'missing_inputs': ['task'] if not def_text else []}
+        result['scores'] = {'confidence': round(min(0.92, selected['score'] + 0.08 + 0.02 * len(selected.get('matched_signals', []))), 2), 'selection_score': selected['score'], 'risk': round(min(0.9, 0.18 + 0.12 * len(escalation_triggers) + (0.08 if selected['model_style'] == 'verified_grounded_model' else 0)), 2), 'cost_pressure': 0.25 if selected['cost'] == 'low' else 0.55 if selected['cost'] == 'medium' else 0.8}
+        result['details'] = {'model_scorecard': scorecard, 'selected_model_style': selected, 'selected_next_step': selected_next_step, 'cost_risk_tradeoffs': cost_risk_tradeoffs, 'escalation_triggers': escalation_triggers, 'missing_inputs': ['task'] if not def_text else []}
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type
@@ -241,7 +254,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         result['details']['payload_warnings'] = payload_warnings
         result['progress_state'] = {
             'current_stage': logic_profile_id,
-            'next_step': 'Route to ' + matches[0]['route'],
+            'next_step': selected_next_step,
             'blockers': result['details'].get('missing_inputs', [])[:4],
             'done_signals': ['capability_specific_analysis_complete', logic_profile_id],
         }
@@ -255,7 +268,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'challenge_label': plugin_name,
             'score_badge': 'Strong Signal' if result.get('scores', {}).get('confidence', 0) >= 0.65 else 'Needs Context',
             'microcopy': result['summary'],
-            'optional_next_challenge': 'Route to ' + matches[0]['route'],
+            'optional_next_challenge': selected_next_step,
         }
     except Exception as _exc:
         result = {

@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI tool result consistency and trace validation'
         capability_type = 'scoring'
         logic_profile_id = 'tool_result_consistency_checker_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: missing_detail_keys: consistency_findings, consistency_score, model_conclusions, tool_evidence'
         use_cases = ['Detect when a model conclusion contradicts tool output.', 'Flag missing or stale tool evidence.', 'Recommend the smallest verification retry.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -207,40 +207,43 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
         candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
-        trace_items = payload_data.get('trace') if isinstance(payload_data.get('trace'), list) else candidate_outputs + messages
-        context_items = []
-        for key in ['task', 'objective', 'prompt', 'constraints', 'current_plan', 'completed_steps', 'blocked_steps']:
+        tool_items = []
+        for key in ['tool_results', 'trace', 'retrieved_context', 'source_notes']:
             value = payload_data.get(key)
-            if value not in (None, '', [], {}):
-                context_items.append({'source': key, 'text': str(value)})
-        trace_items = list(trace_items) + context_items
-        failures = []
-        signals_by_stage = {}
-        for idx, item in enumerate(trace_items):
-            text = str(item.get('error') or item.get('content') or item.get('message') or item.get('text') or item if isinstance(item, dict) else item)
-            lower = text.lower()
-            signal_terms = [token for token in ['error', 'failed', 'timeout', 'invalid', 'empty', 'exception', 'blocked', 'mismatch', 'unsupported', 'citation', 'auth', 'database', 'migration', 'rollback', 'tool', 'schema', 'model', 'llm'] if token in lower]
-            if signal_terms:
-                stage = 'tool' if 'tool' in lower else 'model' if 'model' in lower or 'llm' in lower else 'validation' if 'schema' in lower or 'invalid' in lower else 'retrieval' if 'citation' in lower or 'unsupported' in lower else 'release' if 'auth' in lower or 'database' in lower or 'migration' in lower else 'workflow'
-                signals_by_stage.setdefault(stage, 0)
-                signals_by_stage[stage] += len(signal_terms)
-                failures.append({'index': idx, 'stage': stage, 'signals': signal_terms, 'evidence': text[:220]})
-        root_cause = failures[0]['stage'] if failures else 'unknown'
+            if isinstance(value, list):
+                tool_items.extend(str(item.get('result') or item.get('content') or item.get('text') or item.get('message') or item) if isinstance(item, dict) else str(item) for item in value[:10])
+            elif value:
+                tool_items.append(str(value))
+        model_text = str(payload_data.get('response') or payload_data.get('answer') or '')
+        if not model_text and candidate_outputs:
+            model_text = ' '.join(str(item.get('summary') or item.get('text') or item) if isinstance(item, dict) else str(item) for item in candidate_outputs[:5])
+        tool_text = ' '.join(tool_items).lower()
+        model_lower = model_text.lower()
+        consistency_findings = []
+        for marker in ['mismatch', 'unsupported', 'stale', 'timeout', 'failed', 'empty', 'partial']:
+            if marker in tool_text or marker in model_lower:
+                consistency_findings.append({'type': marker, 'evidence': marker + ' signal found in tool/model material'})
+        model_claim_terms = [word.strip('.,:;!?').lower() for word in model_text.split() if len(word.strip('.,:;!?')) > 6][:20]
+        unverified_terms = [word for word in model_claim_terms if tool_items and word not in tool_text][:10]
+        if unverified_terms:
+            consistency_findings.append({'type': 'model_claim_not_in_tool_result', 'terms': unverified_terms})
+        if not tool_items:
+            consistency_findings.append({'type': 'missing_tool_evidence', 'evidence': 'No tool_results, trace, retrieved_context, or source_notes were provided.'})
         retry_plan = [
-            'Reproduce the first failing stage: ' + root_cause + ' using evidence: ' + (failures[0]['evidence'][:140] if failures else def_text[:140]),
-            'Add a checkpoint before ' + root_cause + ' that captures signals: ' + ', '.join(failures[0]['signals'][:6]) if failures else 'Add a checkpoint before the unknown stage.',
-            'Retry with the smallest changed input tied to ' + root_cause + '.',
+            'Re-run or inspect the tool result for: ' + (consistency_findings[0]['type'] if consistency_findings else 'no inconsistency'),
+            'Compare final model claims against tool evidence before responding.',
+            'If evidence is missing, mark the conclusion as unverified instead of final.',
         ]
-        result['summary'] = plugin_name + ': identified ' + str(len(failures)) + ' workflow failure signal(s).'
+        consistency_score = round(max(0.05, 1.0 - 0.13 * len(consistency_findings)), 2)
+        result['summary'] = plugin_name + ': checked tool/model consistency and found ' + str(len(consistency_findings)) + ' issue(s).'
         result['primary_insights'] = [
-            {'title': 'Likely failure stage', 'detail': root_cause},
-            {'title': 'Failure evidence', 'detail': failures[:6]},
-            {'title': 'Signals by stage', 'detail': signals_by_stage},
-            {'title': 'Retry plan', 'detail': retry_plan},
+            {'title': 'Tool evidence', 'detail': tool_items[:5]},
+            {'title': 'Model conclusion preview', 'detail': model_text[:500]},
+            {'title': 'Consistency findings', 'detail': consistency_findings},
         ]
         result['recommended_actions'] = [{'action': item} for item in retry_plan]
-        result['scores'] = {'confidence': round(min(0.92, 0.38 + min(0.28, 0.055 * len(failures)) + min(0.16, 0.035 * len(signals_by_stage))), 2), 'debuggability': round(min(0.92, 0.42 + min(0.32, 0.06 * len(trace_items)) + min(0.12, 0.025 * sum(signals_by_stage.values()))), 2), 'risk': round(min(0.9, 0.18 + 0.055 * len(failures) + 0.025 * sum(signals_by_stage.values())), 2), 'signal_count': sum(signals_by_stage.values())}
-        result['details'] = {'failure_points': failures, 'signals_by_stage': signals_by_stage, 'root_cause_stage': root_cause, 'retry_plan': retry_plan, 'missing_inputs': ['trace'] if not trace_items else []}
+        result['scores'] = {'confidence': round(min(0.92, 0.42 + 0.05 * len(tool_items) + (0.08 if model_text else 0)), 2), 'consistency_score': consistency_score, 'risk': round(min(0.9, 1 - consistency_score + 0.08 * (1 if not tool_items else 0)), 2), 'finding_count': len(consistency_findings)}
+        result['details'] = {'tool_evidence': tool_items, 'model_conclusions': model_text, 'consistency_findings': consistency_findings, 'retry_plan': retry_plan, 'consistency_score': consistency_score, 'missing_inputs': ['tool_results or trace'] if not tool_items else []}
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type

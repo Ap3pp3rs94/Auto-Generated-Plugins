@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI autonomous run governance and stop conditions'
         capability_type = 'scoring'
         logic_profile_id = 'autonomous_run_governor_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: missing_detail_keys: allowed_next_actions, governance_decision, run_signals, stop_conditions'
         use_cases = ['Detect when repeated failures should stop the run.', 'Recommend pause, repair, continue, or escalate decisions.', 'Preserve progress while preventing runaway automation.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -207,44 +207,59 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
         candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
-        steps = payload_data.get('steps') if isinstance(payload_data.get('steps'), list) else payload_data.get('current_plan') if isinstance(payload_data.get('current_plan'), list) else []
-        context_steps = []
-        for key in ['task', 'objective', 'prompt', 'constraints', 'blocked_steps']:
-            value = payload_data.get(key)
-            if value not in (None, '', [], {}):
-                if isinstance(value, list):
-                    context_steps.extend(str(item) for item in value)
-                else:
-                    context_steps.append(str(value))
-        steps = list(steps) + context_steps if steps or context_steps else [def_text]
-        risky_terms = ['delete', 'overwrite', 'deploy', 'push', 'payment', 'email', 'external', 'permission', 'secret', 'auth', 'login', 'database', 'migration', 'rollback', 'production', 'medical', 'clinical', 'citation', 'claim', 'source', 'unsupported', 'tool', 'retrieval']
-        risk_findings = []
-        for idx, step in enumerate(steps):
-            lower = str(step).lower()
-            hits = [term for term in risky_terms if term in lower]
+        trace_items = payload_data.get('trace') if isinstance(payload_data.get('trace'), list) else []
+        completed = payload_data.get('completed_steps') if isinstance(payload_data.get('completed_steps'), list) else []
+        blocked = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []
+        surface = ' '.join([def_text, objective_text, str(trace_items), ' '.join(str(item) for item in constraints), ' '.join(str(item) for item in blocked)]).lower()
+        run_signals = []
+        for label, terms in [
+            ('repeat_failure', ['same failure', 'repeated', 'loop', 'retry', 'again']),
+            ('quality_failure', ['shallow', 'semantic', 'validation failed', 'failed quality']),
+            ('release_risk', ['production', 'auth', 'database', 'rollback', 'deploy']),
+            ('factual_risk', ['citation', 'medical', 'legal', 'unsupported', 'claim']),
+            ('blocked_work', ['blocked', 'need owner', 'missing input']),
+        ]:
+            hits = [term for term in terms if term in surface]
             if hits:
-                category = 'release_safety' if any(term in hits for term in ['auth', 'login', 'database', 'migration', 'rollback', 'production', 'deploy']) else 'factual_safety' if any(term in hits for term in ['medical', 'clinical', 'citation', 'claim', 'source', 'unsupported']) else 'tool_safety' if any(term in hits for term in ['tool', 'retrieval', 'external']) else 'destructive_action'
-                risk_findings.append({'step_index': idx, 'step': str(step)[:220], 'risk_terms': hits, 'category': category})
-        controls = ['dry run first', 'capture logs', 'define rollback', 'require explicit approval for destructive steps']
-        if any(item['category'] == 'factual_safety' for item in risk_findings):
-            controls.append('require source verification before user-facing claims')
-        if any(item['category'] == 'release_safety' for item in risk_findings):
-            controls.append('require rollback owner and regression checks')
-        approval_required = bool(risk_findings)
-        result['summary'] = plugin_name + ': safety-reviewed ' + str(len(steps)) + ' automation step(s).'
+                run_signals.append({'category': label, 'signals': hits})
+        if blocked:
+            run_signals.append({'category': 'blocked_work', 'signals': [str(item)[:80] for item in blocked[:3]]})
+        risk_signal_count = sum(len(item['signals']) for item in run_signals)
+        primary_category = run_signals[0]['category'] if run_signals else 'healthy_run'
+        if any(item['category'] == 'quality_failure' for item in run_signals):
+            decision = 'repair'
+        elif any(item['category'] in ['release_risk', 'factual_risk'] for item in run_signals) and blocked:
+            decision = 'pause'
+        elif risk_signal_count >= 5:
+            decision = 'escalate'
+        else:
+            decision = 'continue'
+        governance_mode = decision + '_' + primary_category
+        stop_conditions = ['quality repair fails twice', 'same blocker repeats without new evidence', 'release/factual risk lacks verification']
+        allowed_next_actions_by_mode = {
+            'continue': ['Generate next unique plugin', 'Run quality pass after generation'],
+            'repair': ['Run quality runner repair', 'Re-audit before GitHub push'],
+            'pause': ['Ask operator for missing evidence or approval', 'Keep current artifacts unchanged'],
+            'escalate': ['Stop autonomous loop', 'Prepare operator status brief'],
+        }[decision]
+        if primary_category == 'release_risk':
+            allowed_next_actions = ['Collect rollback and regression evidence', 'Pause generation until release risk is controlled'] + allowed_next_actions_by_mode
+        elif primary_category == 'factual_risk':
+            allowed_next_actions = ['Verify citations and mark unsupported claims', 'Pause user-facing claims until grounded'] + allowed_next_actions_by_mode
+        elif primary_category == 'quality_failure':
+            allowed_next_actions = ['Repair weak plugin before any GitHub push', 'Re-run semantic depth with divergent payloads'] + allowed_next_actions_by_mode
+        else:
+            allowed_next_actions = allowed_next_actions_by_mode
+        governance_decision = {'decision': decision, 'governance_mode': governance_mode, 'primary_category': primary_category, 'signals': run_signals, 'allowed_next_actions': allowed_next_actions}
+        result['summary'] = plugin_name + ': governance decision is ' + governance_mode + ' with ' + str(risk_signal_count) + ' signal(s).'
         result['primary_insights'] = [
-            {'title': 'Risk findings', 'detail': risk_findings},
-            {'title': 'Approval required', 'detail': approval_required},
-            {'title': 'Controls', 'detail': controls},
+            {'title': 'Governance decision', 'detail': governance_decision},
+            {'title': 'Run signals', 'detail': run_signals},
+            {'title': 'Stop conditions', 'detail': stop_conditions},
         ]
-        result['recommended_actions'] = [
-            {'action': 'Apply safety controls', 'controls': controls},
-            {'action': 'Request approval before execution' if approval_required else 'Proceed with logged dry run'},
-        ]
-        risk_term_count = sum(len(item['risk_terms']) for item in risk_findings)
-        category_count = len(set(item['category'] for item in risk_findings))
-        result['scores'] = {'confidence': round(min(0.92, 0.44 + min(0.24, 0.045 * len(steps)) + min(0.16, 0.025 * risk_term_count)), 2), 'safety_risk': round(min(0.95, 0.12 + 0.09 * len(risk_findings) + 0.025 * risk_term_count + 0.04 * category_count), 2), 'approval_readiness': round(0.58 + min(0.32, 0.045 * len(controls)), 2) if approval_required else 0.64, 'risk': round(min(0.95, 0.12 + 0.09 * len(risk_findings) + 0.025 * risk_term_count + 0.04 * category_count), 2), 'risk_term_count': risk_term_count}
-        result['details'] = {'risk_findings': risk_findings, 'controls': controls, 'approval_required': approval_required, 'missing_inputs': ['steps'] if not steps else []}
+        result['recommended_actions'] = [{'action': item} for item in allowed_next_actions]
+        result['scores'] = {'confidence': round(min(0.92, 0.44 + 0.05 * len(run_signals) + 0.03 * len(completed)), 2), 'governance_risk': round(min(0.95, 0.14 + 0.06 * risk_signal_count), 2), 'risk': round(min(0.95, 0.14 + 0.06 * risk_signal_count), 2), 'autonomy_readiness': 0.82 if decision == 'continue' else 0.55 if decision == 'repair' else 0.32}
+        result['details'] = {'governance_decision': governance_decision, 'run_signals': run_signals, 'stop_conditions': stop_conditions, 'allowed_next_actions': allowed_next_actions, 'governance_mode': governance_mode, 'missing_inputs': ['trace or progress state'] if not trace_items and not completed and not blocked else []}
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type
@@ -252,7 +267,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         result['details']['payload_warnings'] = payload_warnings
         result['progress_state'] = {
             'current_stage': logic_profile_id,
-            'next_step': 'Apply safety controls',
+            'next_step': allowed_next_actions[0],
             'blockers': result['details'].get('missing_inputs', [])[:4],
             'done_signals': ['capability_specific_analysis_complete', logic_profile_id],
         }
@@ -266,7 +281,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'challenge_label': plugin_name,
             'score_badge': 'Strong Signal' if result.get('scores', {}).get('confidence', 0) >= 0.65 else 'Needs Context',
             'microcopy': result['summary'],
-            'optional_next_challenge': 'Apply safety controls',
+            'optional_next_challenge': allowed_next_actions[0],
         }
     except Exception as _exc:
         result = {

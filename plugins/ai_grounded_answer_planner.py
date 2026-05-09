@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI grounded answer planning and evidence use'
         capability_type = 'research_synthesizer'
         logic_profile_id = 'grounded_answer_planner_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: missing_detail_keys: answer_plan, caveats, evidence_map, supported_claims, unsupported_claims'
         use_cases = ['Separate answer claims that are supported from claims that need more retrieval.', 'Recommend source-first response structure.', 'Create caveats for uncertain or missing evidence.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -207,57 +207,89 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
         candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
-        context_parts = [def_text, objective_text, str(payload_data.get('prompt') or '')]
-        for key in ['constraints', 'current_plan', 'blocked_steps', 'trace']:
+        raw_answer = str(payload_data.get('response') or payload_data.get('answer') or '').strip()
+        if not raw_answer and candidate_outputs:
+            raw_answer = ' '.join(str(item.get('summary') or item.get('text') or item) if isinstance(item, dict) else str(item) for item in candidate_outputs[:4])
+        evidence_items = []
+        for key in ['source_notes', 'retrieved_context', 'citations', 'references']:
             value = payload_data.get(key)
-            if value:
-                context_parts.append(str(value))
-        for item in candidate_outputs[:4]:
-            context_parts.append(str(item.get('summary') or item.get('text') or item) if isinstance(item, dict) else str(item))
-        base = ' '.join(context_parts).strip()
-        noise = ['please', 'help', 'make', 'better', 'stuff', 'things', 'very']
-        tokens = [word.strip('.,:;!?').lower() for word in base.split()]
-        keywords = []
-        for token in tokens:
-            if len(token) > 3 and token not in noise and token not in keywords:
-                keywords.append(token)
-        facet_terms = {
-            'implementation': [word for word in keywords if word in ['code', 'python', 'api', 'plugin', 'test', 'error']],
-            'evaluation': [word for word in keywords if word in ['quality', 'rubric', 'score', 'verify', 'citation']],
-            'planning': [word for word in keywords if word in ['agent', 'workflow', 'handoff', 'task', 'plan']],
-            'factual_risk': [word for word in keywords if word in ['medical', 'clinical', 'claim', 'source', 'unsupported', 'retrieval']],
-            'release_risk': [word for word in keywords if word in ['auth', 'login', 'database', 'migration', 'rollback', 'production']],
-        }
-        expanded_queries = []
-        core = ' '.join(keywords[:8]) or base[:120] or goal
-        expanded_queries.append(core)
-        if facet_terms['factual_risk']:
-            expanded_queries.append(core + ' source citation verification')
-        if facet_terms['release_risk']:
-            expanded_queries.append(core + ' rollback migration test evidence')
-        if facet_terms['implementation']:
-            expanded_queries.append(core + ' examples implementation')
-        expanded_queries.append(core + ' best practices validation')
-        if objective_text:
-            expanded_queries.append(core + ' ' + objective_text[:80])
-        negative_terms = [word for word in noise if word in tokens]
-        facet_count = sum(len(values) for values in facet_terms.values())
-        grounding_plan = [
-            'Search broad query first: ' + expanded_queries[0],
-            'Then search facet-specific queries: ' + ', '.join(name for name, values in facet_terms.items() if values) if any(facet_terms.values()) else 'Then ask for more concrete retrieval signals.',
-            'Prefer primary documentation or direct source artifacts over summaries.',
+            if isinstance(value, list):
+                evidence_items.extend(str(item.get('content') or item.get('text') or item) if isinstance(item, dict) else str(item) for item in value[:8])
+            elif value:
+                evidence_items.append(str(value))
+        for item in messages:
+            if isinstance(item, dict):
+                evidence_items.append(str(item.get('content') or item.get('text') or item)[:400])
+        evidence_text = ' '.join(evidence_items).lower()
+        claim_source = raw_answer or def_text + '. ' + objective_text
+        claims = [part.strip() for part in claim_source.replace('\n', '. ').split('.') if part.strip()]
+        focus_signals = []
+        for label, terms in [
+            ('release_auth_grounding', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
+            ('medical_citation_grounding', ['medical', 'clinical', 'citation', 'dosage', 'claim', 'source']),
+            ('tool_trace_grounding', ['tool', 'trace', 'retrieval', 'consistency', 'mismatch']),
+        ]:
+            hits = [term for term in terms if term in (claim_source + ' ' + evidence_text).lower()]
+            if hits:
+                focus_signals.append({'focus': label, 'signals': hits})
+        domain_focus = focus_signals[0]['focus'] if focus_signals else 'general_grounding'
+        supported_claims = []
+        unsupported_claims = []
+        evidence_map = []
+        for claim in claims[:10]:
+            words = [word.strip('.,:;!?').lower() for word in claim.split() if len(word.strip('.,:;!?')) > 4]
+            hits = [word for word in words[:10] if word in evidence_text]
+            sensitive = [term for term in ['latest', 'current', 'medical', 'clinical', 'legal', 'financial', 'percent', 'guaranteed', 'always', 'never'] if term in claim.lower()]
+            item = {'claim': claim[:220], 'matched_evidence_terms': hits, 'sensitive_terms': sensitive}
+            evidence_map.append(item)
+            if hits and not sensitive:
+                supported_claims.append(item)
+            else:
+                unsupported_claims.append(item)
+        answer_plan = [
+            {'section': 'answer', 'instruction': 'State only claims supported by evidence_map or payload constraints.'},
+            {'section': 'evidence', 'instruction': 'Attach evidence terms or source snippets to each substantive claim.'},
+            {'section': 'caveats', 'instruction': 'Name unsupported or source-sensitive claims before finalizing.'},
         ]
-        result['summary'] = plugin_name + ': expanded retrieval into ' + str(len(expanded_queries)) + ' grounded queries.'
+        if domain_focus == 'release_auth_grounding':
+            answer_plan = [
+                {'section': 'auth_change_summary', 'instruction': 'Separate middleware, login behavior, database migration, tests, and rollback claims.'},
+                {'section': 'release_evidence', 'instruction': 'Require regression-test or rollback evidence for each production-safety claim.'},
+                {'section': 'operator_caveats', 'instruction': 'Call out missing migration owner, outage risk, and unverified login impact.'},
+            ]
+        elif domain_focus == 'medical_citation_grounding':
+            answer_plan = [
+                {'section': 'clinical_claims', 'instruction': 'List dosage, medical, citation, and source-sensitive claims individually.'},
+                {'section': 'citation_evidence', 'instruction': 'Require source snippets or citations before any user-facing clinical statement.'},
+                {'section': 'safety_caveats', 'instruction': 'Escalate uncertain medical claims and avoid presenting unsupported facts.'},
+            ]
+        elif domain_focus == 'tool_trace_grounding':
+            answer_plan = [
+                {'section': 'tool_claims', 'instruction': 'Tie every answer claim to a trace, retrieval result, or tool output.'},
+                {'section': 'trace_conflicts', 'instruction': 'Mark partial, mismatched, or stale tool results before drafting.'},
+                {'section': 'retry_or_answer', 'instruction': 'Choose whether to retry retrieval or produce a caveated answer.'},
+            ]
+        caveats = ['Needs more evidence for: ' + item['claim'] for item in unsupported_claims[:5]]
+        if not evidence_items:
+            caveats.append('No source evidence was provided; answer should stay tentative.')
+        focus_signal_count = sum(len(item['signals']) for item in focus_signals)
+        grounding_score = round(len(supported_claims) / max(1, len(claims)), 2)
+        result['summary'] = plugin_name + ': planned a grounded answer with ' + str(len(supported_claims)) + ' supported and ' + str(len(unsupported_claims)) + ' unsupported claim(s).'
+        result['summary'] += ' Focus=' + domain_focus + '.'
         result['primary_insights'] = [
-            {'title': 'Core query', 'detail': core},
-            {'title': 'Facet terms', 'detail': facet_terms},
-            {'title': 'Noise removed', 'detail': negative_terms},
+            {'title': 'Grounding focus', 'detail': focus_signals or domain_focus},
+            {'title': 'Supported claims', 'detail': supported_claims[:5]},
+            {'title': 'Unsupported claims', 'detail': unsupported_claims[:5]},
+            {'title': 'Answer plan', 'detail': answer_plan},
+            {'title': 'Caveats', 'detail': caveats},
         ]
         result['recommended_actions'] = [
-            {'action': 'Run retrieval query', 'query': query} for query in expanded_queries
+            {'action': 'Draft ' + domain_focus + ' answer from plan', 'answer_plan': answer_plan, 'focus_signals': focus_signals},
+            {'action': 'Retrieve evidence for unsupported ' + domain_focus + ' claims', 'claims': unsupported_claims[:5]},
+            {'action': 'Include caveats before final answer', 'caveats': caveats[:5]},
         ]
-        result['scores'] = {'confidence': round(min(0.9, 0.38 + 0.035 * len(keywords[:12]) + 0.035 * len(expanded_queries)), 2), 'query_specificity': round(min(0.95, 0.28 + 0.045 * len(keywords[:14]) + 0.04 * facet_count), 2), 'grounding_value': round(min(0.94, 0.5 + 0.055 * len(expanded_queries) + 0.04 * len(facet_terms['factual_risk'])), 2), 'risk': round(min(0.9, 0.18 + (0.12 if len(keywords) < 3 else 0) + 0.035 * len(facet_terms['factual_risk']) + 0.025 * len(facet_terms['release_risk'])), 2), 'facet_signal_count': facet_count}
-        result['details'] = {'core_query': core, 'expanded_queries': expanded_queries, 'facet_terms': facet_terms, 'negative_terms': negative_terms, 'grounding_plan': grounding_plan, 'missing_inputs': ['task or objective'] if not base else []}
+        result['scores'] = {'confidence': round(min(0.92, 0.38 + 0.32 * grounding_score + 0.04 * len(evidence_items) + 0.02 * focus_signal_count), 2), 'grounding_score': grounding_score, 'unsupported_claim_count': len(unsupported_claims), 'focus_signal_count': focus_signal_count, 'risk': round(min(0.92, 0.18 + 0.08 * len(unsupported_claims[:5]) + (0.12 if not evidence_items else 0) + (0.08 if domain_focus == 'medical_citation_grounding' else 0)), 2)}
+        result['details'] = {'supported_claims': supported_claims, 'unsupported_claims': unsupported_claims, 'evidence_map': evidence_map, 'answer_plan': answer_plan, 'caveats': caveats, 'focus_signals': focus_signals, 'domain_focus': domain_focus, 'missing_inputs': ['source_notes or retrieved_context'] if not evidence_items else []}
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type
@@ -265,7 +297,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         result['details']['payload_warnings'] = payload_warnings
         result['progress_state'] = {
             'current_stage': logic_profile_id,
-            'next_step': 'Run retrieval query: ' + expanded_queries[0],
+            'next_step': 'Draft ' + domain_focus + ' answer from plan',
             'blockers': result['details'].get('missing_inputs', [])[:4],
             'done_signals': ['capability_specific_analysis_complete', logic_profile_id],
         }
@@ -279,7 +311,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'challenge_label': plugin_name,
             'score_badge': 'Strong Signal' if result.get('scores', {}).get('confidence', 0) >= 0.65 else 'Needs Context',
             'microcopy': result['summary'],
-            'optional_next_challenge': 'Run retrieval query: ' + expanded_queries[0],
+            'optional_next_challenge': 'Draft ' + domain_focus + ' answer from plan',
         }
     except Exception as _exc:
         result = {

@@ -52,11 +52,40 @@ class QualityRunnerTests(unittest.TestCase):
             "ai_tool_selection_advisor",
             "ai_capability_router",
             "ai_regression_watchlist_builder",
+            "ai_grounded_answer_planner",
+            "ai_tool_result_consistency_checker",
+            "ai_operator_status_brief_builder",
+            "ai_prompt_injection_surface_scanner",
+            "ai_workflow_retry_strategy_planner",
+            "ai_model_selection_scorecard",
+            "ai_requirement_gap_analyzer",
+            "ai_artifact_release_note_generator",
+            "ai_data_contract_mapper",
+            "ai_autonomous_run_governor",
         ]:
             with self.subTest(slug=slug):
                 profile_id = registered_profile_id(slug)
                 self.assertIn(profile_id, PROFILE_REQUIRED_DETAIL_KEYS)
                 self.assertTrue(PROFILE_REQUIRED_DETAIL_KEYS[str(profile_id)])
+
+    def test_late_roadmap_profiles_require_capability_specific_outputs(self) -> None:
+        expected = {
+            "ai_grounded_answer_planner": ("grounded_answer_planner_profile", "answer_plan"),
+            "ai_tool_result_consistency_checker": ("tool_result_consistency_checker_profile", "consistency_findings"),
+            "ai_operator_status_brief_builder": ("operator_status_brief_builder_profile", "status_brief"),
+            "ai_prompt_injection_surface_scanner": ("prompt_injection_surface_scanner_profile", "injection_findings"),
+            "ai_workflow_retry_strategy_planner": ("workflow_retry_strategy_planner_profile", "retry_strategy"),
+            "ai_model_selection_scorecard": ("model_selection_scorecard_profile", "model_scorecard"),
+            "ai_requirement_gap_analyzer": ("requirement_gap_analyzer_profile", "requirement_gaps"),
+            "ai_artifact_release_note_generator": ("artifact_release_note_generator_profile", "release_notes"),
+            "ai_data_contract_mapper": ("data_contract_mapper_profile", "input_contract"),
+            "ai_autonomous_run_governor": ("autonomous_run_governor_profile", "governance_decision"),
+        }
+
+        for slug, (profile_id, required_key) in expected.items():
+            with self.subTest(slug=slug):
+                self.assertEqual(registered_profile_id(slug), profile_id)
+                self.assertIn(required_key, PROFILE_REQUIRED_DETAIL_KEYS[profile_id])
 
     def test_tool_routing_probe_rejects_missing_github_tool(self) -> None:
         result = AuditResult(

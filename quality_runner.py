@@ -114,6 +114,16 @@ PROFILE_REQUIRED_DETAIL_KEYS: Dict[str, set[str]] = {
     "automation_safety_gate_profile": {"risk_findings", "controls", "approval_required"},
     "risk_register_builder_profile": {"risk_findings", "controls", "approval_required"},
     "progress_tracker_profile": {"completed", "active", "blocked", "next_action"},
+    "grounded_answer_planner_profile": {"supported_claims", "unsupported_claims", "evidence_map", "answer_plan", "caveats"},
+    "tool_result_consistency_checker_profile": {"tool_evidence", "model_conclusions", "consistency_findings", "retry_plan", "consistency_score"},
+    "operator_status_brief_builder_profile": {"status_brief", "operator_actions", "run_health", "validation_evidence"},
+    "prompt_injection_surface_scanner_profile": {"injection_findings", "trust_boundaries", "handling_rules", "sanitized_context_plan"},
+    "workflow_retry_strategy_planner_profile": {"retry_strategy", "failure_clusters", "retry_decision", "stop_conditions"},
+    "model_selection_scorecard_profile": {"model_scorecard", "selected_model_style", "cost_risk_tradeoffs", "escalation_triggers"},
+    "requirement_gap_analyzer_profile": {"requirement_gaps", "assumptions", "clarification_questions", "readiness_decision"},
+    "artifact_release_note_generator_profile": {"release_notes", "validation_evidence", "changed_artifacts", "known_risks"},
+    "data_contract_mapper_profile": {"input_contract", "output_contract", "validation_rules", "schema_gaps"},
+    "autonomous_run_governor_profile": {"governance_decision", "run_signals", "stop_conditions", "allowed_next_actions"},
 }
 
 

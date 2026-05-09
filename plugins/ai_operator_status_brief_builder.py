@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI operator visibility and run status reporting'
         capability_type = 'data_insight'
         logic_profile_id = 'operator_status_brief_builder_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: missing_detail_keys: operator_actions, run_health, status_brief, validation_evidence'
         use_cases = ['Summarize what changed, what passed, and what is blocked.', 'Expose current run health without noisy logs.', 'Recommend the next operator action.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -210,22 +210,34 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         completed = payload_data.get('completed_steps') if isinstance(payload_data.get('completed_steps'), list) else []
         blocked = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []
         plan = payload_data.get('current_plan') if isinstance(payload_data.get('current_plan'), list) else []
+        trace_items = payload_data.get('trace') if isinstance(payload_data.get('trace'), list) else []
+        validation_evidence = []
+        for item in trace_items + candidate_outputs:
+            text = str(item.get('message') or item.get('summary') or item.get('error') or item if isinstance(item, dict) else item)
+            if any(term in text.lower() for term in ['pass', 'ok', 'valid', 'push', 'commit', 'fail', 'error']):
+                validation_evidence.append(text[:220])
         active = [item for item in plan if item not in completed and item not in blocked]
-        next_action = active[0] if active else ('Resolve blocker: ' + str(blocked[0]) if blocked else 'Define the next concrete task for ' + def_text[:120])
-        stale_signals = [str(item) for item in plan if str(item).lower() in ' '.join(str(x).lower() for x in completed)]
-        progress_ratio = round(len(completed) / max(1, len(plan)), 2)
-        result['summary'] = plugin_name + ': tracked progress at ' + str(progress_ratio) + ' completion.'
+        health = 'blocked' if blocked else 'active' if active else 'complete' if completed else 'unknown'
+        next_action = ('Resolve blocker: ' + str(blocked[0])) if blocked else (str(active[0]) if active else 'No operator action required; monitor next quality pass.')
+        status_brief = {
+            'health': health,
+            'changed': completed[:6],
+            'active': active[:6],
+            'blocked': blocked[:6],
+            'validation_evidence': validation_evidence[:6],
+            'next_operator_action': next_action,
+        }
+        operator_actions = [next_action, 'Review validation evidence before announcing completion']
+        if blocked:
+            operator_actions.append('Assign an owner for the first blocker')
+        result['summary'] = plugin_name + ': prepared operator status brief with health=' + health + '.'
         result['primary_insights'] = [
-            {'title': 'Completed', 'detail': completed},
-            {'title': 'Active', 'detail': active},
-            {'title': 'Blocked', 'detail': blocked},
+            {'title': 'Status brief', 'detail': status_brief},
+            {'title': 'Validation evidence', 'detail': validation_evidence or 'No explicit validation evidence found.'},
         ]
-        result['recommended_actions'] = [
-            {'action': str(next_action)},
-            {'action': 'Remove stale repeated work', 'items': stale_signals},
-        ]
-        result['scores'] = {'confidence': round(0.5 + min(0.35, 0.08 * len(plan)), 2), 'progress_ratio': progress_ratio, 'staleness': round(min(0.8, 0.1 * len(stale_signals)), 2), 'risk': round(0.2 + 0.12 * len(blocked), 2)}
-        result['details'] = {'completed': completed, 'active': active, 'blocked': blocked, 'next_action': next_action, 'stale_signals': stale_signals, 'missing_inputs': ['current_plan'] if not plan else []}
+        result['recommended_actions'] = [{'action': item} for item in operator_actions]
+        result['scores'] = {'confidence': round(min(0.92, 0.42 + 0.06 * len(plan) + 0.05 * len(validation_evidence)), 2), 'operator_readiness': round(min(0.95, 0.45 + 0.08 * len(completed) + 0.08 * len(validation_evidence) - 0.06 * len(blocked)), 2), 'risk': round(min(0.9, 0.18 + 0.12 * len(blocked)), 2)}
+        result['details'] = {'status_brief': status_brief, 'operator_actions': operator_actions, 'run_health': health, 'validation_evidence': validation_evidence, 'missing_inputs': ['current_plan or completed_steps'] if not plan and not completed else []}
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type
@@ -233,7 +245,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         result['details']['payload_warnings'] = payload_warnings
         result['progress_state'] = {
             'current_stage': logic_profile_id,
-            'next_step': str(next_action),
+            'next_step': next_action,
             'blockers': result['details'].get('missing_inputs', [])[:4],
             'done_signals': ['capability_specific_analysis_complete', logic_profile_id],
         }
@@ -247,7 +259,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'challenge_label': plugin_name,
             'score_badge': 'Strong Signal' if result.get('scores', {}).get('confidence', 0) >= 0.65 else 'Needs Context',
             'microcopy': result['summary'],
-            'optional_next_challenge': str(next_action),
+            'optional_next_challenge': next_action,
         }
     except Exception as _exc:
         result = {

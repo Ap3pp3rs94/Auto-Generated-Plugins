@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI artifact release notes and change communication'
         capability_type = 'data_insight'
         logic_profile_id = 'artifact_release_note_generator_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: missing_detail_keys: changed_artifacts, known_risks, release_notes, validation_evidence'
         use_cases = ['Summarize generated artifact changes for users.', 'Include validation and semantic-depth evidence.', 'Call out known risks, limitations, and next checks.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -208,24 +208,40 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
         completed = payload_data.get('completed_steps') if isinstance(payload_data.get('completed_steps'), list) else []
-        blocked = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []
-        plan = payload_data.get('current_plan') if isinstance(payload_data.get('current_plan'), list) else []
-        active = [item for item in plan if item not in completed and item not in blocked]
-        next_action = active[0] if active else ('Resolve blocker: ' + str(blocked[0]) if blocked else 'Define the next concrete task for ' + def_text[:120])
-        stale_signals = [str(item) for item in plan if str(item).lower() in ' '.join(str(x).lower() for x in completed)]
-        progress_ratio = round(len(completed) / max(1, len(plan)), 2)
-        result['summary'] = plugin_name + ': tracked progress at ' + str(progress_ratio) + ' completion.'
+        artifacts = payload_data.get('artifacts') if isinstance(payload_data.get('artifacts'), list) else []
+        changed_artifacts = [str(item) for item in artifacts[:8]] or [str(item) for item in completed[:8]]
+        trace_items = payload_data.get('trace') if isinstance(payload_data.get('trace'), list) else []
+        validation_evidence = []
+        for item in trace_items + candidate_outputs:
+            text = str(item.get('message') or item.get('summary') or item.get('error') or item if isinstance(item, dict) else item)
+            if any(term in text.lower() for term in ['pass', 'valid', 'semantic', 'push', 'commit', 'test', 'failed', 'error']):
+                validation_evidence.append(text[:220])
+        known_risks = []
+        for text in changed_artifacts + validation_evidence + [def_text, objective_text]:
+            lower = str(text).lower()
+            hits = [term for term in ['risk', 'rollback', 'production', 'auth', 'database', 'citation', 'unsupported', 'failed'] if term in lower]
+            if hits:
+                known_risks.append({'item': str(text)[:180], 'signals': hits})
+        release_notes = {
+            'title': plugin_name,
+            'summary': 'Generated artifact update for ' + def_text[:160],
+            'changed_artifacts': changed_artifacts,
+            'validation_evidence': validation_evidence,
+            'known_risks': known_risks,
+            'next_checks': ['Run quality audit', 'Confirm GitHub push', 'Review known risks'],
+        }
+        result['summary'] = plugin_name + ': generated release notes for ' + str(len(changed_artifacts)) + ' artifact change(s).'
         result['primary_insights'] = [
-            {'title': 'Completed', 'detail': completed},
-            {'title': 'Active', 'detail': active},
-            {'title': 'Blocked', 'detail': blocked},
+            {'title': 'Release notes', 'detail': release_notes},
+            {'title': 'Validation evidence', 'detail': validation_evidence or 'No validation evidence found.'},
+            {'title': 'Known risks', 'detail': known_risks or 'No release-note risk signal detected.'},
         ]
         result['recommended_actions'] = [
-            {'action': str(next_action)},
-            {'action': 'Remove stale repeated work', 'items': stale_signals},
+            {'action': 'Publish release notes after validation review', 'release_notes': release_notes},
+            {'action': 'Resolve known risks before announcing', 'known_risks': known_risks},
         ]
-        result['scores'] = {'confidence': round(0.5 + min(0.35, 0.08 * len(plan)), 2), 'progress_ratio': progress_ratio, 'staleness': round(min(0.8, 0.1 * len(stale_signals)), 2), 'risk': round(0.2 + 0.12 * len(blocked), 2)}
-        result['details'] = {'completed': completed, 'active': active, 'blocked': blocked, 'next_action': next_action, 'stale_signals': stale_signals, 'missing_inputs': ['current_plan'] if not plan else []}
+        result['scores'] = {'confidence': round(min(0.92, 0.42 + 0.06 * len(changed_artifacts) + 0.06 * len(validation_evidence)), 2), 'release_note_completeness': round(min(0.95, 0.38 + 0.12 * bool(changed_artifacts) + 0.12 * bool(validation_evidence) + 0.08 * bool(release_notes['next_checks'])), 2), 'risk': round(min(0.9, 0.14 + 0.09 * len(known_risks)), 2)}
+        result['details'] = {'release_notes': release_notes, 'validation_evidence': validation_evidence, 'changed_artifacts': changed_artifacts, 'known_risks': known_risks, 'missing_inputs': ['artifacts or completed_steps'] if not changed_artifacts else []}
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type
@@ -233,7 +249,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         result['details']['payload_warnings'] = payload_warnings
         result['progress_state'] = {
             'current_stage': logic_profile_id,
-            'next_step': str(next_action),
+            'next_step': 'Publish release notes after validation review',
             'blockers': result['details'].get('missing_inputs', [])[:4],
             'done_signals': ['capability_specific_analysis_complete', logic_profile_id],
         }
@@ -247,7 +263,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'challenge_label': plugin_name,
             'score_badge': 'Strong Signal' if result.get('scores', {}).get('confidence', 0) >= 0.65 else 'Needs Context',
             'microcopy': result['summary'],
-            'optional_next_challenge': str(next_action),
+            'optional_next_challenge': 'Publish release notes after validation review',
         }
     except Exception as _exc:
         result = {
