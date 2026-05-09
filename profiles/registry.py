@@ -645,28 +645,39 @@ def _workflow_debugger(spec: PluginSpec, capability_type: Optional[str], profile
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
 trace_items = payload_data.get('trace') if isinstance(payload_data.get('trace'), list) else candidate_outputs + messages
+context_items = []
+for key in ['task', 'objective', 'prompt', 'constraints', 'current_plan', 'completed_steps', 'blocked_steps']:
+    value = payload_data.get(key)
+    if value not in (None, '', [], {{}}):
+        context_items.append({{'source': key, 'text': str(value)}})
+trace_items = list(trace_items) + context_items
 failures = []
+signals_by_stage = {{}}
 for idx, item in enumerate(trace_items):
-    text = str(item.get('error') or item.get('content') or item.get('message') or item if isinstance(item, dict) else item)
+    text = str(item.get('error') or item.get('content') or item.get('message') or item.get('text') or item if isinstance(item, dict) else item)
     lower = text.lower()
-    if any(token in lower for token in ['error', 'failed', 'timeout', 'invalid', 'empty', 'exception']):
-        stage = 'tool' if 'tool' in lower else 'model' if 'model' in lower or 'llm' in lower else 'validation' if 'schema' in lower or 'invalid' in lower else 'workflow'
-        failures.append({{'index': idx, 'stage': stage, 'evidence': text[:220]}})
+    signal_terms = [token for token in ['error', 'failed', 'timeout', 'invalid', 'empty', 'exception', 'blocked', 'mismatch', 'unsupported', 'citation', 'auth', 'database', 'migration', 'rollback', 'tool', 'schema', 'model', 'llm'] if token in lower]
+    if signal_terms:
+        stage = 'tool' if 'tool' in lower else 'model' if 'model' in lower or 'llm' in lower else 'validation' if 'schema' in lower or 'invalid' in lower else 'retrieval' if 'citation' in lower or 'unsupported' in lower else 'release' if 'auth' in lower or 'database' in lower or 'migration' in lower else 'workflow'
+        signals_by_stage.setdefault(stage, 0)
+        signals_by_stage[stage] += len(signal_terms)
+        failures.append({{'index': idx, 'stage': stage, 'signals': signal_terms, 'evidence': text[:220]}})
 root_cause = failures[0]['stage'] if failures else 'unknown'
 retry_plan = [
-    'Reproduce the first failing stage: ' + root_cause,
-    'Add a checkpoint before that stage.',
-    'Retry with the smallest changed input.',
+    'Reproduce the first failing stage: ' + root_cause + ' using evidence: ' + (failures[0]['evidence'][:140] if failures else def_text[:140]),
+    'Add a checkpoint before ' + root_cause + ' that captures signals: ' + ', '.join(failures[0]['signals'][:6]) if failures else 'Add a checkpoint before the unknown stage.',
+    'Retry with the smallest changed input tied to ' + root_cause + '.',
 ]
 result['summary'] = plugin_name + ': identified ' + str(len(failures)) + ' workflow failure signal(s).'
 result['primary_insights'] = [
     {{'title': 'Likely failure stage', 'detail': root_cause}},
     {{'title': 'Failure evidence', 'detail': failures[:6]}},
+    {{'title': 'Signals by stage', 'detail': signals_by_stage}},
     {{'title': 'Retry plan', 'detail': retry_plan}},
 ]
 result['recommended_actions'] = [{{'action': item}} for item in retry_plan]
-result['scores'] = {{'confidence': round(0.45 + min(0.4, 0.08 * len(failures)), 2), 'debuggability': round(0.5 + min(0.35, 0.08 * len(trace_items)), 2), 'risk': round(0.25 + 0.08 * len(failures), 2)}}
-result['details'] = {{'failure_points': failures, 'root_cause_stage': root_cause, 'retry_plan': retry_plan, 'missing_inputs': ['trace'] if not trace_items else []}}
+result['scores'] = {{'confidence': round(min(0.92, 0.38 + min(0.28, 0.055 * len(failures)) + min(0.16, 0.035 * len(signals_by_stage))), 2), 'debuggability': round(min(0.92, 0.42 + min(0.32, 0.06 * len(trace_items)) + min(0.12, 0.025 * sum(signals_by_stage.values()))), 2), 'risk': round(min(0.9, 0.18 + 0.055 * len(failures) + 0.025 * sum(signals_by_stage.values())), 2), 'signal_count': sum(signals_by_stage.values())}}
+result['details'] = {{'failure_points': failures, 'signals_by_stage': signals_by_stage, 'root_cause_stage': root_cause, 'retry_plan': retry_plan, 'missing_inputs': ['trace'] if not trace_items else []}}
 {_common_result_footer("retry_plan[0]")}
 """.strip()
 
