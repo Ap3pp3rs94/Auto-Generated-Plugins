@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_instruction_conflict_detector'
 _PLUGIN_CATEGORY: str = 'ai_safety'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Detect conflicting, unsafe, or impossible instructions before an AI workflow starts.'
-_PLUGIN_TAGS = ['ai', 'safety', 'instructions', 'constraints', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'safety', 'instructions', 'constraints', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'scoring'
 _PLUGIN_INTENDED_DOMAIN = 'AI instruction safety and constraint analysis'
 _PLUGIN_USE_CASES = ['Find contradictions between system, developer, and user instructions.', 'Flag requests that cannot be satisfied under current constraints.', 'Suggest a clarified instruction set for safe execution.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Instruction Conflict Detector', 'slug': 'ai_instruction_conflict_detector', 'goal': 'Detect conflicting, unsafe, or impossible instructions before an AI workflow starts.', 'category': 'ai_safety', 'tags': ['ai', 'safety', 'instructions', 'constraints', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI instruction safety and constraint analysis', 'owner_id': None, 'use_cases': ['Find contradictions between system, developer, and user instructions.', 'Flag requests that cannot be satisfied under current constraints.', 'Suggest a clarified instruction set for safe execution.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Instruction Conflict Detector', 'slug': 'ai_instruction_conflict_detector', 'goal': 'Detect conflicting, unsafe, or impossible instructions before an AI workflow starts.', 'category': 'ai_safety', 'tags': ['ai', 'safety', 'instructions', 'constraints', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI instruction safety and constraint analysis', 'owner_id': None, 'use_cases': ['Find contradictions between system, developer, and user instructions.', 'Flag requests that cannot be satisfied under current constraints.', 'Suggest a clarified instruction set for safe execution.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:

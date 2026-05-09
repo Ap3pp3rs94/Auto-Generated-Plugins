@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_memory_compression_synthesizer'
 _PLUGIN_CATEGORY: str = 'ai_memory'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Compress conversation or project history into durable memory notes without losing decisions.'
-_PLUGIN_TAGS = ['ai', 'memory', 'context', 'summarization', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'memory', 'context', 'summarization', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'research_synthesizer'
 _PLUGIN_INTENDED_DOMAIN = 'AI memory, context management, and long-running work'
 _PLUGIN_USE_CASES = ['Summarize long work sessions into concise durable memory.', 'Extract stable preferences, constraints, and project facts.', 'Separate decisions from transient discussion.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Memory Compression Synthesizer', 'slug': 'ai_memory_compression_synthesizer', 'goal': 'Compress conversation or project history into durable memory notes without losing decisions.', 'category': 'ai_memory', 'tags': ['ai', 'memory', 'context', 'summarization', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'research_synthesizer', 'intended_domain': 'AI memory, context management, and long-running work', 'owner_id': None, 'use_cases': ['Summarize long work sessions into concise durable memory.', 'Extract stable preferences, constraints, and project facts.', 'Separate decisions from transient discussion.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Memory Compression Synthesizer', 'slug': 'ai_memory_compression_synthesizer', 'goal': 'Compress conversation or project history into durable memory notes without losing decisions.', 'category': 'ai_memory', 'tags': ['ai', 'memory', 'context', 'summarization', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'research_synthesizer', 'intended_domain': 'AI memory, context management, and long-running work', 'owner_id': None, 'use_cases': ['Summarize long work sessions into concise durable memory.', 'Extract stable preferences, constraints, and project facts.', 'Separate decisions from transient discussion.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:

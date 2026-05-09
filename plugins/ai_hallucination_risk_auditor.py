@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_hallucination_risk_auditor'
 _PLUGIN_CATEGORY: str = 'ai_evaluation'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Inspect AI-generated claims and flag unsupported, risky, or source-sensitive statements.'
-_PLUGIN_TAGS = ['ai', 'hallucination', 'risk', 'verification', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'hallucination', 'risk', 'verification', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'scoring'
 _PLUGIN_INTENDED_DOMAIN = 'AI reliability, hallucination detection, and factual risk'
 _PLUGIN_USE_CASES = ['Identify claims that need citations or external verification.', 'Classify risk by domain such as legal, medical, financial, or technical.', 'Suggest safer rewrites for uncertain claims.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Hallucination Risk Auditor', 'slug': 'ai_hallucination_risk_auditor', 'goal': 'Inspect AI-generated claims and flag unsupported, risky, or source-sensitive statements.', 'category': 'ai_evaluation', 'tags': ['ai', 'hallucination', 'risk', 'verification', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI reliability, hallucination detection, and factual risk', 'owner_id': None, 'use_cases': ['Identify claims that need citations or external verification.', 'Classify risk by domain such as legal, medical, financial, or technical.', 'Suggest safer rewrites for uncertain claims.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Hallucination Risk Auditor', 'slug': 'ai_hallucination_risk_auditor', 'goal': 'Inspect AI-generated claims and flag unsupported, risky, or source-sensitive statements.', 'category': 'ai_evaluation', 'tags': ['ai', 'hallucination', 'risk', 'verification', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI reliability, hallucination detection, and factual risk', 'owner_id': None, 'use_cases': ['Identify claims that need citations or external verification.', 'Classify risk by domain such as legal, medical, financial, or technical.', 'Suggest safer rewrites for uncertain claims.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:

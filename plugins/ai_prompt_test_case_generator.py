@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_prompt_test_case_generator'
 _PLUGIN_CATEGORY: str = 'ai_evaluation'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Generate test cases that expose whether a prompt reliably produces the intended behavior.'
-_PLUGIN_TAGS = ['ai', 'prompting', 'tests', 'regression', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'prompting', 'tests', 'regression', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'data_insight'
 _PLUGIN_INTENDED_DOMAIN = 'AI prompt testing and regression coverage'
 _PLUGIN_USE_CASES = ['Create normal, edge, and adversarial cases for a prompt.', 'Define expected behavior checks for each case.', 'Identify prompt ambiguities that tests should cover.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Prompt Test Case Generator', 'slug': 'ai_prompt_test_case_generator', 'goal': 'Generate test cases that expose whether a prompt reliably produces the intended behavior.', 'category': 'ai_evaluation', 'tags': ['ai', 'prompting', 'tests', 'regression', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'data_insight', 'intended_domain': 'AI prompt testing and regression coverage', 'owner_id': None, 'use_cases': ['Create normal, edge, and adversarial cases for a prompt.', 'Define expected behavior checks for each case.', 'Identify prompt ambiguities that tests should cover.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Prompt Test Case Generator', 'slug': 'ai_prompt_test_case_generator', 'goal': 'Generate test cases that expose whether a prompt reliably produces the intended behavior.', 'category': 'ai_evaluation', 'tags': ['ai', 'prompting', 'tests', 'regression', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'data_insight', 'intended_domain': 'AI prompt testing and regression coverage', 'owner_id': None, 'use_cases': ['Create normal, edge, and adversarial cases for a prompt.', 'Define expected behavior checks for each case.', 'Identify prompt ambiguities that tests should cover.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:

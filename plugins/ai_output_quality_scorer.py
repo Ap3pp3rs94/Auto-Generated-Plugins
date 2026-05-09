@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_output_quality_scorer'
 _PLUGIN_CATEGORY: str = 'ai_evaluation'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Score an AI response for correctness, completeness, usefulness, and instruction adherence.'
-_PLUGIN_TAGS = ['ai', 'evaluation', 'quality', 'scoring', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'evaluation', 'quality', 'scoring', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'scoring'
 _PLUGIN_INTENDED_DOMAIN = 'AI evaluation and response quality control'
 _PLUGIN_USE_CASES = ['Grade a response against a user request and rubric.', 'Highlight missing requirements or weak assumptions.', 'Produce an actionable improvement checklist.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Output Quality Scorer', 'slug': 'ai_output_quality_scorer', 'goal': 'Score an AI response for correctness, completeness, usefulness, and instruction adherence.', 'category': 'ai_evaluation', 'tags': ['ai', 'evaluation', 'quality', 'scoring', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI evaluation and response quality control', 'owner_id': None, 'use_cases': ['Grade a response against a user request and rubric.', 'Highlight missing requirements or weak assumptions.', 'Produce an actionable improvement checklist.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Output Quality Scorer', 'slug': 'ai_output_quality_scorer', 'goal': 'Score an AI response for correctness, completeness, usefulness, and instruction adherence.', 'category': 'ai_evaluation', 'tags': ['ai', 'evaluation', 'quality', 'scoring', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI evaluation and response quality control', 'owner_id': None, 'use_cases': ['Grade a response against a user request and rubric.', 'Highlight missing requirements or weak assumptions.', 'Produce an actionable improvement checklist.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:

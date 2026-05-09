@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_workflow_debugger'
 _PLUGIN_CATEGORY: str = 'ai_agents'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Analyze failed AI workflow traces and identify likely failure stages and fixes.'
-_PLUGIN_TAGS = ['ai', 'workflow', 'debugging', 'traces', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'workflow', 'debugging', 'traces', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'data_insight'
 _PLUGIN_INTENDED_DOMAIN = 'AI workflow observability and debugging'
 _PLUGIN_USE_CASES = ['Summarize failed model/tool-call traces.', 'Identify prompt, tool, data, or validation failure points.', 'Recommend the smallest fix to retry safely.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Workflow Debugger', 'slug': 'ai_workflow_debugger', 'goal': 'Analyze failed AI workflow traces and identify likely failure stages and fixes.', 'category': 'ai_agents', 'tags': ['ai', 'workflow', 'debugging', 'traces', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'data_insight', 'intended_domain': 'AI workflow observability and debugging', 'owner_id': None, 'use_cases': ['Summarize failed model/tool-call traces.', 'Identify prompt, tool, data, or validation failure points.', 'Recommend the smallest fix to retry safely.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Workflow Debugger', 'slug': 'ai_workflow_debugger', 'goal': 'Analyze failed AI workflow traces and identify likely failure stages and fixes.', 'category': 'ai_agents', 'tags': ['ai', 'workflow', 'debugging', 'traces', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'data_insight', 'intended_domain': 'AI workflow observability and debugging', 'owner_id': None, 'use_cases': ['Summarize failed model/tool-call traces.', 'Identify prompt, tool, data, or validation failure points.', 'Recommend the smallest fix to retry safely.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:

@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_eval_rubric_generator'
 _PLUGIN_CATEGORY: str = 'ai_evaluation'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Create practical evaluation rubrics for AI tasks, prompts, and generated artifacts.'
-_PLUGIN_TAGS = ['ai', 'evaluation', 'rubric', 'criteria', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'evaluation', 'rubric', 'criteria', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'research_synthesizer'
 _PLUGIN_INTENDED_DOMAIN = 'AI evaluation design and acceptance criteria'
 _PLUGIN_USE_CASES = ['Generate scoring criteria for a specific AI task.', 'Separate hard failures from quality preferences.', 'Produce a checklist usable by humans or automated evaluators.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Eval Rubric Generator', 'slug': 'ai_eval_rubric_generator', 'goal': 'Create practical evaluation rubrics for AI tasks, prompts, and generated artifacts.', 'category': 'ai_evaluation', 'tags': ['ai', 'evaluation', 'rubric', 'criteria', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'research_synthesizer', 'intended_domain': 'AI evaluation design and acceptance criteria', 'owner_id': None, 'use_cases': ['Generate scoring criteria for a specific AI task.', 'Separate hard failures from quality preferences.', 'Produce a checklist usable by humans or automated evaluators.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Eval Rubric Generator', 'slug': 'ai_eval_rubric_generator', 'goal': 'Create practical evaluation rubrics for AI tasks, prompts, and generated artifacts.', 'category': 'ai_evaluation', 'tags': ['ai', 'evaluation', 'rubric', 'criteria', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'research_synthesizer', 'intended_domain': 'AI evaluation design and acceptance criteria', 'owner_id': None, 'use_cases': ['Generate scoring criteria for a specific AI task.', 'Separate hard failures from quality preferences.', 'Produce a checklist usable by humans or automated evaluators.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:

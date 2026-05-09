@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_structured_prompt_builder'
 _PLUGIN_CATEGORY: str = 'ai_prompting'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Convert informal requirements into structured prompts with roles, inputs, outputs, and checks.'
-_PLUGIN_TAGS = ['ai', 'prompting', 'templates', 'structure', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'prompting', 'templates', 'structure', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'enrichment'
 _PLUGIN_INTENDED_DOMAIN = 'AI prompt architecture and reusable prompt templates'
 _PLUGIN_USE_CASES = ['Create a reusable prompt from loose notes.', 'Add explicit output schemas and validation checks.', 'Preserve user intent while reducing ambiguity.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Structured Prompt Builder', 'slug': 'ai_structured_prompt_builder', 'goal': 'Convert informal requirements into structured prompts with roles, inputs, outputs, and checks.', 'category': 'ai_prompting', 'tags': ['ai', 'prompting', 'templates', 'structure', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'enrichment', 'intended_domain': 'AI prompt architecture and reusable prompt templates', 'owner_id': None, 'use_cases': ['Create a reusable prompt from loose notes.', 'Add explicit output schemas and validation checks.', 'Preserve user intent while reducing ambiguity.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Structured Prompt Builder', 'slug': 'ai_structured_prompt_builder', 'goal': 'Convert informal requirements into structured prompts with roles, inputs, outputs, and checks.', 'category': 'ai_prompting', 'tags': ['ai', 'prompting', 'templates', 'structure', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'enrichment', 'intended_domain': 'AI prompt architecture and reusable prompt templates', 'owner_id': None, 'use_cases': ['Create a reusable prompt from loose notes.', 'Add explicit output schemas and validation checks.', 'Preserve user intent while reducing ambiguity.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:

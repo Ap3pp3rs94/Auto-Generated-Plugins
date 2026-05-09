@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_automation_safety_gate'
 _PLUGIN_CATEGORY: str = 'ai_safety'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Review proposed AI automation steps for side effects, missing approvals, and rollback needs.'
-_PLUGIN_TAGS = ['ai', 'automation', 'safety', 'risk', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'automation', 'safety', 'risk', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'scoring'
 _PLUGIN_INTENDED_DOMAIN = 'AI automation safety and operational risk'
 _PLUGIN_USE_CASES = ['Score automation plans before execution.', 'Flag destructive or irreversible steps.', 'Recommend approval, logging, and rollback controls.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Automation Safety Gate', 'slug': 'ai_automation_safety_gate', 'goal': 'Review proposed AI automation steps for side effects, missing approvals, and rollback needs.', 'category': 'ai_safety', 'tags': ['ai', 'automation', 'safety', 'risk', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI automation safety and operational risk', 'owner_id': None, 'use_cases': ['Score automation plans before execution.', 'Flag destructive or irreversible steps.', 'Recommend approval, logging, and rollback controls.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Automation Safety Gate', 'slug': 'ai_automation_safety_gate', 'goal': 'Review proposed AI automation steps for side effects, missing approvals, and rollback needs.', 'category': 'ai_safety', 'tags': ['ai', 'automation', 'safety', 'risk', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI automation safety and operational risk', 'owner_id': None, 'use_cases': ['Score automation plans before execution.', 'Flag destructive or irreversible steps.', 'Recommend approval, logging, and rollback controls.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:

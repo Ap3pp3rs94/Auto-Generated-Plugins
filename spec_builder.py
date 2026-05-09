@@ -1882,7 +1882,7 @@ def _build_huge_ai_spec(
         },
     }
 
-    tags = list(dict.fromkeys([*blueprint.tags, "autonomous_factory", "ai_progress", f"phase_{phase}"]))
+    tags = list(dict.fromkeys([*blueprint.tags, "autonomous_factory", "ai_progress"]))
 
     extra = {
         "factory_focus": "ai_functionality_and_progress",

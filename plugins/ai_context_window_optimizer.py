@@ -18,13 +18,13 @@ _PLUGIN_SLUG: str = 'ai_context_window_optimizer'
 _PLUGIN_CATEGORY: str = 'ai_memory'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Prioritize which context should be kept, compressed, or dropped before an AI model call.'
-_PLUGIN_TAGS = ['ai', 'context', 'tokens', 'optimization', 'autonomous_factory', 'ai_progress', 'phase_1']
+_PLUGIN_TAGS = ['ai', 'context', 'tokens', 'optimization', 'autonomous_factory', 'ai_progress']
 _PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'data_insight'
 _PLUGIN_INTENDED_DOMAIN = 'AI context packing and token budget management'
 _PLUGIN_USE_CASES = ['Rank context snippets by relevance to the current task.', 'Detect redundant or stale context.', 'Suggest compact replacements for large repeated sections.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Context Window Optimizer', 'slug': 'ai_context_window_optimizer', 'goal': 'Prioritize which context should be kept, compressed, or dropped before an AI model call.', 'category': 'ai_memory', 'tags': ['ai', 'context', 'tokens', 'optimization', 'autonomous_factory', 'ai_progress', 'phase_1'], 'version': '0.1.0', 'capability_type': 'data_insight', 'intended_domain': 'AI context packing and token budget management', 'owner_id': None, 'use_cases': ['Rank context snippets by relevance to the current task.', 'Detect redundant or stale context.', 'Suggest compact replacements for large repeated sections.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Context Window Optimizer', 'slug': 'ai_context_window_optimizer', 'goal': 'Prioritize which context should be kept, compressed, or dropped before an AI model call.', 'category': 'ai_memory', 'tags': ['ai', 'context', 'tokens', 'optimization', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'data_insight', 'intended_domain': 'AI context packing and token budget management', 'owner_id': None, 'use_cases': ['Rank context snippets by relevance to the current task.', 'Detect redundant or stale context.', 'Suggest compact replacements for large repeated sections.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:
