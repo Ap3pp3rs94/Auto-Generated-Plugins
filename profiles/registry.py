@@ -1711,8 +1711,47 @@ PROFILE_BUILDERS: Dict[str, tuple[str, Callable[[PluginSpec, Optional[str], str,
 }
 
 
+CONTINUOUS_PROFILE_PATTERNS: tuple[tuple[str, str, Callable[[PluginSpec, Optional[str], str, str], str]], ...] = (
+    ("prompt_contract_designer", "continuous_prompt_contract_designer_profile", _structured_prompt_builder),
+    ("prompt_clarity_auditor", "continuous_prompt_clarity_auditor_profile", _prompt_refinement),
+    ("evidence_gap_detector", "continuous_evidence_gap_detector_profile", _grounded_answer_planner),
+    ("source_quality_ranker", "continuous_source_quality_ranker_profile", _grounded_answer_planner),
+    ("context_noise_filter", "continuous_context_noise_filter_profile", _context_optimizer),
+    ("memory_update_recommender", "continuous_memory_update_recommender_profile", _memory_compression),
+    ("agent_handoff_checker", "continuous_agent_handoff_checker_profile", _handoff),
+    ("parallelization_planner", "continuous_parallelization_planner_profile", _task_planner),
+    ("tool_safety_reviewer", "continuous_tool_safety_reviewer_profile", _automation_safety),
+    ("tool_argument_checker", "continuous_tool_argument_checker_profile", _prompt_injection_scanner),
+    ("output_completeness_grader", "continuous_output_completeness_grader_profile", _output_quality),
+    ("response_action_planner", "continuous_response_action_planner_profile", _output_quality),
+    ("assumption_risk_mapper", "continuous_assumption_risk_mapper_profile", _requirement_gap_analyzer),
+    ("verification_checklist_builder", "continuous_verification_checklist_builder_profile", _prompt_test_cases),
+    ("rollback_guard_builder", "continuous_rollback_guard_builder_profile", _automation_safety),
+    ("anomaly_watch_builder", "continuous_anomaly_watch_builder_profile", _autonomous_run_governor),
+    ("capability_overlap_checker", "continuous_capability_overlap_checker_profile", _plugin_factory_builder),
+    ("release_evidence_summarizer", "continuous_release_evidence_summarizer_profile", _artifact_release_notes),
+    ("trace_failure_router", "continuous_trace_failure_router_profile", _workflow_debugger),
+    ("retrieval_query_planner", "continuous_retrieval_query_planner_profile", _retrieval_query),
+    ("citation_priority_scorer", "continuous_citation_priority_scorer_profile", _hallucination),
+    ("model_fit_triage", "continuous_model_fit_triage_profile", _model_selection_scorecard),
+    ("instruction_hierarchy_checker", "continuous_instruction_hierarchy_checker_profile", _instruction_conflicts),
+    ("data_contract_validator", "continuous_data_contract_validator_profile", _data_contract_mapper),
+)
+
+
+def _profile_item_for_slug(slug: str) -> Optional[tuple[str, Callable[[PluginSpec, Optional[str], str, str], str]]]:
+    base_slug = _base_slug(slug)
+    item = PROFILE_BUILDERS.get(base_slug)
+    if item:
+        return item
+    for marker, profile_id, builder in CONTINUOUS_PROFILE_PATTERNS:
+        if marker in base_slug:
+            return profile_id, builder
+    return None
+
+
 def registered_profile_id(slug: str) -> Optional[str]:
-    item = PROFILE_BUILDERS.get(_base_slug(slug))
+    item = _profile_item_for_slug(slug)
     return item[0] if item else None
 
 
@@ -1723,7 +1762,7 @@ def build_profile_logic_body(
     *,
     reason: str,
 ) -> Optional[str]:
-    item = PROFILE_BUILDERS.get(_base_slug(str(getattr(spec, "slug", "") or "")))
+    item = _profile_item_for_slug(str(getattr(spec, "slug", "") or ""))
     if not item:
         return None
     profile_id, builder = item

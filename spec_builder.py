@@ -1045,6 +1045,386 @@ AI_CAPABILITY_ROADMAP: Tuple[AICapabilityBlueprint, ...] = (
 
 
 @dataclass(frozen=True)
+class ContinuousExpansionFamily:
+    slug: str
+    name: str
+    category: str
+    goal_template: str
+    capability_type: str
+    intended_domain_template: str
+    tags: List[str]
+    use_case_templates: List[str]
+
+
+@dataclass(frozen=True)
+class ContinuousExpansionTarget:
+    slug: str
+    name: str
+    domain_phrase: str
+    tags: List[str]
+
+
+CONTINUOUS_EXPANSION_TARGETS: Tuple[ContinuousExpansionTarget, ...] = (
+    ContinuousExpansionTarget("coding_agent", "Coding Agent", "AI coding agents and repository work", ["coding", "agents"]),
+    ContinuousExpansionTarget("research_agent", "Research Agent", "AI research, retrieval, and synthesis work", ["research", "retrieval"]),
+    ContinuousExpansionTarget("customer_support", "Customer Support", "AI customer support and service workflows", ["support", "service"]),
+    ContinuousExpansionTarget("sales_ops", "Sales Ops", "AI sales operations and account workflows", ["sales", "business"]),
+    ContinuousExpansionTarget("clinical_admin", "Clinical Admin", "AI clinical administration and healthcare operations", ["healthcare", "clinical"]),
+    ContinuousExpansionTarget("legal_review", "Legal Review", "AI legal review and compliance workflows", ["legal", "compliance"]),
+    ContinuousExpansionTarget("finance_ops", "Finance Ops", "AI finance operations and risk review", ["finance", "risk"]),
+    ContinuousExpansionTarget("education_tutor", "Education Tutor", "AI education, tutoring, and learning workflows", ["education", "learning"]),
+    ContinuousExpansionTarget("devops_release", "DevOps Release", "AI DevOps release and infrastructure workflows", ["devops", "release"]),
+    ContinuousExpansionTarget("data_analysis", "Data Analysis", "AI data analysis and analytics workflows", ["data", "analytics"]),
+    ContinuousExpansionTarget("security_review", "Security Review", "AI security review and threat analysis", ["security", "safety"]),
+    ContinuousExpansionTarget("product_manager", "Product Manager", "AI product planning and roadmap workflows", ["product", "planning"]),
+    ContinuousExpansionTarget("content_strategy", "Content Strategy", "AI content strategy and editorial workflows", ["content", "strategy"]),
+    ContinuousExpansionTarget("personal_assistant", "Personal Assistant", "AI personal productivity and scheduling workflows", ["productivity", "assistant"]),
+    ContinuousExpansionTarget("operations_monitor", "Operations Monitor", "AI operations monitoring and incident response", ["operations", "monitoring"]),
+    ContinuousExpansionTarget("plugin_factory", "Capability Factory", "AI capability factory and generated module operations", ["capabilities", "factory"]),
+)
+
+
+CONTINUOUS_EXPANSION_FAMILIES: Tuple[ContinuousExpansionFamily, ...] = (
+    ContinuousExpansionFamily(
+        "prompt_contract_designer",
+        "Prompt Contract Designer",
+        "ai_prompting",
+        "Design prompt contracts for {target_domain} with explicit inputs, outputs, constraints, and checks.",
+        "enrichment",
+        "{target_domain} prompt contracts and structured instruction design",
+        ["prompting", "contracts", "schemas"],
+        [
+            "Turn loose {target_name} requests into strict prompt contracts.",
+            "Name required inputs, outputs, constraints, and validation checks.",
+            "Flag contract gaps before the prompt is sent to a model.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "prompt_clarity_auditor",
+        "Prompt Clarity Auditor",
+        "ai_prompting",
+        "Audit prompts for {target_domain} and identify ambiguity, weak wording, and missing execution detail.",
+        "enrichment",
+        "{target_domain} prompt clarity and ambiguity reduction",
+        ["prompting", "clarity", "audit"],
+        [
+            "Find vague wording in {target_name} prompts.",
+            "Recommend sharper language without changing the user's intent.",
+            "Separate blocking ambiguity from polish improvements.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "evidence_gap_detector",
+        "Evidence Gap Detector",
+        "ai_retrieval",
+        "Detect missing evidence that blocks trustworthy answers in {target_domain}.",
+        "research_synthesizer",
+        "{target_domain} evidence gaps and retrieval readiness",
+        ["retrieval", "evidence", "grounding"],
+        [
+            "List unsupported claims in {target_name} work.",
+            "Rank evidence gaps by risk and retrieval priority.",
+            "Suggest focused retrieval questions for each missing source.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "source_quality_ranker",
+        "Source Quality Ranker",
+        "ai_retrieval",
+        "Rank provided sources for {target_domain} by trust, relevance, freshness, and answer usefulness.",
+        "scoring",
+        "{target_domain} source quality and grounded answer preparation",
+        ["sources", "trust", "grounding"],
+        [
+            "Score source notes before synthesis.",
+            "Flag stale, weak, or low-relevance evidence.",
+            "Recommend which sources should anchor the final output.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "context_noise_filter",
+        "Context Noise Filter",
+        "ai_memory",
+        "Filter noisy or redundant context before model calls for {target_domain}.",
+        "data_insight",
+        "{target_domain} context filtering and token-budget control",
+        ["context", "tokens", "noise"],
+        [
+            "Classify context as keep, compress, or drop.",
+            "Detect redundant notes that waste context budget.",
+            "Preserve constraints and decisions while reducing noise.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "memory_update_recommender",
+        "Memory Update Recommender",
+        "ai_memory",
+        "Recommend durable memory updates from {target_domain} sessions without saving transient chatter.",
+        "research_synthesizer",
+        "{target_domain} durable memory and preference extraction",
+        ["memory", "facts", "preferences"],
+        [
+            "Extract durable decisions and preferences.",
+            "Separate temporary conversation from reusable memory.",
+            "Recommend add, update, merge, or ignore actions.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "agent_handoff_checker",
+        "Agent Handoff Checker",
+        "ai_agents",
+        "Check {target_domain} agent handoffs for missing context, ownership overlap, and unsafe next steps.",
+        "system_automation",
+        "{target_domain} agent handoff quality and coordination",
+        ["agents", "handoff", "coordination"],
+        [
+            "Validate handoff packets before another agent starts.",
+            "Detect duplicated ownership and missing changed-file context.",
+            "Recommend handoff fixes and integration checkpoints.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "parallelization_planner",
+        "Parallelization Planner",
+        "ai_agents",
+        "Identify safe parallel work packets for {target_domain} without duplicating or blocking work.",
+        "system_automation",
+        "{target_domain} parallel AI workflow planning",
+        ["agents", "parallel", "planning"],
+        [
+            "Split work into blocking and parallelizable paths.",
+            "Detect dependency conflicts before delegation.",
+            "Create bounded sidecar tasks with merge checkpoints.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "tool_safety_reviewer",
+        "Tool Safety Reviewer",
+        "ai_safety",
+        "Review proposed tool use for {target_domain} for side effects, permissions, and rollback needs.",
+        "scoring",
+        "{target_domain} AI tool safety and approval control",
+        ["tools", "safety", "permissions"],
+        [
+            "Score tool calls by mutation, exposure, and reversibility risk.",
+            "Flag actions that need approval or extra verification.",
+            "Recommend safer tool-use boundaries.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "tool_argument_checker",
+        "Tool Argument Checker",
+        "ai_safety",
+        "Inspect tool arguments for {target_domain} for unsafe scope, missing bounds, or injected instructions.",
+        "scoring",
+        "{target_domain} tool argument safety and sanitization",
+        ["tools", "arguments", "safety"],
+        [
+            "Detect broad paths, destructive flags, and untrusted text.",
+            "Recommend bounded arguments before execution.",
+            "Separate safe read-only calls from risky mutations.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "output_completeness_grader",
+        "Output Completeness Grader",
+        "ai_evaluation",
+        "Grade {target_domain} AI outputs for completeness against task requirements and acceptance criteria.",
+        "scoring",
+        "{target_domain} output completeness and acceptance scoring",
+        ["evaluation", "completeness", "quality"],
+        [
+            "Identify missing sections or unmet requirements.",
+            "Score completeness using task-specific signals.",
+            "Recommend edits that close blocking gaps.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "response_action_planner",
+        "Response Action Planner",
+        "ai_evaluation",
+        "Convert {target_domain} AI responses into concrete next actions with owners, checks, and risks.",
+        "data_insight",
+        "{target_domain} response actionability and next-step planning",
+        ["evaluation", "actions", "planning"],
+        [
+            "Find vague advice that needs executable next steps.",
+            "Create action items with checks and risk notes.",
+            "Score whether the response is ready to act on.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "assumption_risk_mapper",
+        "Assumption Risk Mapper",
+        "ai_evaluation",
+        "Map assumptions in {target_domain} work and score which ones need evidence or user confirmation.",
+        "research_synthesizer",
+        "{target_domain} assumption tracking and readiness scoring",
+        ["assumptions", "risk", "readiness"],
+        [
+            "Extract explicit and implicit assumptions.",
+            "Rank assumptions by risk and reversibility.",
+            "Recommend evidence or clarification for risky assumptions.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "verification_checklist_builder",
+        "Verification Checklist Builder",
+        "ai_evaluation",
+        "Build verification checklists for {target_domain} AI artifacts before release or handoff.",
+        "system_automation",
+        "{target_domain} verification planning and acceptance checks",
+        ["verification", "tests", "checklists"],
+        [
+            "Turn acceptance criteria into concrete checks.",
+            "Separate automated checks from human review.",
+            "Record evidence needed before publish or handoff.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "rollback_guard_builder",
+        "Rollback Guard Builder",
+        "ai_safety",
+        "Check rollback readiness for {target_domain} AI changes before they are applied or published.",
+        "scoring",
+        "{target_domain} rollback safety and recovery planning",
+        ["rollback", "safety", "release"],
+        [
+            "Detect missing rollback and backup details.",
+            "Score blast radius and recovery readiness.",
+            "Recommend proceed, hold, or add safeguards.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "anomaly_watch_builder",
+        "Anomaly Watch Builder",
+        "ai_agents",
+        "Build anomaly watch rules for live {target_domain} AI runs from logs, traces, and repeated actions.",
+        "monitoring",
+        "{target_domain} live-run monitoring and anomaly detection",
+        ["monitoring", "anomalies", "autonomous"],
+        [
+            "Detect loops, repeated failures, and unusual output bursts.",
+            "Score stalled or unsafe run states.",
+            "Recommend continue, pause, repair, or escalate.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "capability_overlap_checker",
+        "Capability Overlap Checker",
+        "ai_plugin_factory",
+        "Check whether proposed {target_domain} capabilities overlap existing modules or deserve a new canonical slot.",
+        "scoring",
+        "{target_domain} capability uniqueness and roadmap hygiene",
+        ["capabilities", "duplicates", "factory"],
+        [
+            "Compare proposed capability behavior against existing modules.",
+            "Recommend merge, reject, or generate-new decisions.",
+            "Explain uniqueness using capability boundaries.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "release_evidence_summarizer",
+        "Release Evidence Summarizer",
+        "ai_plugin_factory",
+        "Summarize validation and release evidence for {target_domain} AI capability artifacts.",
+        "data_insight",
+        "{target_domain} release evidence and publishing readiness",
+        ["release", "evidence", "factory"],
+        [
+            "Summarize what passed and what remains risky.",
+            "Package validation evidence for GitHub visibility.",
+            "Recommend publish, hold, or repair.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "trace_failure_router",
+        "Trace Failure Router",
+        "ai_agents",
+        "Route {target_domain} trace failures to the most likely repair path.",
+        "data_insight",
+        "{target_domain} trace failure classification and repair routing",
+        ["traces", "failures", "debugging"],
+        [
+            "Classify failures by prompt, context, tool, retrieval, or validation cause.",
+            "Recommend the smallest retry strategy.",
+            "Preserve useful progress from failed runs.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "retrieval_query_planner",
+        "Retrieval Query Planner",
+        "ai_retrieval",
+        "Plan focused retrieval queries for {target_domain} when evidence is missing or stale.",
+        "research_synthesizer",
+        "{target_domain} retrieval query planning and grounding",
+        ["retrieval", "queries", "grounding"],
+        [
+            "Generate exact and broad discovery queries.",
+            "Recommend filters, source types, and freshness needs.",
+            "Separate blocking retrieval from optional enrichment.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "citation_priority_scorer",
+        "Citation Priority Scorer",
+        "ai_evaluation",
+        "Score which {target_domain} claims most urgently need citations or uncertainty language.",
+        "scoring",
+        "{target_domain} citation priority and factual-risk scoring",
+        ["citations", "claims", "risk"],
+        [
+            "Rank claims by citation need.",
+            "Flag high-stakes factual statements.",
+            "Recommend safer wording for unsupported claims.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "model_fit_triage",
+        "Model Fit Triage",
+        "ai_agents",
+        "Triage which model tier or workflow style fits {target_domain} tasks based on risk and complexity.",
+        "scoring",
+        "{target_domain} model selection and capability fit",
+        ["models", "routing", "triage"],
+        [
+            "Score whether a task needs fast, cheap, reasoning-heavy, or tool-using flow.",
+            "Flag tasks that need stronger verification.",
+            "Recommend the lowest sufficient capability tier.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "instruction_hierarchy_checker",
+        "Instruction Hierarchy Checker",
+        "ai_safety",
+        "Check {target_domain} instructions for hierarchy conflicts, unsafe overrides, and impossible constraints.",
+        "scoring",
+        "{target_domain} instruction hierarchy and conflict safety",
+        ["instructions", "hierarchy", "safety"],
+        [
+            "Find conflicts between instruction layers.",
+            "Flag unsafe or impossible requirements.",
+            "Recommend a clarified instruction set.",
+        ],
+    ),
+    ContinuousExpansionFamily(
+        "data_contract_validator",
+        "Data Contract Validator",
+        "ai_evaluation",
+        "Validate expected input and output contracts for {target_domain} AI capabilities.",
+        "enrichment",
+        "{target_domain} data contract validation and schema readiness",
+        ["schema", "contracts", "validation"],
+        [
+            "Extract expected payload and result fields.",
+            "Flag schema ambiguity before implementation.",
+            "Recommend validation checks for downstream consumers.",
+        ],
+    ),
+)
+
+
+@dataclass(frozen=True)
 class CategoryProfile:
     name: str
     weight: int
@@ -1253,21 +1633,60 @@ _USE_CASE_TEMPLATES: Dict[str, List[str]] = {
 # Internal helpers
 # ---------------------------------------------------------------------
 
+def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
+    """
+    Build a deterministic canonical capability after the curated roadmap ends.
+
+    These are not phase upgrades. They are fresh, named capabilities generated
+    from a controlled matrix of AI workflow targets and capability families.
+    """
+    offset = max(int(index), len(AI_CAPABILITY_ROADMAP) + 1) - len(AI_CAPABILITY_ROADMAP) - 1
+    family = CONTINUOUS_EXPANSION_FAMILIES[offset % len(CONTINUOUS_EXPANSION_FAMILIES)]
+    target_index = (offset // len(CONTINUOUS_EXPANSION_FAMILIES)) % len(CONTINUOUS_EXPANSION_TARGETS)
+    cycle = offset // (len(CONTINUOUS_EXPANSION_FAMILIES) * len(CONTINUOUS_EXPANSION_TARGETS))
+    target = CONTINUOUS_EXPANSION_TARGETS[target_index]
+
+    slug = f"ai_{target.slug}_{family.slug}"
+    name = f"AI {target.name} {family.name}"
+    if cycle:
+        slug = f"{slug}_set_{cycle + 1}"
+        name = f"{name} Set {cycle + 1}"
+
+    return AICapabilityBlueprint(
+        slug=slug,
+        name=name,
+        category=family.category,
+        goal=family.goal_template.format(
+            target_name=target.name,
+            target_domain=target.domain_phrase,
+        ),
+        capability_type=family.capability_type,
+        intended_domain=family.intended_domain_template.format(
+            target_name=target.name,
+            target_domain=target.domain_phrase,
+        ),
+        tags=list(dict.fromkeys([*target.tags, *family.tags, "continuous_backlog"])),
+        use_cases=[
+            item.format(target_name=target.name, target_domain=target.domain_phrase)
+            for item in family.use_case_templates
+        ],
+    )
+
+
 def _roadmap_position(index: int) -> Tuple[AICapabilityBlueprint, int, int]:
     """
     Map any positive index onto the deterministic AI roadmap.
 
     Returns:
       - blueprint: base capability family
-      - roadmap_number: 1-based position within AI_CAPABILITY_ROADMAP
-      - phase: 1-based pass through the roadmap
+      - roadmap_number: deterministic global capability index
+      - phase: 1 for canonical capability generation; phase upgrades are opt-in
     """
     safe_index = max(int(index), 1)
-    zero_index = safe_index - 1
     roadmap_size = len(AI_CAPABILITY_ROADMAP)
-    roadmap_number = (zero_index % roadmap_size) + 1
-    phase = (zero_index // roadmap_size) + 1
-    return AI_CAPABILITY_ROADMAP[roadmap_number - 1], roadmap_number, phase
+    if safe_index <= roadmap_size:
+        return AI_CAPABILITY_ROADMAP[safe_index - 1], safe_index, 1
+    return _continuous_expansion_blueprint(safe_index), safe_index, 1
 
 
 def _phase_name(base_name: str, phase: int) -> str:
@@ -1523,6 +1942,9 @@ def _build_huge_ai_spec(
             "Never invent external facts or pretend to run tools.",
         ],
     }
+    if global_index > len(AI_CAPABILITY_ROADMAP):
+        extra["continuous_expansion"] = True
+        extra["continuous_expansion_source"] = "target_family_matrix"
     extra.update(_capability_semantics(blueprint))
 
     return PluginSpec(

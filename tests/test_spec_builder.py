@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 import sys
 import tempfile
+import copy
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -15,13 +16,13 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
 try:
     from factory import factory_runner as runner
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
-    from factory.factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
+    from factory.factory_runner import _canonical_retention_spec
     from factory.factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
     from factory.factory_runner import _upgrade_backlog_exhausted
 except ModuleNotFoundError:
     import factory_runner as runner
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
-    from factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
+    from factory_runner import _canonical_retention_spec
     from factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
     from factory_runner import _upgrade_backlog_exhausted
 
@@ -50,36 +51,27 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertIn("ai_plugin_quality_gate_designer", slugs)
         self.assertIn("ai_plugin_factory_backlog_planner", slugs)
 
-    def test_phase_slug_is_internal_upgrade_candidate(self) -> None:
-        first_spec = build_next_spec(1)[0]
-        second_phase_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]
-        retention_spec = _canonical_retention_spec(second_phase_spec)
-
-        self.assertNotEqual(first_spec.slug, second_phase_spec.slug)
-        self.assertTrue(second_phase_spec.slug.endswith("_phase_2"))
-        self.assertEqual(second_phase_spec.extra["phase"], 2)
-        self.assertIn("Phase 2", second_phase_spec.name)
-        self.assertEqual(retention_spec.slug, first_spec.slug)
-        self.assertEqual(retention_spec.name, first_spec.name)
-        self.assertEqual(retention_spec.extra["upgrade_attempt_phase"], 2)
-        self.assertTrue(retention_spec.extra["discard_if_not_better"])
-
-    def test_randomized_expansion_uses_bounded_upgrade_candidates(self) -> None:
+    def test_post_roadmap_index_is_new_canonical_capability(self) -> None:
         existing = {build_next_spec(i)[0].slug for i in range(1, len(AI_CAPABILITY_ROADMAP) + 1)}
+        expansion_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]
 
-        candidates = _randomized_ai_expansion_indexes(existing)
-
-        self.assertGreaterEqual(len(candidates), len(AI_CAPABILITY_ROADMAP))
-        sample_spec = build_next_spec(candidates[0])[0]
-        retention_spec = _canonical_retention_spec(sample_spec)
-        self.assertTrue(sample_spec.slug.endswith("_phase_2") or "_phase_" in sample_spec.slug)
-        self.assertNotIn(sample_spec.slug, existing)
-        self.assertIn(retention_spec.slug, existing)
-        self.assertIn(sample_spec.extra["phase"], {2, 3})
+        self.assertNotIn(expansion_spec.slug, existing)
+        self.assertNotIn("_phase_", expansion_spec.slug)
+        self.assertEqual(expansion_spec.extra["phase"], 1)
+        self.assertTrue(expansion_spec.extra["continuous_expansion"])
+        self.assertEqual(expansion_spec.slug, "ai_coding_agent_prompt_contract_designer")
 
     def test_upgrade_attempt_memory_skips_repeated_phase_under_same_knowledge(self) -> None:
-        phase_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]
-        later_phase_spec = build_next_spec((2 * len(AI_CAPABILITY_ROADMAP)) + 1)[0]
+        phase_spec = copy.deepcopy(build_next_spec(1)[0])
+        phase_spec.slug = f"{phase_spec.slug}_phase_2"
+        phase_spec.name = f"{phase_spec.name} Phase 2"
+        phase_spec.extra = dict(phase_spec.extra)
+        phase_spec.extra["phase"] = 2
+        later_phase_spec = copy.deepcopy(phase_spec)
+        later_phase_spec.slug = phase_spec.slug.replace("_phase_2", "_phase_3")
+        later_phase_spec.name = phase_spec.name.replace("Phase 2", "Phase 3")
+        later_phase_spec.extra = dict(later_phase_spec.extra)
+        later_phase_spec.extra["phase"] = 3
         retention_spec = _canonical_retention_spec(phase_spec)
         state = {"completed": [], "next_directive": "", "upgrade_attempts": {}, "upgrade_attempt_order": []}
 
@@ -106,7 +98,11 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertFalse(_upgrade_backlog_exhausted(state, existing))
 
         for position, _blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
-            phase_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + position)[0]
+            phase_spec = copy.deepcopy(build_next_spec(position)[0])
+            phase_spec.slug = f"{phase_spec.slug}_phase_2"
+            phase_spec.name = f"{phase_spec.name} Phase 2"
+            phase_spec.extra = dict(phase_spec.extra)
+            phase_spec.extra["phase"] = 2
             retention_spec = _canonical_retention_spec(phase_spec)
             _upgrade_attempt_record(
                 state=state,

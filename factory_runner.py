@@ -36,6 +36,7 @@ Enhancements in this version:
 import argparse
 import asyncio
 import atexit
+import copy
 import hashlib
 import importlib.util
 import inspect
@@ -517,6 +518,16 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
             if suffix.isdigit():
                 phase = max(int(suffix), 1)
                 return (phase - 1) * roadmap_size + position
+    # Continuous expansion specs are generated deterministically after the
+    # curated roadmap. They are canonical modules, not phase upgrades, so scan a
+    # generous forward window to keep _next_ai_roadmap_index advancing.
+    for idx in range(roadmap_size + 1, roadmap_size + 10000):
+        try:
+            spec, _, _ = build_next_spec(idx)
+        except Exception:
+            return None
+        if getattr(spec, "slug", None) == slug:
+            return idx
     return None
 
 
@@ -874,7 +885,12 @@ def _seed_retained_canonical_upgrade_memory(
         if not _existing_canonical_has_registered_profile(canonical_slug):
             continue
 
-        phase_spec, _, _ = build_next_spec(len(AI_CAPABILITY_ROADMAP) + position)
+        phase_spec, _, _ = build_next_spec(position)
+        phase_spec = copy.deepcopy(phase_spec)
+        phase_spec.slug = f"{phase_spec.slug}_phase_2"
+        phase_spec.name = f"{phase_spec.name} Phase 2"
+        phase_spec.extra = dict(getattr(phase_spec, "extra", {}) or {})
+        phase_spec.extra["phase"] = 2
         canonical_spec = _canonical_retention_spec(phase_spec)
         _upgrade_attempt_record(
             state=state,
@@ -2203,42 +2219,50 @@ async def run_factory(config: RunnerConfig) -> None:
         randomized_indexes: list[int] = []
         if not config.allow_phase_expansion and index_counter > len(AI_CAPABILITY_ROADMAP):
             if config.randomized_expansion:
-                seeded_count = _seed_retained_canonical_upgrade_memory(ai_roadmap_state, existing_slugs)
-                if seeded_count:
+                next_candidate, _, _ = build_next_spec(index_counter)
+                if (getattr(next_candidate, "extra", {}) or {}).get("continuous_expansion"):
                     LOG.info(
-                        "Recorded %d existing registered-profile capability module(s) as retained under the current factory knowledge.",
-                        seeded_count,
+                        "AI roadmap base complete at %d curated capability module(s); continuous canonical expansion is active at index %d.",
+                        len(AI_CAPABILITY_ROADMAP),
+                        index_counter,
                     )
-                if _upgrade_backlog_exhausted(ai_roadmap_state, existing_slugs):
-                    LOG.info(
-                        "All canonical capabilities already have upgrade attempts under the current factory knowledge; idling until factory/profile logic changes."
-                    )
-                    if config.loop_forever:
-                        await asyncio.sleep(config.sleep_seconds)
-                        existing_slugs = _load_existing_plugin_slugs()
-                        existing_signatures = _load_existing_capability_signatures()
-                        ai_roadmap_state = _load_ai_roadmap_state()
-                        index_counter = _next_ai_roadmap_index(existing_slugs)
-                        continue
-                    break
-                randomized_indexes = _randomized_ai_expansion_indexes(existing_slugs)
-                LOG.info(
-                    "AI roadmap base complete at %d unique plugin(s); randomized bounded expansion has %d candidate(s).",
-                    len(AI_CAPABILITY_ROADMAP),
-                    len(randomized_indexes),
-                )
-                if not randomized_indexes:
-                    if config.loop_forever:
+                else:
+                    seeded_count = _seed_retained_canonical_upgrade_memory(ai_roadmap_state, existing_slugs)
+                    if seeded_count:
                         LOG.info(
-                            "Factory will stay alive and recheck for new randomized candidates in %.1f seconds.",
-                            config.sleep_seconds,
+                            "Recorded %d existing registered-profile capability module(s) as retained under the current factory knowledge.",
+                            seeded_count,
                         )
-                        await asyncio.sleep(config.sleep_seconds)
-                        existing_slugs = _load_existing_plugin_slugs()
-                        existing_signatures = _load_existing_capability_signatures()
-                        index_counter = _next_ai_roadmap_index(existing_slugs)
-                        continue
-                    break
+                    if _upgrade_backlog_exhausted(ai_roadmap_state, existing_slugs):
+                        LOG.info(
+                            "All canonical capabilities already have upgrade attempts under the current factory knowledge; idling until factory/profile logic changes."
+                        )
+                        if config.loop_forever:
+                            await asyncio.sleep(config.sleep_seconds)
+                            existing_slugs = _load_existing_plugin_slugs()
+                            existing_signatures = _load_existing_capability_signatures()
+                            ai_roadmap_state = _load_ai_roadmap_state()
+                            index_counter = _next_ai_roadmap_index(existing_slugs)
+                            continue
+                        break
+                    randomized_indexes = _randomized_ai_expansion_indexes(existing_slugs)
+                    LOG.info(
+                        "AI roadmap base complete at %d unique plugin(s); randomized bounded expansion has %d candidate(s).",
+                        len(AI_CAPABILITY_ROADMAP),
+                        len(randomized_indexes),
+                    )
+                    if not randomized_indexes:
+                        if config.loop_forever:
+                            LOG.info(
+                                "Factory will stay alive and recheck for new randomized candidates in %.1f seconds.",
+                                config.sleep_seconds,
+                            )
+                            await asyncio.sleep(config.sleep_seconds)
+                            existing_slugs = _load_existing_plugin_slugs()
+                            existing_signatures = _load_existing_capability_signatures()
+                            index_counter = _next_ai_roadmap_index(existing_slugs)
+                            continue
+                        break
             else:
                 LOG.info(
                     "AI roadmap complete at %d unique capability module(s); upgrade expansion and randomized expansion are disabled.",
