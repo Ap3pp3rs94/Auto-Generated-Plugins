@@ -839,6 +839,17 @@ result['details'] = {{'routes': matches, 'selected_route': matches[0]['route'], 
 def _eval_rubric(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
+rubric_surface = ' '.join([def_text, objective_text, str(payload_data.get('prompt') or ''), ' '.join(str(item) for item in constraints)]).lower()
+risk_tags = []
+for label, terms in [
+    ('release_or_auth_eval', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
+    ('factual_grounding_eval', ['medical', 'clinical', 'citation', 'claim', 'source', 'unsupported', 'hallucination']),
+    ('tooling_eval', ['tool', 'retrieval', 'browse', 'trace', 'consistency']),
+    ('planning_eval', ['agent', 'handoff', 'blocked', 'owner', 'plan']),
+]:
+    hits = [term for term in terms if term in rubric_surface]
+    if hits:
+        risk_tags.append({{'category': label, 'signals': hits}})
 criteria = [
     {{'name': 'instruction_adherence', 'weight': 0.3, 'pass_check': 'Satisfies the explicit task and constraints.'}},
     {{'name': 'completeness', 'weight': 0.25, 'pass_check': 'Covers required outputs and edge cases.'}},
@@ -846,18 +857,34 @@ criteria = [
     {{'name': 'actionability', 'weight': 0.15, 'pass_check': 'Produces concrete next steps.'}},
     {{'name': 'safety', 'weight': 0.1, 'pass_check': 'Avoids unsafe side effects and unsupported claims.'}},
 ]
+if any(tag['category'] == 'factual_grounding_eval' for tag in risk_tags):
+    criteria.append({{'name': 'source_grounding', 'weight': 0.18, 'pass_check': 'Cites sources or clearly flags unsupported claims for ' + ', '.join(risk_tags[0]['signals'][:4]) + '.'}})
+if any(tag['category'] == 'release_or_auth_eval' for tag in risk_tags):
+    criteria.append({{'name': 'release_safety', 'weight': 0.18, 'pass_check': 'Includes rollback, regression tests, and owner checks for auth/database changes.'}})
+if any(tag['category'] == 'tooling_eval' for tag in risk_tags):
+    criteria.append({{'name': 'tool_trace_validity', 'weight': 0.14, 'pass_check': 'Explains tool choice, trace evidence, and consistency checks.'}})
+total_weight = sum(item['weight'] for item in criteria) or 1
+for item in criteria:
+    item['weight'] = round(item['weight'] / total_weight, 3)
 hard_failures = ['ignores a hard constraint', 'invents facts not in evidence', 'omits required output format']
+if any(tag['category'] == 'factual_grounding_eval' for tag in risk_tags):
+    hard_failures.append('presents high-risk factual claims without citation or uncertainty')
+if any(tag['category'] == 'release_or_auth_eval' for tag in risk_tags):
+    hard_failures.append('changes release-sensitive behavior without rollback or regression checks')
 result['summary'] = plugin_name + ': generated a weighted evaluation rubric for ' + def_text[:140] + '.'
 result['primary_insights'] = [
     {{'title': 'Rubric criteria', 'detail': criteria}},
     {{'title': 'Hard failures', 'detail': hard_failures}},
+    {{'title': 'Rubric risk tags', 'detail': risk_tags or 'No specialized rubric risk tags.'}},
 ]
 result['recommended_actions'] = [
     {{'action': 'Score output with rubric', 'criteria': criteria}},
     {{'action': 'Reject on hard failure', 'hard_failures': hard_failures}},
+    {{'action': 'Apply specialized risk checks', 'risk_tags': risk_tags}},
 ]
-result['scores'] = {{'confidence': 0.84, 'rubric_coverage': 0.9, 'risk': 0.16}}
-result['details'] = {{'rubric': criteria, 'hard_failures': hard_failures, 'scoring_scale': '0 to 1 weighted average', 'missing_inputs': [] if def_text else ['task']}}
+risk_signal_count = sum(len(tag['signals']) for tag in risk_tags)
+result['scores'] = {{'confidence': round(min(0.92, 0.48 + min(0.22, len(def_text.split()) / 120) + min(0.14, 0.025 * len(criteria))), 2), 'rubric_coverage': round(min(0.96, 0.58 + 0.04 * len(criteria) + 0.025 * len(risk_tags)), 2), 'risk': round(min(0.85, 0.14 + 0.028 * risk_signal_count + 0.035 * len(hard_failures[3:])), 2), 'risk_signal_count': risk_signal_count}}
+result['details'] = {{'rubric': criteria, 'hard_failures': hard_failures, 'risk_tags': risk_tags, 'scoring_scale': '0 to 1 weighted average', 'missing_inputs': [] if def_text else ['task']}}
 {_common_result_footer("'Score output with rubric'")}
 """.strip()
 
