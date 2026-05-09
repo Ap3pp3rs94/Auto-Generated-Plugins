@@ -24,6 +24,7 @@ logs/
 *.log
 .factory_runner.lock
 .candidate_plugins/
+.quality_candidates/
 registry/*.tmp
 registry/ai_roadmap_state.json
 registry/plugins.json

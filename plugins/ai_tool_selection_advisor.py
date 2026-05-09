@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI tool routing and integration choice'
         capability_type = 'integration'
         logic_profile_id = 'tool_selection_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: weak_tool_routing: GitHub factory payload did not recommend git_github; weak_tool_routing: GitHub factory payload did not recommend validator'
         use_cases = ['Map task requirements to candidate tools and explain tradeoffs.', 'Flag when no external tool is needed.', 'Recommend tool call order for multi-step AI workflows.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -209,11 +209,13 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
         text = ' '.join([def_text, objective_text, ' '.join(str(item) for item in constraints)]).lower()
         tool_rules = [
-            ('code_editor', ['code', 'repo', 'file', 'bug', 'test', 'python', 'javascript'], 'Needed for source inspection or code changes.'),
-            ('terminal', ['run', 'command', 'test', 'compile', 'server', 'process'], 'Needed for local verification and process control.'),
+            ('code_editor', ['code', 'repo', 'repository', 'file', 'bug', 'test', 'python', 'javascript', 'plugin', 'factory', 'validation'], 'Needed for source inspection, generated plugin work, or code changes.'),
+            ('terminal', ['run', 'command', 'test', 'compile', 'server', 'process', 'pid', 'restart', 'ollama', 'factory_runner'], 'Needed for local verification and process control.'),
+            ('git_github', ['git', 'github', 'commit', 'push', 'branch', 'remote', 'origin', 'pull request', 'pr'], 'Needed when the workflow must publish, inspect, or verify repository state.'),
             ('web_search', ['latest', 'current', 'price', 'news', 'docs', 'citation'], 'Needed when facts may have changed or sources are required.'),
             ('retrieval', ['search', 'knowledge', 'document', 'notes', 'memory'], 'Needed to find grounding context before generation.'),
-            ('planner', ['complex', 'multi-step', 'handoff', 'agent', 'delegate'], 'Needed to sequence work and prevent duplicated effort.'),
+            ('planner', ['complex', 'multi-step', 'handoff', 'agent', 'delegate', 'autonomous', 'continuous'], 'Needed to sequence work and prevent duplicated effort.'),
+            ('validator', ['validate', 'validation', 'semantic', 'schema', 'quality', 'pass', 'fail', 'reject'], 'Needed to prove the result passes structural and semantic gates.'),
         ]
         recommendations = []
         for name, keywords, rationale in tool_rules:

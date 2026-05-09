@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI task routing and capability selection'
         capability_type = 'integration'
         logic_profile_id = 'capability_router_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = "quality_runner_repair: weak_intent_routing: GitHub factory payload selected 'clarifier'"
         use_cases = ['Classify a task into research, coding, evaluation, planning, or retrieval.', 'Recommend the lowest-cost capable model or workflow.', 'Identify when a task should be split across capabilities.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -209,11 +209,12 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
         text = ' '.join([def_text, objective_text]).lower()
         routes = [
-            ('coding_agent', ['code', 'bug', 'repo', 'test', 'file']),
+            ('coding_agent', ['code', 'bug', 'repo', 'repository', 'test', 'file', 'plugin', 'factory']),
+            ('github_publish_agent', ['git', 'github', 'commit', 'push', 'branch', 'remote', 'origin', 'pr', 'pull request']),
             ('research_agent', ['research', 'latest', 'source', 'docs', 'citation']),
-            ('evaluation_agent', ['score', 'rubric', 'compare', 'quality']),
-            ('planning_agent', ['plan', 'workflow', 'handoff', 'multi-step']),
-            ('safety_agent', ['risk', 'delete', 'approval', 'unsafe']),
+            ('evaluation_agent', ['score', 'rubric', 'compare', 'quality', 'validate', 'validation', 'semantic', 'pass', 'fail', 'reject']),
+            ('planning_agent', ['plan', 'workflow', 'handoff', 'multi-step', 'autonomous', 'continuous']),
+            ('safety_agent', ['risk', 'delete', 'approval', 'unsafe', 'production', 'rollback']),
         ]
         matches = []
         for route, terms in routes:
