@@ -62,6 +62,14 @@ class QualityRunnerTests(unittest.TestCase):
             "ai_artifact_release_note_generator",
             "ai_data_contract_mapper",
             "ai_autonomous_run_governor",
+            "ai_plugin_spec_architect",
+            "ai_plugin_logic_blueprint_designer",
+            "ai_plugin_quality_gate_designer",
+            "ai_plugin_test_payload_generator",
+            "ai_plugin_duplicate_detector",
+            "ai_plugin_repair_strategy_planner",
+            "ai_plugin_release_packager",
+            "ai_plugin_factory_backlog_planner",
         ]:
             with self.subTest(slug=slug):
                 profile_id = registered_profile_id(slug)
@@ -80,6 +88,14 @@ class QualityRunnerTests(unittest.TestCase):
             "ai_artifact_release_note_generator": ("artifact_release_note_generator_profile", "release_notes"),
             "ai_data_contract_mapper": ("data_contract_mapper_profile", "input_contract"),
             "ai_autonomous_run_governor": ("autonomous_run_governor_profile", "governance_decision"),
+            "ai_plugin_spec_architect": ("plugin_spec_architect_profile", "spec_blueprint"),
+            "ai_plugin_logic_blueprint_designer": ("plugin_logic_blueprint_designer_profile", "logic_blueprint"),
+            "ai_plugin_quality_gate_designer": ("plugin_quality_gate_designer_profile", "quality_gates"),
+            "ai_plugin_test_payload_generator": ("plugin_test_payload_generator_profile", "test_payloads"),
+            "ai_plugin_duplicate_detector": ("plugin_duplicate_detector_profile", "duplicate_risks"),
+            "ai_plugin_repair_strategy_planner": ("plugin_repair_strategy_planner_profile", "repair_plan"),
+            "ai_plugin_release_packager": ("plugin_release_packager_profile", "release_package"),
+            "ai_plugin_factory_backlog_planner": ("plugin_factory_backlog_planner_profile", "backlog_items"),
         }
 
         for slug, (profile_id, required_key) in expected.items():

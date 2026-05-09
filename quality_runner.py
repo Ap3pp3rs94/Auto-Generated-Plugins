@@ -124,6 +124,14 @@ PROFILE_REQUIRED_DETAIL_KEYS: Dict[str, set[str]] = {
     "artifact_release_note_generator_profile": {"release_notes", "validation_evidence", "changed_artifacts", "known_risks"},
     "data_contract_mapper_profile": {"input_contract", "output_contract", "validation_rules", "schema_gaps"},
     "autonomous_run_governor_profile": {"governance_decision", "run_signals", "stop_conditions", "allowed_next_actions"},
+    "plugin_spec_architect_profile": {"spec_blueprint", "uniqueness_checks", "capability_boundaries", "prompt_requirements"},
+    "plugin_logic_blueprint_designer_profile": {"logic_blueprint", "deterministic_rules", "data_flow", "failure_modes"},
+    "plugin_quality_gate_designer_profile": {"quality_gates", "rejection_rules", "semantic_probes", "pass_criteria"},
+    "plugin_test_payload_generator_profile": {"test_payloads", "edge_cases", "expected_differences", "regression_watchlist"},
+    "plugin_duplicate_detector_profile": {"duplicate_risks", "uniqueness_fingerprint", "comparison_targets", "merge_or_reject_decision"},
+    "plugin_repair_strategy_planner_profile": {"repair_plan", "weak_signals", "capability_specific_targets", "acceptance_checks"},
+    "plugin_release_packager_profile": {"release_package", "validation_summary", "github_publish_plan", "rollback_notes"},
+    "plugin_factory_backlog_planner_profile": {"backlog_items", "priority_rationale", "dependency_order", "next_plugin_specs"},
 }
 
 
