@@ -85,12 +85,35 @@ current_plan = payload_data.get('current_plan') if isinstance(payload_data.get('
 completed_steps = payload_data.get('completed_steps') if isinstance(payload_data.get('completed_steps'), list) else []
 blocked_steps = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []
 parallel_hints = []
-if 'test' in def_text.lower() or 'verify' in objective_text.lower():
+planning_text = ' '.join([
+    def_text,
+    objective_text,
+    ' '.join(str(item) for item in constraints),
+    ' '.join(str(item) for item in blocked_steps),
+]).lower()
+if 'test' in planning_text or 'verify' in planning_text:
     parallel_hints.append('prepare verification while implementation is planned')
-if 'file' in def_text.lower() or 'code' in def_text.lower():
+if any(word in planning_text for word in ['file', 'code', 'api', 'middleware', 'database', 'migration']):
     parallel_hints.append('inspect affected files before editing')
+if any(word in planning_text for word in ['citation', 'source', 'retrieval', 'medical', 'clinical', 'hallucination']):
+    parallel_hints.append('verify source grounding before final response')
+risk_signals = []
+for label, terms in [
+    ('release_safety', ['production', 'outage', 'rollback', 'migration', 'database']),
+    ('security_auth', ['auth', 'login', 'session', 'permission']),
+    ('factual_safety', ['medical', 'clinical', 'citation', 'claim', 'hallucination']),
+    ('coordination', ['multi-agent', 'handoff', 'owner', 'blocked']),
+]:
+    hits = [term for term in terms if term in planning_text]
+    if hits:
+        risk_signals.append({{'category': label, 'signals': hits}})
+complexity_terms = sorted(set(
+    word.strip('.,:;!?').lower()
+    for word in planning_text.split()
+    if len(word.strip('.,:;!?')) > 7
+))[:12]
 sequenced_plan = []
-if not objective_text:
+if not explicit_objective_text:
     sequenced_plan.append({{'step': 1, 'phase': 'clarify', 'task': 'Define the objective and acceptance criteria.', 'blocking': True}})
 sequenced_plan.append({{'step': len(sequenced_plan) + 1, 'phase': 'plan', 'task': 'Break work into implementation, review, and verification checkpoints for ' + def_text[:160], 'blocking': True}})
 sequenced_plan.append({{'step': len(sequenced_plan) + 1, 'phase': 'execute', 'task': 'Complete the smallest reversible implementation unit.', 'blocking': False}})
@@ -100,20 +123,25 @@ handoff_packet = {{
     'completed_steps': completed_steps,
     'blocked_steps': blocked_steps,
     'parallelizable_work': parallel_hints or ['document assumptions', 'prepare verification checklist'],
+    'risk_signals': risk_signals,
     'integration_checkpoint': 'Confirm completed work, blockers, changed files, and test evidence before the next agent starts.',
 }}
-coverage = 0.45 + (0.12 if objective_text else 0) + (0.1 if current_plan else 0) + (0.1 if completed_steps else 0) + (0.08 if blocked_steps else 0) + min(0.1, len(constraints) * 0.03)
+complexity_score = min(0.12, len(complexity_terms) * 0.01)
+risk_signal_score = min(0.14, sum(len(item['signals']) for item in risk_signals) * 0.025)
+coverage = 0.38 + (0.12 if explicit_objective_text else 0) + (0.1 if current_plan else 0) + (0.1 if completed_steps else 0) + (0.08 if blocked_steps else 0) + min(0.1, len(constraints) * 0.03) + complexity_score + min(0.06, len(parallel_hints) * 0.02)
 result['summary'] = plugin_name + ': built a sequenced AI-agent plan with checkpoints for ' + def_text[:140] + '.'
 result['primary_insights'] = [
     {{'title': 'Plan coverage', 'detail': 'Found %d existing plan step(s), %d completed step(s), and %d blocker(s).' % (len(current_plan), len(completed_steps), len(blocked_steps))}},
     {{'title': 'Blocking path', 'detail': blocked_steps[0] if blocked_steps else 'No explicit blocker was provided.'}},
     {{'title': 'Parallel work', 'detail': handoff_packet['parallelizable_work']}},
+    {{'title': 'Risk signals', 'detail': risk_signals or 'No high-risk planning signal detected.'}},
 ]
 result['recommended_actions'] = [
     {{'action': item['task'], 'phase': item['phase'], 'blocking': item['blocking']}} for item in sequenced_plan
 ]
-result['scores'] = {{'confidence': round(min(0.92, coverage), 2), 'plan_coverage': round(min(1.0, coverage + 0.08), 2), 'handoff_readiness': round(0.55 + min(0.35, len(handoff_packet['parallelizable_work']) * 0.08), 2), 'risk': round(max(0.12, 0.62 - coverage), 2)}}
-result['details'] = {{'sequenced_plan': sequenced_plan, 'handoff_packet': handoff_packet, 'missing_inputs': [key for key in ['objective', 'current_plan', 'blocked_steps'] if not payload_data.get(key)]}}
+risk_score = round(min(0.92, max(0.12, 0.42 + risk_signal_score + 0.04 * len(blocked_steps) - min(0.18, len(completed_steps) * 0.04))), 2)
+result['scores'] = {{'confidence': round(min(0.92, coverage), 2), 'plan_coverage': round(min(1.0, coverage + 0.08 + complexity_score), 2), 'handoff_readiness': round(0.5 + min(0.35, len(handoff_packet['parallelizable_work']) * 0.07 + len(sequenced_plan) * 0.025), 2), 'risk': risk_score, 'complexity': round(complexity_score + risk_signal_score, 2)}}
+result['details'] = {{'sequenced_plan': sequenced_plan, 'handoff_packet': handoff_packet, 'risk_signals': risk_signals, 'complexity_terms': complexity_terms, 'missing_inputs': [key for key in ['objective', 'current_plan', 'blocked_steps'] if not payload_data.get(key)]}}
 {_common_result_footer("sequenced_plan[0]['task'] if sequenced_plan else 'Define the next planning step.'")}
 """.strip()
 
