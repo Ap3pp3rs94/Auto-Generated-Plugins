@@ -10,5 +10,5 @@ Current package:
 Checksum:
 
 ```text
-0dc62ad71e7ede5b5fa33b86916db347fb0277fda6571f3d17ff2b48c7f7438a  ai_prompt_refinement_engine-0.1.0.zip
+a469e5eb913825f0c931f06e367a6cdcf88547311475be80dbfc63f227a6ab7d  ai_prompt_refinement_engine-0.1.0.zip
 ```

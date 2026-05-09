@@ -20,6 +20,7 @@
   "quality": {
     "generated": true,
     "station_c_validated": true,
+    "semantic_depth_validated": true,
     "legacy_plugin": false,
     "roadmap_phase": 1
   },

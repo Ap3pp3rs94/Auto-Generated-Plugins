@@ -116,6 +116,17 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
             },
         )
 
+try:
+    from station_b import (  # type: ignore
+        _build_deterministic_ai_logic_body as _station_b_deterministic_ai_body,
+        _update_logic_region as _station_b_update_logic_region,
+        _wrap_logic_body as _station_b_wrap_logic_body,
+    )
+except Exception:  # pragma: no cover - optional parent Station B internals
+    _station_b_deterministic_ai_body = None  # type: ignore[assignment]
+    _station_b_update_logic_region = None  # type: ignore[assignment]
+    _station_b_wrap_logic_body = None  # type: ignore[assignment]
+
 LOG = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------
@@ -743,6 +754,237 @@ def _build_memory_context(existing_slugs: Set[str], *, max_items: int = 50) -> O
     return "Existing plugins already available in the system:\n" + "\n".join(lines)
 
 
+def _jsonish_text(value: Any, *, max_chars: int = 12000) -> str:
+    try:
+        text = json.dumps(value, sort_keys=True, default=str)
+    except Exception:
+        text = str(value)
+    return text[:max_chars].lower()
+
+
+def _word_set(text: str) -> Set[str]:
+    import re
+
+    return {
+        token
+        for token in re.findall(r"[a-z][a-z0-9_]{3,}", text.lower())
+        if token
+        not in {
+            "action",
+            "actions",
+            "analysis",
+            "available",
+            "confidence",
+            "context",
+            "current",
+            "detail",
+            "details",
+            "field",
+            "fields",
+            "plugin",
+            "prompt",
+            "result",
+            "score",
+            "scores",
+            "summary",
+            "task",
+            "value",
+            "workflow",
+        }
+    }
+
+
+def _extract_output_payload(envelope: Any) -> Dict[str, Any]:
+    if not isinstance(envelope, dict):
+        return {"raw": envelope}
+    output = envelope.get("output")
+    if isinstance(output, dict):
+        nested = output.get("result")
+        if isinstance(nested, dict):
+            return nested
+        return output
+    return envelope
+
+
+def _decision_surface(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Focus semantic checks on decision fields, not passive evidence echoes.
+
+    A shallow plugin can pass by echoing payload values in `details`; the gate
+    cares whether those values influence insights, actions, progress, and user
+    guidance.
+    """
+    progress = result.get("progress_state") if isinstance(result.get("progress_state"), dict) else {}
+    user_exp = result.get("user_experience") if isinstance(result.get("user_experience"), dict) else {}
+    return {
+        "summary": result.get("summary"),
+        "primary_insights": result.get("primary_insights"),
+        "recommended_actions": result.get("recommended_actions"),
+        "scores": result.get("scores"),
+        "next_step": progress.get("next_step") if isinstance(progress, dict) else None,
+        "plain_language_takeaway": user_exp.get("plain_language_takeaway") if isinstance(user_exp, dict) else None,
+    }
+
+
+def _payload_signal_tokens(payload: Dict[str, Any]) -> Set[str]:
+    text = _jsonish_text(payload)
+    tokens = _word_set(text)
+    # Keep tokens that are likely to distinguish one payload from another.
+    generic = {
+        "agent",
+        "candidate",
+        "current_plan",
+        "objective",
+        "outputs",
+        "payload",
+        "previous",
+        "results",
+        "steps",
+        "user",
+    }
+    return {token for token in tokens if token not in generic}
+
+
+async def _invoke_plugin_for_semantic_check(module: Any, payload: Dict[str, Any], slug: str) -> Dict[str, Any]:
+    invoke = getattr(module, "invoke", None)
+    if not callable(invoke):
+        raise RuntimeError("plugin has no callable invoke")
+    result = invoke(
+        "factory-semantic-depth",
+        payload,
+        run_id=f"semantic-depth-{slug}",
+    )
+    if inspect.isawaitable(result):
+        result = await result
+    return _extract_output_payload(result)
+
+
+async def _semantic_depth_check(plugin_path: Path, spec: PluginSpec) -> Tuple[bool, str]:
+    """
+    Detect plugins that merely fill the expected shape with stock advice.
+
+    The check compares two structurally similar but semantically different
+    payloads. A useful AI plugin should let payload values influence insight,
+    action, progress, or guidance fields, not only echo values in details.
+    """
+    module_name = f"semantic_depth_{spec.slug}".replace("-", "_")
+    module_spec = importlib.util.spec_from_file_location(module_name, plugin_path)
+    if module_spec is None or module_spec.loader is None:
+        return False, f"semantic_depth: unable to import {plugin_path}"
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)  # type: ignore[call-arg]
+
+    payload_a = {
+        "task": "Plan a multi-agent refactor of authentication middleware without breaking login.",
+        "objective": "Separate database migration, API changes, test coverage, and rollback checks.",
+        "prompt": "Fix auth and add tests.",
+        "current_plan": ["Inspect auth middleware", "Add login regression tests"],
+        "completed_steps": ["Mapped current session flow"],
+        "blocked_steps": ["Need database migration owner"],
+        "candidate_outputs": [
+            {"id": "plan_a", "summary": "Change middleware first"},
+            {"id": "plan_b", "summary": "Write login tests before code changes"},
+        ],
+        "constraints": ["No production outage", "Keep rollback explicit"],
+    }
+    payload_b = {
+        "task": "Choose tools for verifying hallucination risk in a retrieved medical-summary answer.",
+        "objective": "Decide whether to browse sources, inspect citations, or run local consistency checks.",
+        "prompt": "Is this claim grounded enough to show the user?",
+        "trace": [{"tool": "retrieval", "status": "partial", "issue": "citation mismatch"}],
+        "current_plan": ["Compare answer claims to source snippets"],
+        "completed_steps": ["Collected candidate answer"],
+        "blocked_steps": ["Need citation verification"],
+        "candidate_outputs": [
+            {"id": "answer_a", "summary": "States an unsupported dosage claim"},
+            {"id": "answer_b", "summary": "Flags missing source support"},
+        ],
+        "constraints": ["Do not invent clinical facts", "Escalate uncertain claims"],
+    }
+
+    result_a = await _invoke_plugin_for_semantic_check(module, payload_a, spec.slug)
+    result_b = await _invoke_plugin_for_semantic_check(module, payload_b, spec.slug)
+    decision_a = _decision_surface(result_a)
+    decision_b = _decision_surface(result_b)
+
+    text_a = _jsonish_text(decision_a)
+    text_b = _jsonish_text(decision_b)
+    tokens_a = _payload_signal_tokens(payload_a)
+    tokens_b = _payload_signal_tokens(payload_b)
+    reflected_a = sorted(tokens_a & _word_set(text_a))
+    reflected_b = sorted(tokens_b & _word_set(text_b))
+
+    if len(reflected_a) < 2 or len(reflected_b) < 2:
+        return (
+            False,
+            "semantic_depth: decision fields do not reflect enough payload values "
+            f"(a={reflected_a[:5]}, b={reflected_b[:5]}).",
+        )
+
+    words_a = _word_set(text_a)
+    words_b = _word_set(text_b)
+    union = words_a | words_b
+    similarity = (len(words_a & words_b) / len(union)) if union else 1.0
+    if similarity > 0.78:
+        return (
+            False,
+            f"semantic_depth: outputs are too similar across different payloads (similarity={similarity:.2f}).",
+        )
+
+    scores_a = result_a.get("scores") if isinstance(result_a.get("scores"), dict) else {}
+    scores_b = result_b.get("scores") if isinstance(result_b.get("scores"), dict) else {}
+    if scores_a == scores_b and scores_a:
+        return False, "semantic_depth: scores are identical across semantically different payloads."
+
+    return (
+        True,
+        "semantic_depth: payload values influenced decision fields "
+        f"(a={reflected_a[:5]}, b={reflected_b[:5]}, similarity={similarity:.2f}).",
+    )
+
+
+def _quarantine_rejected_plugin(plugin_path: Path, *, reason: str) -> Path:
+    quarantine_dir = ROOT_DIR / "junk_plugins" / "semantic_rejections"
+    quarantine_dir.mkdir(parents=True, exist_ok=True)
+    target = quarantine_dir / plugin_path.name
+    if target.exists():
+        target = quarantine_dir / f"{plugin_path.stem}_{os.getpid()}{plugin_path.suffix}"
+    plugin_path.replace(target)
+    reason_path = target.with_suffix(target.suffix + ".reason.txt")
+    reason_path.write_text(reason, encoding="utf-8")
+    return target
+
+
+def _build_semantic_repair_source(
+    *,
+    source: str,
+    spec: PluginSpec,
+    capability_type: Optional[str],
+    logic_profile_id: Optional[str],
+    reason: str,
+) -> Optional[str]:
+    """
+    Build a deterministic semantic repair for shallow AI-roadmap outputs.
+
+    This uses Station B's same envelope helpers when the full Francis runtime is
+    present. Standalone checkouts without those internals simply skip repair.
+    """
+    if not (
+        callable(_station_b_deterministic_ai_body)
+        and callable(_station_b_wrap_logic_body)
+        and callable(_station_b_update_logic_region)
+    ):
+        return None
+    body = _station_b_deterministic_ai_body(
+        spec,
+        capability_type,
+        logic_profile_id,
+        reason=reason,
+    )
+    wrapped = _station_b_wrap_logic_body(body)
+    return _station_b_update_logic_region(source, wrapped)
+
+
 async def _maybe_evaluate_plugin(
     *,
     plugin_path: Path,
@@ -1207,6 +1449,93 @@ async def run_factory(config: RunnerConfig) -> None:
                     slug=spec.slug,
                     error=str(exc),
                 )
+
+        # -----------------------------------------------------
+        # SEMANTIC DEPTH CHECK (AI roadmap only)
+        # -----------------------------------------------------
+        if ok and _is_ai_roadmap_spec(spec):
+            try:
+                semantic_ok, semantic_reason = await _semantic_depth_check(plugin_path, spec)
+            except Exception as exc:
+                semantic_ok = False
+                semantic_reason = f"semantic_depth: check crashed: {exc}"
+
+            if semantic_ok:
+                LOG.info("Plugin semantic depth OK: %s", semantic_reason)
+            else:
+                LOG.error(
+                    "Semantic depth FAILED for AI roadmap plugin %r → %s",
+                    spec.slug,
+                    semantic_reason,
+                )
+                repair_source = _build_semantic_repair_source(
+                    source=result.source,
+                    spec=spec,
+                    capability_type=capability_type,
+                    logic_profile_id=getattr(result, "logic_profile_id", None),
+                    reason=semantic_reason,
+                )
+                if repair_source:
+                    plugin_path = _write_plugin_file(spec.slug, repair_source)
+                    ok, reason = await _validate_plugin_file(plugin_path, spec)
+                    if ok:
+                        try:
+                            semantic_ok, semantic_reason = await _semantic_depth_check(plugin_path, spec)
+                        except Exception as exc:
+                            semantic_ok = False
+                            semantic_reason = f"semantic_depth: repaired check crashed: {exc}"
+                    if ok and semantic_ok:
+                        LOG.info(
+                            "Semantic repair accepted for AI roadmap plugin %r: %s",
+                            spec.slug,
+                            semantic_reason,
+                        )
+                        result.source = repair_source
+                    else:
+                        LOG.error(
+                            "Semantic repair failed for AI roadmap plugin %r → validation_ok=%r reason=%s semantic=%s",
+                            spec.slug,
+                            ok,
+                            reason,
+                            semantic_reason,
+                        )
+
+                if semantic_ok:
+                    # Repair succeeded; continue to optional evaluation/handoff.
+                    pass
+                else:
+                    try:
+                        quarantine_path = _quarantine_rejected_plugin(
+                            plugin_path,
+                            reason=semantic_reason,
+                        )
+                        LOG.info("Rejected shallow plugin moved to %s", quarantine_path)
+                    except Exception:
+                        LOG.warning("Unable to quarantine rejected plugin %r", spec.slug, exc_info=True)
+
+                    existing_slugs.discard(spec.slug)
+                    existing_signatures.discard(_spec_signature(spec))
+                    _se_record(
+                        EVENT_FACTORY_PLUGIN_LOW_SCORE,
+                        slug=spec.slug,
+                        category=getattr(spec, "category", None),
+                        capability_type=capability_type,
+                        domain=intended_domain,
+                        score=0.0,
+                        threshold=config.evaluation_threshold,
+                        reason=semantic_reason,
+                        semantic_depth_failed=True,
+                    )
+
+                    if not config.loop_forever:
+                        break
+
+                    LOG.info(
+                        "AI roadmap plugin was structurally valid but semantically shallow; retrying same spec in %.1f seconds.",
+                        config.sleep_seconds,
+                    )
+                    await asyncio.sleep(config.sleep_seconds)
+                    continue
 
         # -----------------------------------------------------
         # OPTIONAL EVALUATION (Station D critic)

@@ -38,7 +38,7 @@ The package contains:
 Checksum:
 
 ```text
-0dc62ad71e7ede5b5fa33b86916db347fb0277fda6571f3d17ff2b48c7f7438a  ai_prompt_refinement_engine-0.1.0.zip
+a469e5eb913825f0c931f06e367a6cdcf88547311475be80dbfc63f227a6ab7d  ai_prompt_refinement_engine-0.1.0.zip
 ```
 
 Legacy plugins created before the current AI roadmap guide were removed. The
@@ -94,6 +94,10 @@ Generated output shape:
   }
 }
 ```
+
+The factory also runs a semantic-depth gate. A plugin must produce different
+decision fields for different payload values; echoing the right schema with
+stock advice is not enough.
 
 Full walkthrough:
 
@@ -256,6 +260,7 @@ Generated plugins are kept only when they satisfy the current guide:
 - Python syntax compiles
 - plugin contract validates
 - runtime smoke check passes
+- semantic-depth check passes across contrasting payloads
 - output includes structured AI-agent-friendly fields
 - user-facing extras remain secondary to the core recommendation
 

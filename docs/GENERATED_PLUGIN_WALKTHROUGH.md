@@ -31,43 +31,37 @@ Primary use cases:
 ## Generated Body Excerpt
 
 Station B generated a Python logic body that is injected into the plugin
-template. The plugin stores the generated body in an encoded envelope plus a
-plain preview for inspection.
+template. The first generated body was structurally valid but too shallow, so
+the semantic-depth gate repaired it into value-dependent logic before packaging.
 
 ```python
-# Validate payload is a dict and collect relevant fields
-if not isinstance(payload, dict):
-    result['summary'] = 'Invalid input: Payload must be a dictionary.'
-else:
-    task = payload.get('task')
-    objective = payload.get('objective')
-    prompt = payload.get('prompt')
-    messages = payload.get('messages', [])
-    candidate_outputs = payload.get('candidate_outputs', [])
+task_preview = str(payload_data.get('task') or payload_data.get('objective') or payload_data.get('prompt'))[:180]
+objective_preview = str(payload_data.get('objective') or goal)[:180]
+blocker_preview = str((payload_data.get('blocked_steps') or missing_keys[:2])[0])[:160]
 
-# Build evidence notes from present fields
-evidence_notes = []
-if task:
-    evidence_notes.append({'field': 'Task', 'value': task})
-if objective:
-    evidence_notes.append({'field': 'Objective', 'value': objective})
-if prompt:
-    evidence_notes.append({'field': 'Prompt', 'value': prompt})
+primary_insights.append({
+    'title': 'Capability focus',
+    'detail': 'Apply ' + plugin_name + ' to: ' + task_preview,
+    'domain': domain
+})
+primary_insights.append({
+    'title': 'Available context',
+    'detail': 'Use objective: ' + objective_preview,
+    'fields': present_keys
+})
+primary_insights.append({
+    'title': 'Key blocker or uncertainty',
+    'detail': blocker_preview
+})
 
-# Create primary insights specific to this plugin goal
-primary_insights = []
-if not messages:
-    primary_insights.append('No conversation history found.')
-if candidate_outputs and len(candidate_outputs) > 1:
-    primary_insights.append('Multiple model outputs detected.')
-
-# Create recommended actions with clear next steps
-recommended_actions = []
-if task and objective:
-    recommended_actions.append({
-        'action': 'Rewrite prompt',
-        'description': 'Use the task and objective to create a specific, testable instruction.'
-    })
+recommended_actions.append({
+    'action': 'Define the next AI workflow step for ' + task_preview,
+    'why': 'Keeps autonomous progress concrete and testable.'
+})
+recommended_actions.append({
+    'action': 'Separate blocking work around ' + blocker_preview + ' from parallel work',
+    'why': 'Prevents duplicated agent effort and drift.'
+})
 ```
 
 ## Sample Invocation
@@ -149,6 +143,12 @@ Current result:
 True
 ```
 
+Semantic-depth result:
+
+```text
+semantic_depth: payload values influenced decision fields
+```
+
 ## Why This Plugin Stayed
 
 This plugin is retained because it satisfies the current library rules:
@@ -156,6 +156,7 @@ This plugin is retained because it satisfies the current library rules:
 - AI-specific capability
 - deterministic Python output
 - structured result shape
+- semantic-depth gate passes on contrasting payloads
 - user-facing progress and next actions
 - optional fun mode that does not replace the serious recommendation
 - no legacy random sales/data plugin behavior
