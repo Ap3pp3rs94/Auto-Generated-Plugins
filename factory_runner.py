@@ -43,7 +43,7 @@ import logging
 import os
 import subprocess
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Set, Tuple
 
@@ -70,10 +70,16 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
         _registered_profile_id = None  # type: ignore[assignment]
 
 try:
+    from plugin_template import render_plugin_source as _render_plugin_source
+except (ImportError, ModuleNotFoundError):  # pragma: no cover
+    try:
+        from factory.plugin_template import render_plugin_source as _render_plugin_source  # type: ignore
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover
+        _render_plugin_source = None  # type: ignore[assignment]
+
+try:
     from station_b import generate_plugin_source, StationBConfig
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
-    from dataclasses import field
-
     from station_b_generator import station_b_generate
 
     @dataclass
@@ -1232,6 +1238,255 @@ def _build_semantic_repair_source(
     return _station_b_update_logic_region(source, wrapped)
 
 
+def _render_profile_base_source(spec: PluginSpec) -> str:
+    """
+    Render the standard plugin shell needed by deterministic profiles.
+
+    Prefer the parent Francis template when available. If the local sidecar
+    template is older or incompatible, fall back to a compact shell that exposes
+    the same Station C surface: SkillContext, _run_core_logic, and invoke.
+    """
+    if callable(_render_plugin_source):
+        try:
+            source = _render_plugin_source(spec)
+            if "_run_core_logic" in source and "# === LOGIC START ===" in source:
+                return source
+        except Exception:
+            LOG.debug("Plugin template render failed; using profile base shell.", exc_info=True)
+
+    if hasattr(spec, "to_manifest") and callable(getattr(spec, "to_manifest")):
+        manifest = spec.to_manifest()
+    else:
+        manifest = {
+            "name": getattr(spec, "name", ""),
+            "slug": getattr(spec, "slug", ""),
+            "goal": getattr(spec, "goal", ""),
+            "category": getattr(spec, "category", ""),
+            "tags": list(getattr(spec, "tags", []) or []),
+            "version": str(getattr(spec, "version", "") or "0.1.0"),
+            "capability_type": getattr(spec, "capability_type", None),
+            "intended_domain": getattr(spec, "intended_domain", None),
+            "owner_id": getattr(spec, "owner_id", None),
+            "use_cases": list(getattr(spec, "use_cases", []) or []),
+        }
+    manifest["schema_version"] = "1.0.0"
+    try:
+        manifest.setdefault("family_key", spec.family_key)
+        manifest.setdefault("is_generic_name", spec.is_generic_name())
+    except Exception:
+        pass
+
+    return f'''from __future__ import annotations
+
+"""
+Auto-generated Francis plugin module.
+
+THIS FILE IS GENERATED. Manual edits may be overwritten by the factory.
+
+Plugin: {spec.name}
+Slug: {spec.slug}
+"""
+
+from typing import Any, Dict, Optional
+
+__all__ = ["invoke", "_run_core_logic", "SkillContext"]
+
+_PLUGIN_NAME: str = {spec.name!r}
+_PLUGIN_SLUG: str = {spec.slug!r}
+_PLUGIN_CATEGORY: str = {spec.category!r}
+_PLUGIN_VERSION: str = {str(spec.version or "0.1.0")!r}
+_PLUGIN_GOAL: str = {spec.goal!r}
+_PLUGIN_TAGS = {list(spec.tags)!r}
+_PLUGIN_OWNER_ID = {spec.owner_id!r}
+_PLUGIN_CAPABILITY_TYPE = {getattr(spec, "capability_type", None)!r}
+_PLUGIN_INTENDED_DOMAIN = {getattr(spec, "intended_domain", None)!r}
+_PLUGIN_USE_CASES = {list(getattr(spec, "use_cases", []) or [])!r}
+_PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
+_PLUGIN_MANIFEST = {manifest!r}
+_PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {{}}
+
+try:
+    from learning_manager import load_plugin_profile as _load_plugin_profile  # type: ignore
+except (ImportError, ModuleNotFoundError):
+    _load_plugin_profile = None  # type: ignore[assignment]
+
+
+class SkillContext:
+    def __init__(
+        self,
+        *,
+        user_id: str,
+        run_id: Optional[str],
+        plugin_slug: str,
+        plugin_name: str,
+        learning_profile: Optional[Dict[str, Any]] = None,
+        logger: Optional[Any] = None,
+        brain: Optional[Any] = None,
+    ) -> None:
+        self.user_id = user_id
+        self.run_id = run_id
+        self.plugin_slug = plugin_slug
+        self.plugin_name = plugin_name
+        self.learning_profile: Dict[str, Any] = learning_profile or {{}}
+        self.logger = logger
+        self.brain = brain
+
+    def _log(self, level: str, message: str, **fields: Any) -> None:
+        if self.logger is None:
+            return
+        try:
+            log_fn = getattr(self.logger, level, None)
+            if callable(log_fn):
+                payload = {{"message": message, "plugin_slug": self.plugin_slug, "plugin_name": self.plugin_name}}
+                payload.update(fields)
+                log_fn(payload)
+        except Exception:
+            return
+
+    def log_info(self, message: str, **fields: Any) -> None:
+        self._log("info", message, **fields)
+
+    def log_error(self, message: str, **fields: Any) -> None:
+        self._log("error", message, **fields)
+
+
+def _build_effective_config(payload: Dict[str, Any], runtime_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    cfg: Dict[str, Any] = dict(_PLUGIN_DEFAULT_CONFIG)
+    if isinstance(payload.get("customer_config"), dict):
+        cfg.update(payload["customer_config"])
+    if isinstance(payload.get("config"), dict):
+        cfg.update(payload["config"])
+    if isinstance(runtime_config, dict):
+        cfg.update(runtime_config)
+    return cfg
+
+
+def _load_learning_profile() -> Dict[str, Any]:
+    if _load_plugin_profile is None:
+        return {{}}
+    try:
+        prof = _load_plugin_profile(_PLUGIN_SLUG)
+        return prof if isinstance(prof, dict) else {{}}
+    except Exception:
+        return {{}}
+
+
+def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+    # === LOGIC START ===
+    return {{"summary": "Profile logic was not injected.", "primary_insights": [], "recommended_actions": [], "scores": {{"confidence": 0.0}}, "details": {{}}}}
+    # === LOGIC END ===
+
+
+async def invoke(
+    user_id: str,
+    payload: Dict[str, Any],
+    *,
+    run_id: Optional[str] = None,
+    brain: Optional[Any] = None,
+    logger: Optional[Any] = None,
+    config: Optional[Dict[str, Any]] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        payload = {{"_value": payload}}
+    context = SkillContext(
+        user_id=user_id,
+        run_id=run_id,
+        plugin_slug=_PLUGIN_SLUG,
+        plugin_name=_PLUGIN_NAME,
+        learning_profile=_load_learning_profile(),
+        logger=logger,
+        brain=brain,
+    )
+    status = "failed"
+    error_msg = ""
+    core_output: Optional[Dict[str, Any]] = None
+    try:
+        core_output = _run_core_logic(context, payload, _build_effective_config(payload, config))
+        if not isinstance(core_output, dict):
+            raise TypeError("_run_core_logic must return a dict")
+        status = "succeeded"
+    except Exception as exc:
+        context.log_error("Core logic raised an exception.", error=str(exc), exception_type=type(exc).__name__)
+        error_msg = str(exc)
+    meta = {{
+        "plugin_name": _PLUGIN_NAME,
+        "plugin_slug": _PLUGIN_SLUG,
+        "plugin_category": _PLUGIN_CATEGORY,
+        "plugin_version": _PLUGIN_VERSION,
+        "user_id": user_id,
+        "run_id": run_id,
+        "owner_id": _PLUGIN_OWNER_ID,
+        "capability_type": _PLUGIN_CAPABILITY_TYPE,
+        "intended_domain": _PLUGIN_INTENDED_DOMAIN,
+        "schema_version": _PLUGIN_RESULT_SCHEMA_VERSION,
+        "plugin_manifest": _PLUGIN_MANIFEST,
+    }}
+    return {{"status": status, "output": core_output if status == "succeeded" else None, "error": error_msg, "meta": meta}}
+'''
+
+
+@dataclass
+class _ProfileStationBResult:
+    source: str
+    raw_llm_output: str = ""
+    capability_type: Optional[str] = None
+    system_prompt: str = "DETERMINISTIC_PROFILE_BYPASS"
+    user_prompt: str = "Registered AI roadmap profile generated without LLM code generation."
+    logic_profile_id: Optional[str] = None
+    profile_selection_raw: Optional[str] = "REGISTERED_PROFILE"
+    logic_blueprint: Optional[Dict[str, Any]] = field(default_factory=dict)
+
+
+def _build_registered_profile_result(
+    *,
+    spec: PluginSpec,
+    capability_type: Optional[str],
+    reason: str,
+) -> Optional[_ProfileStationBResult]:
+    """
+    Build registered AI-roadmap profile plugins without calling Station B/Ollama.
+
+    For these capabilities the profile registry is the source of truth. Calling
+    the LLM first only adds latency and can produce code that is immediately
+    overwritten by the deterministic profile.
+    """
+    if not (
+        _is_ai_roadmap_spec(spec)
+        and callable(_registered_profile_id)
+        and callable(_build_profile_source)
+        and callable(_render_plugin_source)
+    ):
+        return None
+
+    profile_id = _registered_profile_id(spec.slug)
+    if not profile_id:
+        return None
+
+    base_source = _render_profile_base_source(spec)
+    source = _build_profile_source(
+        base_source,
+        spec,
+        capability_type,
+        profile_id,
+        reason=reason,
+    )
+    if not source:
+        return None
+
+    return _ProfileStationBResult(
+        source=source,
+        raw_llm_output="REGISTERED_PROFILE_BYPASS",
+        capability_type=capability_type,
+        logic_profile_id=profile_id,
+        logic_blueprint={
+            "profile_id": profile_id,
+            "generation_mode": "registered_profile_bypass",
+            "reason": reason,
+        },
+    )
+
+
 async def _maybe_evaluate_plugin(
     *,
     plugin_path: Path,
@@ -1535,18 +1790,30 @@ async def run_factory(config: RunnerConfig) -> None:
         # CALL STATION B
         # -----------------------------------------------------
         try:
-            sb_cfg = config.station_b_config()
-
-            result = await generate_plugin_source(
-                spec,
+            result = _build_registered_profile_result(
+                spec=spec,
                 capability_type=capability_type,
-                intended_domain=intended_domain,
-                extra_instructions=extra_instructions,
-                memory_context=memory_context,
-                mode="generate",
-                existing_source_excerpt=None,
-                config=sb_cfg,
+                reason="registered AI roadmap profile bypassed Station B LLM generation",
             )
+            if result is not None:
+                LOG.info(
+                    "Registered profile %r generated %r without Station B LLM call.",
+                    getattr(result, "logic_profile_id", None),
+                    spec.slug,
+                )
+            else:
+                sb_cfg = config.station_b_config()
+
+                result = await generate_plugin_source(
+                    spec,
+                    capability_type=capability_type,
+                    intended_domain=intended_domain,
+                    extra_instructions=extra_instructions,
+                    memory_context=memory_context,
+                    mode="generate",
+                    existing_source_excerpt=None,
+                    config=sb_cfg,
+                )
 
             LOG.info(
                 "Station B generation completed for %r (logic_profile_id=%r).",
