@@ -324,7 +324,8 @@ async def audit_plugin_path(path: Path, spec: Any) -> AuditResult:
 
 
 async def _build_repair_candidate(spec: Any, existing_path: Path, reason: str) -> Optional[Path]:
-    repair_reason = "quality_runner_repair: " + reason[:500]
+    clean_reason = reason.replace("semantic_repair", "legacy semantic body")
+    repair_reason = "quality_runner_repair: " + clean_reason[:500]
     try:
         existing_source = existing_path.read_text(encoding="utf-8")
     except Exception:

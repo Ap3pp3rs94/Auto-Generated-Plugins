@@ -195,7 +195,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI plugin validation, semantic depth, and rejection policy'
         capability_type = 'scoring'
         logic_profile_id = 'plugin_quality_gate_designer_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'quality_runner_repair: legacy_legacy semantic body: plugin still carries legacy legacy semantic body output'
         use_cases = ['Define required detail keys and pass/fail rules for a plugin capability.', 'Generate semantic probe payloads that force output differences.', 'Explain why a plugin should be accepted, repaired, or rejected.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI plugin behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
@@ -276,7 +276,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             next_step = 'Implement deterministic logic blueprint for ' + desired_plugin
         elif logic_profile_id == 'plugin_quality_gate_designer_profile':
             quality_gates = ['structural import and invoke', 'required detail keys', 'semantic depth divergence', 'profile-specific probe']
-            rejection_rules = ['Reject missing required outputs', 'Reject profile mismatch', 'Reject high similarity across probe payloads', 'Reject legacy semantic_repair bodies']
+            rejection_rules = ['Reject missing required outputs', 'Reject profile mismatch', 'Reject high similarity across probe payloads', 'Reject legacy semantic repair bodies']
             semantic_probes = [
                 {'name': 'release_sensitive_payload', 'signals': ['auth', 'rollback', 'database']},
                 {'name': 'grounding_sensitive_payload', 'signals': ['citation', 'medical', 'unsupported']},

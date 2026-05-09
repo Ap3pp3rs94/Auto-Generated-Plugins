@@ -1544,7 +1544,7 @@ elif logic_profile_id == 'plugin_logic_blueprint_designer_profile':
     next_step = 'Implement deterministic logic blueprint for ' + desired_plugin
 elif logic_profile_id == 'plugin_quality_gate_designer_profile':
     quality_gates = ['structural import and invoke', 'required detail keys', 'semantic depth divergence', 'profile-specific probe']
-    rejection_rules = ['Reject missing required outputs', 'Reject profile mismatch', 'Reject high similarity across probe payloads', 'Reject legacy semantic_repair bodies']
+    rejection_rules = ['Reject missing required outputs', 'Reject profile mismatch', 'Reject high similarity across probe payloads', 'Reject legacy semantic repair bodies']
     semantic_probes = [
         {{'name': 'release_sensitive_payload', 'signals': ['auth', 'rollback', 'database']}},
         {{'name': 'grounding_sensitive_payload', 'signals': ['citation', 'medical', 'unsupported']}},
