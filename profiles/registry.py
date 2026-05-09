@@ -769,18 +769,36 @@ requirements = payload_data.get('requirements') if isinstance(payload_data.get('
 role = str(payload_data.get('role') or 'expert AI assistant')
 inputs = payload_data.get('inputs') if isinstance(payload_data.get('inputs'), list) else ['task', 'context', 'constraints']
 output_schema = payload_data.get('output_schema') if isinstance(payload_data.get('output_schema'), dict) else {{'summary': 'string', 'steps': 'list', 'checks': 'list'}}
-structured_prompt = 'Role: ' + role + '\\nTask: ' + def_text + '\\nObjective: ' + objective_text + '\\nInputs: ' + ', '.join(str(item) for item in inputs) + '\\nRequirements: ' + '; '.join(str(item) for item in requirements) + '\\nOutput schema: ' + str(output_schema) + '\\nChecks: list assumptions, risks, and verification steps.'
+prompt_surface = ' '.join([def_text, objective_text, ' '.join(str(item) for item in requirements), str(payload_data.get('prompt') or '')]).lower()
+prompt_risk_tags = []
+for label, terms in [
+    ('release_or_auth_prompt', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
+    ('factual_grounding_prompt', ['medical', 'clinical', 'citation', 'claim', 'source', 'unsupported']),
+    ('tooling_prompt', ['tool', 'retrieval', 'browse', 'trace', 'consistency']),
+]:
+    hits = [term for term in terms if term in prompt_surface]
+    if hits:
+        prompt_risk_tags.append({{'category': label, 'signals': hits}})
+checklist = ['list assumptions', 'risks', 'verification steps']
+if any(tag['category'] == 'factual_grounding_prompt' for tag in prompt_risk_tags):
+    checklist.append('cite or flag unsupported factual claims')
+if any(tag['category'] == 'release_or_auth_prompt' for tag in prompt_risk_tags):
+    checklist.append('include rollback and regression-test checks')
+structured_prompt = 'Role: ' + role + '\\nTask: ' + def_text + '\\nObjective: ' + objective_text + '\\nInputs: ' + ', '.join(str(item) for item in inputs) + '\\nRequirements: ' + '; '.join(str(item) for item in requirements) + '\\nOutput schema: ' + str(output_schema) + '\\nChecks: ' + '; '.join(checklist) + '.'
 result['summary'] = plugin_name + ': built a structured prompt template with role, inputs, outputs, and checks.'
 result['primary_insights'] = [
     {{'title': 'Structured prompt', 'detail': structured_prompt}},
     {{'title': 'Output schema', 'detail': output_schema}},
+    {{'title': 'Prompt risk tags', 'detail': prompt_risk_tags or 'No specialized prompt risk tags.'}},
 ]
 result['recommended_actions'] = [
     {{'action': 'Use structured prompt', 'prompt': structured_prompt}},
     {{'action': 'Validate output against schema', 'schema': output_schema}},
+    {{'action': 'Run specialized checks', 'checks': checklist, 'risk_tags': prompt_risk_tags}},
 ]
-result['scores'] = {{'confidence': 0.82, 'structure_completeness': round(0.55 + 0.1 * len([role, inputs, output_schema, requirements]), 2), 'risk': 0.18}}
-result['details'] = {{'structured_prompt': structured_prompt, 'role': role, 'inputs': inputs, 'output_schema': output_schema, 'requirements': requirements, 'missing_inputs': ['requirements'] if not requirements else []}}
+risk_signal_count = sum(len(tag['signals']) for tag in prompt_risk_tags)
+result['scores'] = {{'confidence': round(min(0.92, 0.48 + 0.06 * len([role, inputs, output_schema]) + min(0.16, len(def_text.split()) / 140) + 0.025 * len(checklist)), 2), 'structure_completeness': round(min(0.98, 0.5 + 0.08 * len([role, inputs, output_schema, requirements]) + 0.03 * len(checklist)), 2), 'risk': round(min(0.85, 0.14 + 0.035 * risk_signal_count + (0.08 if not requirements else 0)), 2), 'risk_signal_count': risk_signal_count}}
+result['details'] = {{'structured_prompt': structured_prompt, 'role': role, 'inputs': inputs, 'output_schema': output_schema, 'requirements': requirements, 'checklist': checklist, 'prompt_risk_tags': prompt_risk_tags, 'missing_inputs': ['requirements'] if not requirements else []}}
 {_common_result_footer("'Use structured prompt'")}
 """.strip()
 
