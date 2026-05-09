@@ -209,11 +209,12 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
         text = ' '.join([def_text, objective_text]).lower()
         routes = [
-            ('coding_agent', ['code', 'bug', 'repo', 'test', 'file']),
+            ('coding_agent', ['code', 'bug', 'repo', 'repository', 'test', 'file', 'plugin', 'factory']),
+            ('github_publish_agent', ['git', 'github', 'commit', 'push', 'branch', 'remote', 'origin', 'pr', 'pull request']),
             ('research_agent', ['research', 'latest', 'source', 'docs', 'citation']),
-            ('evaluation_agent', ['score', 'rubric', 'compare', 'quality']),
-            ('planning_agent', ['plan', 'workflow', 'handoff', 'multi-step']),
-            ('safety_agent', ['risk', 'delete', 'approval', 'unsafe']),
+            ('evaluation_agent', ['score', 'rubric', 'compare', 'quality', 'validate', 'validation', 'semantic', 'pass', 'fail', 'reject']),
+            ('planning_agent', ['plan', 'workflow', 'handoff', 'multi-step', 'autonomous', 'continuous']),
+            ('safety_agent', ['risk', 'delete', 'approval', 'unsafe', 'production', 'rollback']),
         ]
         matches = []
         for route, terms in routes:

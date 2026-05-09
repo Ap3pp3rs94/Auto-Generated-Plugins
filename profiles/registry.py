@@ -188,11 +188,13 @@ def _tool_selection(spec: PluginSpec, capability_type: Optional[str], profile_id
 {_common_header(spec, capability_type, profile_id, reason)}
 text = ' '.join([def_text, objective_text, ' '.join(str(item) for item in constraints)]).lower()
 tool_rules = [
-    ('code_editor', ['code', 'repo', 'file', 'bug', 'test', 'python', 'javascript'], 'Needed for source inspection or code changes.'),
-    ('terminal', ['run', 'command', 'test', 'compile', 'server', 'process'], 'Needed for local verification and process control.'),
+    ('code_editor', ['code', 'repo', 'repository', 'file', 'bug', 'test', 'python', 'javascript', 'plugin', 'factory', 'validation'], 'Needed for source inspection, generated plugin work, or code changes.'),
+    ('terminal', ['run', 'command', 'test', 'compile', 'server', 'process', 'pid', 'restart', 'ollama', 'factory_runner'], 'Needed for local verification and process control.'),
+    ('git_github', ['git', 'github', 'commit', 'push', 'branch', 'remote', 'origin', 'pull request', 'pr'], 'Needed when the workflow must publish, inspect, or verify repository state.'),
     ('web_search', ['latest', 'current', 'price', 'news', 'docs', 'citation'], 'Needed when facts may have changed or sources are required.'),
     ('retrieval', ['search', 'knowledge', 'document', 'notes', 'memory'], 'Needed to find grounding context before generation.'),
-    ('planner', ['complex', 'multi-step', 'handoff', 'agent', 'delegate'], 'Needed to sequence work and prevent duplicated effort.'),
+    ('planner', ['complex', 'multi-step', 'handoff', 'agent', 'delegate', 'autonomous', 'continuous'], 'Needed to sequence work and prevent duplicated effort.'),
+    ('validator', ['validate', 'validation', 'semantic', 'schema', 'quality', 'pass', 'fail', 'reject'], 'Needed to prove the result passes structural and semantic gates.'),
 ]
 recommendations = []
 for name, keywords, rationale in tool_rules:
@@ -808,11 +810,12 @@ def _capability_router(spec: PluginSpec, capability_type: Optional[str], profile
 {_common_header(spec, capability_type, profile_id, reason)}
 text = ' '.join([def_text, objective_text]).lower()
 routes = [
-    ('coding_agent', ['code', 'bug', 'repo', 'test', 'file']),
+    ('coding_agent', ['code', 'bug', 'repo', 'repository', 'test', 'file', 'plugin', 'factory']),
+    ('github_publish_agent', ['git', 'github', 'commit', 'push', 'branch', 'remote', 'origin', 'pr', 'pull request']),
     ('research_agent', ['research', 'latest', 'source', 'docs', 'citation']),
-    ('evaluation_agent', ['score', 'rubric', 'compare', 'quality']),
-    ('planning_agent', ['plan', 'workflow', 'handoff', 'multi-step']),
-    ('safety_agent', ['risk', 'delete', 'approval', 'unsafe']),
+    ('evaluation_agent', ['score', 'rubric', 'compare', 'quality', 'validate', 'validation', 'semantic', 'pass', 'fail', 'reject']),
+    ('planning_agent', ['plan', 'workflow', 'handoff', 'multi-step', 'autonomous', 'continuous']),
+    ('safety_agent', ['risk', 'delete', 'approval', 'unsafe', 'production', 'rollback']),
 ]
 matches = []
 for route, terms in routes:
