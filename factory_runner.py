@@ -264,6 +264,7 @@ except Exception:  # pragma: no cover
 FACTORY_DIR = Path(__file__).resolve().parent
 ROOT_DIR = FACTORY_DIR.parent
 PLUGINS_DIR = FACTORY_DIR / "plugins"
+CANDIDATE_PLUGINS_DIR = FACTORY_DIR / ".candidate_plugins"
 RUN_LOCK_PATH = FACTORY_DIR / ".factory_runner.lock"
 AI_ROADMAP_STATE_PATH = FACTORY_DIR / "registry" / "ai_roadmap_state.json"
 
@@ -734,6 +735,32 @@ def _write_plugin_file(slug: str, source: str) -> Path:
     return path
 
 
+def _write_candidate_plugin_file(slug: str, source: str) -> Path:
+    CANDIDATE_PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
+    path = CANDIDATE_PLUGINS_DIR / f"{slug}.py"
+    path.write_text(source, encoding="utf-8")
+    return path
+
+
+def _promote_candidate_plugin(candidate_path: Path, slug: str) -> Path:
+    _ensure_plugins_dir()
+    final_path = PLUGINS_DIR / f"{slug}.py"
+    candidate_path.replace(final_path)
+    return final_path
+
+
+def _discard_candidate_plugin(candidate_path: Path, *, reason: str) -> Path:
+    quarantine_dir = ROOT_DIR / "junk_plugins" / "semantic_rejections"
+    quarantine_dir.mkdir(parents=True, exist_ok=True)
+    target = quarantine_dir / candidate_path.name
+    if target.exists():
+        target = quarantine_dir / f"{candidate_path.stem}_{os.getpid()}{candidate_path.suffix}"
+    candidate_path.replace(target)
+    reason_path = target.with_suffix(target.suffix + ".reason.txt")
+    reason_path.write_text(reason, encoding="utf-8")
+    return target
+
+
 async def _validate_plugin_file(path: Path, spec: PluginSpec) -> Tuple[bool, str]:
     """
     Validate a generated plugin across old and new Station C entrypoint shapes.
@@ -1007,7 +1034,7 @@ def _capability_semantic_contract(
     slug = str(getattr(spec, "slug", "") or "").lower()
     category = str(getattr(spec, "category", "") or "").lower()
     goal = str(getattr(spec, "goal", "") or "").lower()
-    if "prompt" not in " ".join([slug, category, goal]):
+    if "prompt_refinement" not in slug:
         return True, "capability_semantic_contract: no specialized contract"
     return _prompt_refinement_contract(result_a, result_b)
 
@@ -1957,17 +1984,19 @@ async def run_factory(config: RunnerConfig) -> None:
                 continue
 
         # -----------------------------------------------------
-        # WRITE PLUGIN FILE
+        # STAGE CANDIDATE FILE
         # -----------------------------------------------------
-        plugin_path = _write_plugin_file(spec.slug, result.source)
-        LOG.info("✅ Plugin built: %s", plugin_path)
-        existing_slugs.add(spec.slug)
-        existing_signatures.add(_spec_signature(spec))
+        # Candidates are intentionally kept out of plugins/ until every gate
+        # passes. A rejected plugin should never appear as an installable
+        # artifact or be committed to GitHub.
+        candidate_path = _write_candidate_plugin_file(spec.slug, result.source)
+        plugin_path = candidate_path
+        LOG.info("Plugin candidate staged: %s", candidate_path)
 
         # -----------------------------------------------------
         # VALIDATE WITH STATION C
         # -----------------------------------------------------
-        ok, reason = await _validate_plugin_file(plugin_path, spec)
+        ok, reason = await _validate_plugin_file(candidate_path, spec)
         if ok:
             LOG.info(
                 "Plugin validation OK%s%s",
@@ -1984,57 +2013,28 @@ async def run_factory(config: RunnerConfig) -> None:
                 domain=intended_domain,
                 reason=reason,
             )
-
-            # Attempt Station D repair (if available)
             try:
-                repair_info = await repair_plugin(
-                    spec.slug,
-                    max_attempts=3,
-                    intended_domain=intended_domain,
-                    capability_type=capability_type,
-                )
-                LOG.info("Station D repair_plugin result for %r → %r", spec.slug, repair_info)
+                rejected_path = _discard_candidate_plugin(candidate_path, reason=f"structural_validation: {reason}")
+                LOG.info("Rejected structurally invalid candidate moved to %s", rejected_path)
+            except Exception:
+                LOG.warning("Unable to discard structurally invalid candidate %r", spec.slug, exc_info=True)
 
-                _se_record(
-                    EVENT_FACTORY_STATION_D_REPAIR_ATTEMPT,
-                    slug=spec.slug,
-                    category=getattr(spec, "category", None),
-                    capability_type=capability_type,
-                    domain=intended_domain,
-                    repaired=repair_info.get("repaired"),
-                    attempts=repair_info.get("attempts"),
-                    error=repair_info.get("error"),
-                )
+            if not config.loop_forever:
+                break
 
-                # If repaired, re-validate the final_path if present
-                if repair_info.get("repaired"):
-                    final_path_str = repair_info.get("final_path") or str(plugin_path)
-                    final_path = Path(final_path_str)
-                    ok, reason = await _validate_plugin_file(final_path, spec)
-                    LOG.info(
-                        "Re-validation of repaired plugin %r → ok=%r reason=%r",
-                        spec.slug,
-                        ok,
-                        reason,
-                    )
-            except Exception as exc:  # pragma: no cover - defensive
-                LOG.warning(
-                    "Station D repair for plugin %r failed (non-fatal): %s",
-                    spec.slug,
-                    exc,
-                )
-                _se_record(
-                    EVENT_FACTORY_STATION_D_REPAIR_ERROR,
-                    slug=spec.slug,
-                    error=str(exc),
-                )
+            LOG.info(
+                "Plugin candidate did not pass structural validation; retrying same spec in %.1f seconds.",
+                config.sleep_seconds,
+            )
+            await asyncio.sleep(config.sleep_seconds)
+            continue
 
         # -----------------------------------------------------
         # SEMANTIC DEPTH CHECK (AI roadmap only)
         # -----------------------------------------------------
         if ok and _is_ai_roadmap_spec(spec):
             try:
-                semantic_ok, semantic_reason = await _semantic_depth_check(plugin_path, spec)
+                semantic_ok, semantic_reason = await _semantic_depth_check(candidate_path, spec)
             except Exception as exc:
                 semantic_ok = False
                 semantic_reason = f"semantic_depth: check crashed: {exc}"
@@ -2055,11 +2055,12 @@ async def run_factory(config: RunnerConfig) -> None:
                     reason=semantic_reason,
                 )
                 if repair_source:
-                    plugin_path = _write_plugin_file(spec.slug, repair_source)
-                    ok, reason = await _validate_plugin_file(plugin_path, spec)
+                    candidate_path = _write_candidate_plugin_file(spec.slug, repair_source)
+                    plugin_path = candidate_path
+                    ok, reason = await _validate_plugin_file(candidate_path, spec)
                     if ok:
                         try:
-                            semantic_ok, semantic_reason = await _semantic_depth_check(plugin_path, spec)
+                            semantic_ok, semantic_reason = await _semantic_depth_check(candidate_path, spec)
                         except Exception as exc:
                             semantic_ok = False
                             semantic_reason = f"semantic_depth: repaired check crashed: {exc}"
@@ -2084,16 +2085,14 @@ async def run_factory(config: RunnerConfig) -> None:
                     pass
                 else:
                     try:
-                        quarantine_path = _quarantine_rejected_plugin(
-                            plugin_path,
+                        quarantine_path = _discard_candidate_plugin(
+                            candidate_path,
                             reason=semantic_reason,
                         )
-                        LOG.info("Rejected shallow plugin moved to %s", quarantine_path)
+                        LOG.info("Rejected shallow candidate moved to %s", quarantine_path)
                     except Exception:
-                        LOG.warning("Unable to quarantine rejected plugin %r", spec.slug, exc_info=True)
+                        LOG.warning("Unable to discard rejected candidate %r", spec.slug, exc_info=True)
 
-                    existing_slugs.discard(spec.slug)
-                    existing_signatures.discard(_spec_signature(spec))
                     _se_record(
                         EVENT_FACTORY_PLUGIN_LOW_SCORE,
                         slug=spec.slug,
@@ -2115,6 +2114,11 @@ async def run_factory(config: RunnerConfig) -> None:
                     )
                     await asyncio.sleep(config.sleep_seconds)
                     continue
+
+        plugin_path = _promote_candidate_plugin(candidate_path, spec.slug)
+        LOG.info("✅ Plugin built: %s", plugin_path)
+        existing_slugs.add(spec.slug)
+        existing_signatures.add(_spec_signature(spec))
 
         # -----------------------------------------------------
         # OPTIONAL EVALUATION (Station D critic)

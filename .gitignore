@@ -23,6 +23,7 @@ env/
 logs/
 *.log
 .factory_runner.lock
+.candidate_plugins/
 registry/*.tmp
 registry/ai_roadmap_state.json
 registry/plugins.json
