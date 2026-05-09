@@ -45,7 +45,7 @@ The package contains:
 Checksum:
 
 ```text
-dfaa17d50b98435fe81310ec55abcc35c9d876c1352c819870d5482b8e2b2f0f  ai_prompt_refinement_engine-0.1.2.zip
+5f36085a373b6aeb68b8e06ffa18569af5ab078dd3989e91b8be080437ff039e  ai_prompt_refinement_engine-0.1.2.zip
 ```
 
 Legacy plugins created before the current AI roadmap guide were removed. The
