@@ -19,13 +19,13 @@ quality guide.
 The current plugin is packaged as a GitHub-downloadable zip:
 
 ```text
-dist/ai_prompt_refinement_engine-0.1.0.zip
+dist/ai_prompt_refinement_engine-0.1.1.zip
 ```
 
 Direct GitHub download URL after this repository is pushed:
 
 ```text
-https://github.com/Ap3pp3rs94/Auto-Generated-Plugins/raw/main/dist/ai_prompt_refinement_engine-0.1.0.zip
+https://github.com/Ap3pp3rs94/Auto-Generated-Plugins/raw/main/dist/ai_prompt_refinement_engine-0.1.1.zip
 ```
 
 The package contains:
@@ -38,7 +38,7 @@ The package contains:
 Checksum:
 
 ```text
-a469e5eb913825f0c931f06e367a6cdcf88547311475be80dbfc63f227a6ab7d  ai_prompt_refinement_engine-0.1.0.zip
+6e3a66f6af6b420ec9db5a989fb12abd7d4f8926efb9cde68884d8bb94212bcc  ai_prompt_refinement_engine-0.1.1.zip
 ```
 
 Legacy plugins created before the current AI roadmap guide were removed. The
