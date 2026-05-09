@@ -892,15 +892,29 @@ result['details'] = {{'rubric': criteria, 'hard_failures': hard_failures, 'risk_
 def _automation_safety(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
-steps = payload_data.get('steps') if isinstance(payload_data.get('steps'), list) else payload_data.get('current_plan') if isinstance(payload_data.get('current_plan'), list) else [def_text]
-risky_terms = ['delete', 'overwrite', 'deploy', 'push', 'payment', 'email', 'external', 'permission', 'secret']
+steps = payload_data.get('steps') if isinstance(payload_data.get('steps'), list) else payload_data.get('current_plan') if isinstance(payload_data.get('current_plan'), list) else []
+context_steps = []
+for key in ['task', 'objective', 'prompt', 'constraints', 'blocked_steps']:
+    value = payload_data.get(key)
+    if value not in (None, '', [], {{}}):
+        if isinstance(value, list):
+            context_steps.extend(str(item) for item in value)
+        else:
+            context_steps.append(str(value))
+steps = list(steps) + context_steps if steps or context_steps else [def_text]
+risky_terms = ['delete', 'overwrite', 'deploy', 'push', 'payment', 'email', 'external', 'permission', 'secret', 'auth', 'login', 'database', 'migration', 'rollback', 'production', 'medical', 'clinical', 'citation', 'claim', 'source', 'unsupported', 'tool', 'retrieval']
 risk_findings = []
 for idx, step in enumerate(steps):
     lower = str(step).lower()
     hits = [term for term in risky_terms if term in lower]
     if hits:
-        risk_findings.append({{'step_index': idx, 'step': str(step)[:220], 'risk_terms': hits}})
+        category = 'release_safety' if any(term in hits for term in ['auth', 'login', 'database', 'migration', 'rollback', 'production', 'deploy']) else 'factual_safety' if any(term in hits for term in ['medical', 'clinical', 'citation', 'claim', 'source', 'unsupported']) else 'tool_safety' if any(term in hits for term in ['tool', 'retrieval', 'external']) else 'destructive_action'
+        risk_findings.append({{'step_index': idx, 'step': str(step)[:220], 'risk_terms': hits, 'category': category}})
 controls = ['dry run first', 'capture logs', 'define rollback', 'require explicit approval for destructive steps']
+if any(item['category'] == 'factual_safety' for item in risk_findings):
+    controls.append('require source verification before user-facing claims')
+if any(item['category'] == 'release_safety' for item in risk_findings):
+    controls.append('require rollback owner and regression checks')
 approval_required = bool(risk_findings)
 result['summary'] = plugin_name + ': safety-reviewed ' + str(len(steps)) + ' automation step(s).'
 result['primary_insights'] = [
@@ -912,7 +926,9 @@ result['recommended_actions'] = [
     {{'action': 'Apply safety controls', 'controls': controls}},
     {{'action': 'Request approval before execution' if approval_required else 'Proceed with logged dry run'}},
 ]
-result['scores'] = {{'confidence': 0.8, 'safety_risk': round(min(0.95, 0.15 + 0.18 * len(risk_findings)), 2), 'approval_readiness': 0.86 if approval_required else 0.64, 'risk': round(min(0.95, 0.15 + 0.18 * len(risk_findings)), 2)}}
+risk_term_count = sum(len(item['risk_terms']) for item in risk_findings)
+category_count = len(set(item['category'] for item in risk_findings))
+result['scores'] = {{'confidence': round(min(0.92, 0.44 + min(0.24, 0.045 * len(steps)) + min(0.16, 0.025 * risk_term_count)), 2), 'safety_risk': round(min(0.95, 0.12 + 0.09 * len(risk_findings) + 0.025 * risk_term_count + 0.04 * category_count), 2), 'approval_readiness': round(0.58 + min(0.32, 0.045 * len(controls)), 2) if approval_required else 0.64, 'risk': round(min(0.95, 0.12 + 0.09 * len(risk_findings) + 0.025 * risk_term_count + 0.04 * category_count), 2), 'risk_term_count': risk_term_count}}
 result['details'] = {{'risk_findings': risk_findings, 'controls': controls, 'approval_required': approval_required, 'missing_inputs': ['steps'] if not steps else []}}
 {_common_result_footer("'Apply safety controls'")}
 """.strip()
