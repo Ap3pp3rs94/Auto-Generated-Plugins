@@ -16,12 +16,16 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
 try:
     from factory import factory_runner as runner
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+    from factory.factory_runner import _anticipated_capability_candidates
+    from factory.factory_runner import _refresh_anticipation_state
     from factory.factory_runner import _canonical_retention_spec
     from factory.factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
     from factory.factory_runner import _upgrade_backlog_exhausted
 except ModuleNotFoundError:
     import factory_runner as runner
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+    from factory_runner import _anticipated_capability_candidates
+    from factory_runner import _refresh_anticipation_state
     from factory_runner import _canonical_retention_spec
     from factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
     from factory_runner import _upgrade_backlog_exhausted
@@ -59,6 +63,49 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertEqual(expansion_spec.extra["generation_round"], 1)
         self.assertTrue(expansion_spec.extra["continuous_expansion"])
         self.assertEqual(expansion_spec.slug, "ai_coding_agent_prompt_contract_designer")
+
+    def test_anticipation_candidates_skip_existing_and_describe_next_work(self) -> None:
+        existing = {build_next_spec(i)[0].slug for i in range(1, len(AI_CAPABILITY_ROADMAP) + 1)}
+        first_expansion = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]
+        existing.add(first_expansion.slug)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old_plugins_dir = runner.PLUGINS_DIR
+            try:
+                runner.PLUGINS_DIR = Path(tmp)
+                anticipated = _anticipated_capability_candidates(
+                    existing,
+                    start_index=len(AI_CAPABILITY_ROADMAP) + 1,
+                    limit=3,
+                )
+            finally:
+                runner.PLUGINS_DIR = old_plugins_dir
+
+        self.assertEqual(len(anticipated), 3)
+        self.assertNotIn(first_expansion.slug, {item["slug"] for item in anticipated})
+        self.assertTrue(all(item["continuous_expansion"] for item in anticipated))
+        self.assertTrue(all(item["reason"] for item in anticipated))
+
+    def test_refresh_anticipation_state_persists_forward_context_without_plugins(self) -> None:
+        existing = {build_next_spec(i)[0].slug for i in range(1, len(AI_CAPABILITY_ROADMAP) + 1)}
+        state = {"completed": [], "next_directive": ""}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old_plugins_dir = runner.PLUGINS_DIR
+            try:
+                runner.PLUGINS_DIR = Path(tmp)
+                anticipated = _refresh_anticipation_state(
+                    state,
+                    existing,
+                    start_index=len(AI_CAPABILITY_ROADMAP) + 1,
+                    persist=False,
+                )
+            finally:
+                runner.PLUGINS_DIR = old_plugins_dir
+
+        self.assertEqual(state["anticipated_next_capabilities"], anticipated)
+        self.assertEqual(anticipated[0]["slug"], "ai_coding_agent_prompt_contract_designer")
+        self.assertEqual(anticipated[0]["reason"], "fresh canonical capability after current installed set")
 
     def test_upgrade_attempt_memory_skips_repeated_retry_under_same_knowledge(self) -> None:
         upgrade_spec = copy.deepcopy(build_next_spec(1)[0])

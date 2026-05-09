@@ -909,6 +909,74 @@ def _upgrade_backlog_exhausted(state: Dict[str, Any], existing_slugs: Set[str]) 
     return canonical_slugs.issubset(remembered)
 
 
+def _anticipated_capability_candidates(
+    existing_slugs: Set[str],
+    *,
+    start_index: int,
+    limit: int = 6,
+    scan_window: int = 300,
+) -> list[Dict[str, Any]]:
+    """
+    Look ahead from the current roadmap cursor and describe fresh capabilities.
+
+    This is deliberately advisory. It does not create duplicate modules or move
+    the cursor; it gives Station B/profile handoffs enough forward context to
+    build the current capability as part of an intentional sequence.
+    """
+    anticipated: list[Dict[str, Any]] = []
+    seen: Set[str] = set(existing_slugs)
+    safe_start = max(int(start_index), 1)
+    safe_limit = max(int(limit), 0)
+    if safe_limit == 0:
+        return anticipated
+
+    for candidate_index in range(safe_start, safe_start + max(int(scan_window), safe_limit)):
+        try:
+            candidate, capability_type, intended_domain = build_next_spec(candidate_index)
+        except Exception:
+            LOG.debug("Unable to build anticipated capability at index %s", candidate_index, exc_info=True)
+            break
+        slug = str(getattr(candidate, "slug", "") or "")
+        if not slug or slug in seen or (PLUGINS_DIR / f"{slug}.py").exists():
+            seen.add(slug)
+            continue
+        extra = getattr(candidate, "extra", {}) or {}
+        anticipated.append(
+            {
+                "index": candidate_index,
+                "slug": slug,
+                "name": getattr(candidate, "name", ""),
+                "category": getattr(candidate, "category", ""),
+                "capability_type": capability_type,
+                "intended_domain": intended_domain,
+                "continuous_expansion": bool(extra.get("continuous_expansion")),
+                "reason": (
+                    "fresh canonical capability after current installed set"
+                    if bool(extra.get("continuous_expansion"))
+                    else "unbuilt curated roadmap capability"
+                ),
+            }
+        )
+        seen.add(slug)
+        if len(anticipated) >= safe_limit:
+            break
+    return anticipated
+
+
+def _refresh_anticipation_state(
+    state: Dict[str, Any],
+    existing_slugs: Set[str],
+    *,
+    start_index: int,
+    persist: bool = True,
+) -> list[Dict[str, Any]]:
+    anticipated = _anticipated_capability_candidates(existing_slugs, start_index=start_index)
+    state["anticipated_next_capabilities"] = anticipated
+    if persist:
+        _save_ai_roadmap_state(state)
+    return anticipated
+
+
 def _build_ai_handoff_context(state: Dict[str, Any], spec: PluginSpec) -> str:
     completed = state.get("completed")
     if not isinstance(completed, list):
@@ -957,6 +1025,21 @@ def _build_ai_handoff_context(state: Dict[str, Any], spec: PluginSpec) -> str:
                         reason=str(item.get("reason", ""))[:180],
                     )
                 )
+    anticipated = state.get("anticipated_next_capabilities")
+    if isinstance(anticipated, list):
+        upcoming = [item for item in anticipated[:6] if isinstance(item, dict)]
+        if upcoming:
+            lines.append("")
+            lines.append("Anticipated next capabilities:")
+            for item in upcoming:
+                lines.append(
+                    "- {slug}: {name} | category={category} | reason={reason}".format(
+                        slug=item.get("slug", ""),
+                        name=item.get("name", ""),
+                        category=item.get("category", ""),
+                        reason=item.get("reason", ""),
+                    )
+                )
     lines.append("")
     lines.append(
         "Current task must be complementary: implement {slug} ({name}) and consume prior outputs "
@@ -975,6 +1058,7 @@ def _attach_ai_handoff_to_spec(spec: PluginSpec, state: Dict[str, Any]) -> None:
     extra["handoff_context"] = _build_ai_handoff_context(state, spec)
     extra["prior_ai_plugins"] = (state.get("completed") or [])[-8:]
     extra["previous_directive"] = state.get("next_directive", "")
+    extra["anticipated_next_capabilities"] = (state.get("anticipated_next_capabilities") or [])[:6]
     spec.extra = extra
 
 
@@ -2171,6 +2255,12 @@ async def run_factory(config: RunnerConfig) -> None:
 
     index_counter = _next_ai_roadmap_index(existing_slugs)
     LOG.info("Starting AI roadmap at deterministic index %d", index_counter)
+    anticipated = _refresh_anticipation_state(ai_roadmap_state, existing_slugs, start_index=index_counter)
+    if anticipated:
+        LOG.info(
+            "Anticipated next capability candidates: %s",
+            ", ".join(str(item.get("slug", "")) for item in anticipated[:6]),
+        )
 
     # Track whether a custom focus prompt is currently active.
     last_focus_active: Optional[bool] = None
@@ -2206,6 +2296,7 @@ async def run_factory(config: RunnerConfig) -> None:
         is_upgrade_attempt = False
         capability_type: Optional[str] = None
         intended_domain: Optional[str] = None
+        anticipated = _refresh_anticipation_state(ai_roadmap_state, existing_slugs, start_index=index_counter)
 
         randomized_indexes: list[int] = []
         if not config.allow_upgrade_expansion and index_counter > len(AI_CAPABILITY_ROADMAP):
