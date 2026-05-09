@@ -311,7 +311,7 @@ def _context_optimizer(spec: PluginSpec, capability_type: Optional[str], profile
 {_common_header(spec, capability_type, profile_id, reason)}
 token_budget = int(payload_data.get('token_budget') or payload_data.get('max_context_tokens') or 2048)
 items = []
-for key in ['prompt', 'task', 'objective', 'current_plan', 'previous_results', 'trace', 'rubric']:
+for key in ['prompt', 'task', 'objective', 'constraints', 'current_plan', 'completed_steps', 'blocked_steps', 'previous_results', 'trace', 'rubric']:
     value = payload_data.get(key)
     if value not in (None, '', [], {{}}):
         items.append({{'source': key, 'text': str(value), 'tokens': max(1, len(str(value)) // 4)}})
@@ -321,10 +321,23 @@ for idx, item in enumerate(messages + source_notes + candidate_outputs):
 for item in items:
     lower = item['text'].lower()
     item['priority'] = 1
+    item['reason_tags'] = []
     if any(word in lower for word in ['must', 'constraint', 'objective', 'error', 'blocked', 'acceptance']):
         item['priority'] += 3
+        item['reason_tags'].append('requirement_or_blocker')
+    if any(word in lower for word in ['auth', 'login', 'database', 'migration', 'rollback', 'production']):
+        item['priority'] += 2
+        item['reason_tags'].append('release_or_auth_risk')
+    if any(word in lower for word in ['citation', 'source', 'medical', 'clinical', 'claim', 'unsupported', 'hallucination']):
+        item['priority'] += 2
+        item['reason_tags'].append('factual_grounding_risk')
+    if any(word in lower for word in ['test', 'verify', 'coverage', 'check']):
+        item['priority'] += 1
+        item['reason_tags'].append('verification')
     if any(word in lower for word in ['done', 'thanks', 'maybe', 'chatter']):
         item['priority'] -= 1
+        item['reason_tags'].append('low_signal')
+    item['preview'] = item['text'][:180]
 items = sorted(items, key=lambda item: (item['priority'], -item['tokens']), reverse=True)
 kept = []
 compressed = []
@@ -344,17 +357,21 @@ for item in items:
 fit = used <= token_budget
 result['summary'] = plugin_name + ': optimized context to about ' + str(used) + ' tokens against budget ' + str(token_budget) + '.'
 result['primary_insights'] = [
-    {{'title': 'Kept context', 'detail': [item['source'] for item in kept]}},
-    {{'title': 'Compressed context', 'detail': [item['source'] for item in compressed]}},
-    {{'title': 'Dropped context', 'detail': [item['source'] for item in dropped]}},
+    {{'title': 'Kept context', 'detail': [{{'source': item['source'], 'preview': item['preview'], 'reason_tags': item['reason_tags']}} for item in kept]}},
+    {{'title': 'Compressed context', 'detail': [{{'source': item['source'], 'preview': item['preview'], 'reason_tags': item['reason_tags']}} for item in compressed]}},
+    {{'title': 'Dropped context', 'detail': [{{'source': item['source'], 'preview': item['preview'], 'reason_tags': item['reason_tags']}} for item in dropped]}},
 ]
 result['recommended_actions'] = [
-    {{'action': 'Keep high-priority context', 'items': [item['source'] for item in kept[:8]]}},
-    {{'action': 'Compress oversized but important context', 'items': [item['source'] for item in compressed[:8]]}},
-    {{'action': 'Drop low-signal context', 'items': [item['source'] for item in dropped[:8]]}},
+    {{'action': 'Keep high-priority context', 'items': [{{'source': item['source'], 'preview': item['preview'], 'why': item['reason_tags']}} for item in kept[:8]]}},
+    {{'action': 'Compress oversized but important context', 'items': [{{'source': item['source'], 'preview': item.get('compressed_text', item['preview']), 'why': item['reason_tags']}} for item in compressed[:8]]}},
+    {{'action': 'Drop low-signal context', 'items': [{{'source': item['source'], 'preview': item['preview'], 'why': item['reason_tags']}} for item in dropped[:8]]}},
 ]
-result['scores'] = {{'confidence': round(min(0.92, 0.45 + 0.08 * len(items[:5])), 2), 'token_budget_fit': 1.0 if fit else round(token_budget / max(1, used), 2), 'context_retention': round(len(kept) / max(1, len(items)), 2), 'risk': round(0.18 + (0.18 if not fit else 0) + 0.03 * len(dropped), 2)}}
-result['details'] = {{'kept_context': kept[:10], 'compressed_context': compressed[:10], 'dropped_context': dropped[:10], 'token_budget': token_budget, 'estimated_tokens': used, 'missing_inputs': ['context items'] if not items else []}}
+reason_counts = {{}}
+for item in items:
+    for tag in item['reason_tags']:
+        reason_counts[tag] = reason_counts.get(tag, 0) + 1
+result['scores'] = {{'confidence': round(min(0.92, 0.4 + 0.045 * len(items[:8]) + 0.04 * len(reason_counts)), 2), 'token_budget_fit': 1.0 if fit else round(token_budget / max(1, used), 2), 'context_retention': round(len(kept) / max(1, len(items)), 2), 'risk': round(min(0.9, 0.14 + (0.18 if not fit else 0) + 0.035 * len(dropped) + 0.025 * reason_counts.get('factual_grounding_risk', 0) + 0.02 * reason_counts.get('release_or_auth_risk', 0)), 2)}}
+result['details'] = {{'kept_context': kept[:10], 'compressed_context': compressed[:10], 'dropped_context': dropped[:10], 'priority_reason_counts': reason_counts, 'token_budget': token_budget, 'estimated_tokens': used, 'missing_inputs': ['context items'] if not items else []}}
 {_common_result_footer("'Use kept_context, then compressed_context, and omit dropped_context.'")}
 """.strip()
 
