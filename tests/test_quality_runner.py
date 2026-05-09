@@ -16,6 +16,7 @@ try:
         PROFILE_REQUIRED_DETAIL_KEYS,
         QualityConfig,
         _profile_specific_checks,
+        _roadmap_spec_from_slug,
         build_config_from_args,
         AuditResult,
     )
@@ -25,6 +26,7 @@ except ModuleNotFoundError:
         PROFILE_REQUIRED_DETAIL_KEYS,
         QualityConfig,
         _profile_specific_checks,
+        _roadmap_spec_from_slug,
         build_config_from_args,
         AuditResult,
     )
@@ -102,6 +104,16 @@ class QualityRunnerTests(unittest.TestCase):
             with self.subTest(slug=slug):
                 self.assertEqual(registered_profile_id(slug), profile_id)
                 self.assertIn(required_key, PROFILE_REQUIRED_DETAIL_KEYS[profile_id])
+
+    def test_continuous_expansion_slug_resolves_to_spec(self) -> None:
+        slug = "ai_coding_agent_prompt_contract_designer"
+
+        spec = _roadmap_spec_from_slug(slug)
+
+        self.assertIsNotNone(spec)
+        self.assertEqual(spec.slug, slug)
+        self.assertTrue(spec.extra["continuous_expansion"])
+        self.assertEqual(registered_profile_id(slug), "continuous_prompt_contract_designer_profile")
 
     def test_tool_routing_probe_rejects_missing_github_tool(self) -> None:
         result = AuditResult(

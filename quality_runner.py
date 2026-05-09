@@ -231,6 +231,12 @@ def _roadmap_spec_from_slug(slug: str) -> Optional[Any]:
                 spec.capability_type = capability_type
                 spec.intended_domain = intended_domain
                 return spec
+    for index in range(roadmap_size + 1, roadmap_size + 10000):
+        spec, capability_type, intended_domain = build_next_spec(index)
+        if spec.slug == slug:
+            spec.capability_type = capability_type
+            spec.intended_domain = intended_domain
+            return spec
     return None
 
 
