@@ -15,10 +15,12 @@ try:
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
     from factory.factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
     from factory.factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
+    from factory.factory_runner import _upgrade_backlog_exhausted
 except ModuleNotFoundError:
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
     from factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
     from factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
+    from factory_runner import _upgrade_backlog_exhausted
 
 
 class SpecBuilderTests(unittest.TestCase):
@@ -93,6 +95,26 @@ class SpecBuilderTests(unittest.TestCase):
         later_reason = _upgrade_attempt_skip_reason(state, later_phase_spec)
         self.assertIsNotNone(later_reason)
         self.assertIn("already rejected", later_reason or "")
+
+    def test_upgrade_backlog_exhausted_after_all_canonical_attempts_remembered(self) -> None:
+        existing = {blueprint.slug for blueprint in AI_CAPABILITY_ROADMAP}
+        state = {"completed": [], "next_directive": "", "upgrade_attempts": {}, "upgrade_attempt_order": []}
+
+        self.assertFalse(_upgrade_backlog_exhausted(state, existing))
+
+        for position, _blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
+            phase_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + position)[0]
+            retention_spec = _canonical_retention_spec(phase_spec)
+            _upgrade_attempt_record(
+                state=state,
+                source_spec=phase_spec,
+                canonical_spec=retention_spec,
+                status="rejected",
+                reason="not better",
+                persist=False,
+            )
+
+        self.assertTrue(_upgrade_backlog_exhausted(state, existing))
 
 
 if __name__ == "__main__":

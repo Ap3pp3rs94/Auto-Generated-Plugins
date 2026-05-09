@@ -796,6 +796,31 @@ def _upgrade_attempt_skip_reason(state: Dict[str, Any], source_spec: PluginSpec)
     )
 
 
+def _remembered_upgrade_canonical_slugs(state: Dict[str, Any]) -> Set[str]:
+    attempts = state.get("upgrade_attempts")
+    if not isinstance(attempts, dict):
+        return set()
+    current_fp = _upgrade_knowledge_fingerprint()
+    remembered: Set[str] = set()
+    for item in attempts.values():
+        if not isinstance(item, dict):
+            continue
+        if item.get("knowledge_fingerprint") != current_fp:
+            continue
+        canonical = str(item.get("canonical_slug") or "")
+        if canonical:
+            remembered.add(canonical)
+    return remembered
+
+
+def _upgrade_backlog_exhausted(state: Dict[str, Any], existing_slugs: Set[str]) -> bool:
+    canonical_slugs = {blueprint.slug for blueprint in AI_CAPABILITY_ROADMAP if blueprint.slug in existing_slugs}
+    if not canonical_slugs:
+        return False
+    remembered = _remembered_upgrade_canonical_slugs(state)
+    return canonical_slugs.issubset(remembered)
+
+
 def _build_ai_handoff_context(state: Dict[str, Any], spec: PluginSpec) -> str:
     completed = state.get("completed")
     if not isinstance(completed, list):
@@ -2097,6 +2122,18 @@ async def run_factory(config: RunnerConfig) -> None:
         randomized_indexes: list[int] = []
         if not config.allow_phase_expansion and index_counter > len(AI_CAPABILITY_ROADMAP):
             if config.randomized_expansion:
+                if _upgrade_backlog_exhausted(ai_roadmap_state, existing_slugs):
+                    LOG.info(
+                        "All canonical capabilities already have upgrade attempts under the current factory knowledge; idling until factory/profile logic changes."
+                    )
+                    if config.loop_forever:
+                        await asyncio.sleep(config.sleep_seconds)
+                        existing_slugs = _load_existing_plugin_slugs()
+                        existing_signatures = _load_existing_capability_signatures()
+                        ai_roadmap_state = _load_ai_roadmap_state()
+                        index_counter = _next_ai_roadmap_index(existing_slugs)
+                        continue
+                    break
                 randomized_indexes = _randomized_ai_expansion_indexes(existing_slugs)
                 LOG.info(
                     "AI roadmap base complete at %d unique plugin(s); randomized bounded expansion has %d candidate(s).",
