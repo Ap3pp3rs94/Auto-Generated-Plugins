@@ -56,38 +56,33 @@ class SpecBuilderTests(unittest.TestCase):
         expansion_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]
 
         self.assertNotIn(expansion_spec.slug, existing)
-        self.assertNotIn("_phase_", expansion_spec.slug)
-        self.assertEqual(expansion_spec.extra["phase"], 1)
+        self.assertEqual(expansion_spec.extra["generation_round"], 1)
         self.assertTrue(expansion_spec.extra["continuous_expansion"])
         self.assertEqual(expansion_spec.slug, "ai_coding_agent_prompt_contract_designer")
 
-    def test_upgrade_attempt_memory_skips_repeated_phase_under_same_knowledge(self) -> None:
-        phase_spec = copy.deepcopy(build_next_spec(1)[0])
-        phase_spec.slug = f"{phase_spec.slug}_phase_2"
-        phase_spec.name = f"{phase_spec.name} Phase 2"
-        phase_spec.extra = dict(phase_spec.extra)
-        phase_spec.extra["phase"] = 2
-        later_phase_spec = copy.deepcopy(phase_spec)
-        later_phase_spec.slug = phase_spec.slug.replace("_phase_2", "_phase_3")
-        later_phase_spec.name = phase_spec.name.replace("Phase 2", "Phase 3")
-        later_phase_spec.extra = dict(later_phase_spec.extra)
-        later_phase_spec.extra["phase"] = 3
-        retention_spec = _canonical_retention_spec(phase_spec)
+    def test_upgrade_attempt_memory_skips_repeated_retry_under_same_knowledge(self) -> None:
+        upgrade_spec = copy.deepcopy(build_next_spec(1)[0])
+        upgrade_spec.extra = dict(upgrade_spec.extra)
+        upgrade_spec.extra["generation_round"] = 2
+        later_upgrade_spec = copy.deepcopy(upgrade_spec)
+        later_upgrade_spec.extra = dict(later_upgrade_spec.extra)
+        later_upgrade_spec.extra["generation_round"] = 3
+        retention_spec = _canonical_retention_spec(upgrade_spec)
         state = {"completed": [], "next_directive": "", "upgrade_attempts": {}, "upgrade_attempt_order": []}
 
         _upgrade_attempt_record(
             state=state,
-            source_spec=phase_spec,
+            source_spec=upgrade_spec,
             canonical_spec=retention_spec,
             status="rejected",
             reason="not better than canonical",
             persist=False,
         )
 
-        reason = _upgrade_attempt_skip_reason(state, phase_spec)
+        reason = _upgrade_attempt_skip_reason(state, upgrade_spec)
         self.assertIsNotNone(reason)
         self.assertIn("already rejected", reason or "")
-        later_reason = _upgrade_attempt_skip_reason(state, later_phase_spec)
+        later_reason = _upgrade_attempt_skip_reason(state, later_upgrade_spec)
         self.assertIsNotNone(later_reason)
         self.assertIn("already rejected", later_reason or "")
 
@@ -98,15 +93,13 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertFalse(_upgrade_backlog_exhausted(state, existing))
 
         for position, _blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
-            phase_spec = copy.deepcopy(build_next_spec(position)[0])
-            phase_spec.slug = f"{phase_spec.slug}_phase_2"
-            phase_spec.name = f"{phase_spec.name} Phase 2"
-            phase_spec.extra = dict(phase_spec.extra)
-            phase_spec.extra["phase"] = 2
-            retention_spec = _canonical_retention_spec(phase_spec)
+            upgrade_spec = copy.deepcopy(build_next_spec(position)[0])
+            upgrade_spec.extra = dict(upgrade_spec.extra)
+            upgrade_spec.extra["generation_round"] = 2
+            retention_spec = _canonical_retention_spec(upgrade_spec)
             _upgrade_attempt_record(
                 state=state,
-                source_spec=phase_spec,
+                source_spec=upgrade_spec,
                 canonical_spec=retention_spec,
                 status="rejected",
                 reason="not better",
@@ -145,7 +138,7 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertTrue(_upgrade_backlog_exhausted(state, {slug}))
         record = state["upgrade_attempts"][slug]
         self.assertEqual(record["status"], "retained")
-        self.assertIn("phase suffix alone is not an improvement", record["reason"])
+        self.assertIn("metadata-only retry is not an improvement", record["reason"])
 
 
 if __name__ == "__main__":

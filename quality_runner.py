@@ -260,15 +260,6 @@ def _roadmap_spec_from_slug(slug: str) -> Optional[Any]:
             spec.capability_type = capability_type
             spec.intended_domain = intended_domain
             return spec
-        prefix = f"{blueprint.slug}_phase_"
-        if slug.startswith(prefix):
-            suffix = slug[len(prefix):]
-            if suffix.isdigit():
-                phase = max(int(suffix), 1)
-                spec, capability_type, intended_domain = build_next_spec((phase - 1) * roadmap_size + position)
-                spec.capability_type = capability_type
-                spec.intended_domain = intended_domain
-                return spec
     for index in range(roadmap_size + 1, roadmap_size + 10000):
         spec, capability_type, intended_domain = build_next_spec(index)
         if spec.slug == slug:

@@ -52,7 +52,7 @@ class RunnerConfigTests(unittest.TestCase):
         self.assertEqual(config.github_branch, "main")
         self.assertEqual(config.llm_max_tokens, 4096)
         self.assertEqual(config.llm_context_length, 8192)
-        self.assertFalse(config.allow_phase_expansion)
+        self.assertFalse(config.allow_upgrade_expansion)
 
     def test_github_publish_can_be_disabled(self) -> None:
         config, _, _ = build_config_from_args(["--once", "--no-github-publish"])
@@ -63,10 +63,10 @@ class RunnerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             RunnerConfig(github_remote="").validate()
 
-    def test_phase_expansion_requires_explicit_opt_in(self) -> None:
-        config, _, _ = build_config_from_args(["--once", "--allow-phase-expansion"])
+    def test_upgrade_expansion_requires_explicit_opt_in(self) -> None:
+        config, _, _ = build_config_from_args(["--once", "--allow-upgrade-expansion"])
 
-        self.assertTrue(config.allow_phase_expansion)
+        self.assertTrue(config.allow_upgrade_expansion)
 
     def test_randomized_expansion_defaults_on_and_can_be_disabled(self) -> None:
         config, _, _ = build_config_from_args(["--once"])

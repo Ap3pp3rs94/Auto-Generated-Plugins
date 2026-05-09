@@ -1637,7 +1637,7 @@ def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
     """
     Build a deterministic canonical capability after the curated roadmap ends.
 
-    These are not phase upgrades. They are fresh, named capabilities generated
+    These are not stage upgrades. They are fresh, named capabilities generated
     from a controlled matrix of AI workflow targets and capability families.
     """
     offset = max(int(index), len(AI_CAPABILITY_ROADMAP) + 1) - len(AI_CAPABILITY_ROADMAP) - 1
@@ -1680,35 +1680,13 @@ def _roadmap_position(index: int) -> Tuple[AICapabilityBlueprint, int, int]:
     Returns:
       - blueprint: base capability family
       - roadmap_number: deterministic global capability index
-      - phase: 1 for canonical capability generation; phase upgrades are opt-in
+      - generation_round: 1 for canonical capability generation
     """
     safe_index = max(int(index), 1)
     roadmap_size = len(AI_CAPABILITY_ROADMAP)
     if safe_index <= roadmap_size:
         return AI_CAPABILITY_ROADMAP[safe_index - 1], safe_index, 1
     return _continuous_expansion_blueprint(safe_index), safe_index, 1
-
-
-def _phase_name(base_name: str, phase: int) -> str:
-    if phase <= 1:
-        return base_name
-    return f"{base_name} Phase {phase}"
-
-
-def _phase_slug(base_slug: str, phase: int) -> str:
-    if phase <= 1:
-        return base_slug
-    return f"{base_slug}_phase_{phase}"
-
-
-def _phase_goal(blueprint: AICapabilityBlueprint, phase: int) -> str:
-    if phase <= 1:
-        return blueprint.goal
-    return (
-        f"Extend {blueprint.name} with phase {phase} behavior: preserve the original "
-        "AI capability, add stronger edge-case handling, expose clearer user-facing "
-        "progress signals, and produce more actionable next steps."
-    )
 
 
 def _capability_semantics(blueprint: AICapabilityBlueprint) -> Dict[str, object]:
@@ -1778,28 +1756,28 @@ def _build_huge_ai_spec(
     blueprint: AICapabilityBlueprint,
     *,
     roadmap_number: int,
-    phase: int,
+    generation_round: int,
     global_index: int,
 ) -> PluginSpec:
     """
     Build a rich AI-focused PluginSpec with enough structure for Station B to
     create a useful AI capability instead of a generic/random utility.
     """
-    name = _phase_name(blueprint.name, phase)
-    slug = _phase_slug(blueprint.slug, phase)
-    goal = _phase_goal(blueprint, phase)
+    name = blueprint.name
+    slug = blueprint.slug
+    goal = blueprint.goal
 
-    phase_focus = {
+    progress_focus = {
         1: "baseline capability",
         2: "edge cases and robustness",
         3: "operator visibility and progress reporting",
         4: "user delight, guided coaching, and clearer scorecards",
-    }.get(phase, f"advanced refinement pass {phase}")
+    }.get(generation_round, f"advanced refinement pass {generation_round}")
 
     use_cases = list(blueprint.use_cases)
     use_cases.extend(
         [
-            f"Show a compact progress state for this AI capability during {phase_focus}.",
+            f"Show a compact progress state for this AI capability during {progress_focus}.",
             "Return user-facing guidance that is useful, concise, and safe to act on.",
             "Avoid duplicating existing AI capability behavior; identify what is unique about this capability.",
         ]
@@ -1888,8 +1866,8 @@ def _build_huge_ai_spec(
         "factory_focus": "ai_functionality_and_progress",
         "roadmap_number": roadmap_number,
         "roadmap_size": len(AI_CAPABILITY_ROADMAP),
-        "phase": phase,
-        "phase_focus": phase_focus,
+        "generation_round": generation_round,
+        "progress_focus": progress_focus,
         "global_index": global_index,
         "duplicate_policy": {
             "slug_must_be_unique": True,
@@ -1979,11 +1957,11 @@ def build_next_spec(index: int) -> Tuple[PluginSpec, str, str]:
 
     Returns: (spec, capability_type, intended_domain)
     """
-    blueprint, roadmap_number, phase = _roadmap_position(index)
+    blueprint, roadmap_number, generation_round = _roadmap_position(index)
     spec = _build_huge_ai_spec(
         blueprint,
         roadmap_number=roadmap_number,
-        phase=phase,
+        generation_round=generation_round,
         global_index=max(int(index), 1),
     )
     return spec, spec.capability_type or "data_insight", spec.intended_domain or "AI functionality"

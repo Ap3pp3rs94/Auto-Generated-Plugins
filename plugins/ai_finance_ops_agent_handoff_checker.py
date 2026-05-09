@@ -249,36 +249,36 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             template = risk_action_templates.get(signal['category'])
             if template:
                 capability_actions.append({
-                    'phase': template[0],
+                    'stage': template[0],
                     'task': template[1] + ' ' + ', '.join(signal['signals']),
                     'blocking': template[2],
                     'source_signal': signal['category'],
                 })
         for index, existing_step in enumerate(current_plan[:3], 1):
             capability_actions.append({
-                'phase': 'align',
+                'stage': 'align',
                 'task': 'Reconcile existing plan step %d with the new objective: %s' % (index, str(existing_step)[:140]),
                 'blocking': False,
                 'source_signal': 'current_plan',
             })
         for blocker in blocked_steps[:3]:
             capability_actions.append({
-                'phase': 'unblock',
+                'stage': 'unblock',
                 'task': 'Resolve or route blocker before dependent work continues: ' + str(blocker)[:160],
                 'blocking': True,
                 'source_signal': 'blocked_steps',
             })
         sequenced_plan = []
         if not explicit_objective_text:
-            sequenced_plan.append({'step': 1, 'phase': 'clarify', 'task': 'Define the objective and acceptance criteria.', 'blocking': True})
-        sequenced_plan.append({'step': len(sequenced_plan) + 1, 'phase': 'plan', 'task': 'Break work into implementation, review, and verification checkpoints for ' + def_text[:160], 'blocking': True})
+            sequenced_plan.append({'step': 1, 'stage': 'clarify', 'task': 'Define the objective and acceptance criteria.', 'blocking': True})
+        sequenced_plan.append({'step': len(sequenced_plan) + 1, 'stage': 'plan', 'task': 'Break work into implementation, review, and verification checkpoints for ' + def_text[:160], 'blocking': True})
         for action in capability_actions:
             action = dict(action)
             action['step'] = len(sequenced_plan) + 1
             sequenced_plan.append(action)
-        sequenced_plan.append({'step': len(sequenced_plan) + 1, 'phase': 'execute', 'task': 'Complete the smallest reversible implementation unit.', 'blocking': False})
-        sequenced_plan.append({'step': len(sequenced_plan) + 1, 'phase': 'verify', 'task': 'Run tests or explicit checks tied to ' + objective_text[:140], 'blocking': True})
-        sequenced_plan.append({'step': len(sequenced_plan) + 1, 'phase': 'handoff', 'task': 'Package changed files, decisions, blockers, and verification evidence for the next agent.', 'blocking': True})
+        sequenced_plan.append({'step': len(sequenced_plan) + 1, 'stage': 'execute', 'task': 'Complete the smallest reversible implementation unit.', 'blocking': False})
+        sequenced_plan.append({'step': len(sequenced_plan) + 1, 'stage': 'verify', 'task': 'Run tests or explicit checks tied to ' + objective_text[:140], 'blocking': True})
+        sequenced_plan.append({'step': len(sequenced_plan) + 1, 'stage': 'handoff', 'task': 'Package changed files, decisions, blockers, and verification evidence for the next agent.', 'blocking': True})
         handoff_packet = {
             'objective': objective_text,
             'completed_steps': completed_steps,
@@ -300,7 +300,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             {'title': 'Specialized actions', 'detail': capability_actions or 'No specialized action was required beyond the standard plan.'},
         ]
         result['recommended_actions'] = [
-            {'action': item['task'], 'phase': item['phase'], 'blocking': item['blocking'], 'source_signal': item.get('source_signal', 'standard')} for item in sequenced_plan
+            {'action': item['task'], 'stage': item['stage'], 'blocking': item['blocking'], 'source_signal': item.get('source_signal', 'standard')} for item in sequenced_plan
         ]
         risk_score = round(min(0.92, max(0.12, 0.42 + risk_signal_score + 0.04 * len(blocked_steps) - min(0.18, len(completed_steps) * 0.04))), 2)
         result['scores'] = {'confidence': round(min(0.92, coverage), 2), 'plan_coverage': round(min(1.0, coverage + 0.08 + complexity_score), 2), 'handoff_readiness': round(0.48 + min(0.4, len(handoff_packet['parallelizable_work']) * 0.06 + len(sequenced_plan) * 0.018 + len(capability_actions) * 0.025), 2), 'risk': risk_score, 'complexity': round(complexity_score + risk_signal_score, 2)}

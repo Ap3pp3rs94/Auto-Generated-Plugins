@@ -192,9 +192,9 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             next_step = 'Draft PluginSpec blueprint for ' + desired_plugin
         elif logic_profile_id == 'plugin_logic_blueprint_designer_profile':
             logic_blueprint = [
-                {'phase': 'extract', 'rule': 'Read payload values for ' + desired_plugin},
-                {'phase': 'analyze', 'rule': 'Compute capability-specific signals from ' + ', '.join(plugin_keywords[:5])},
-                {'phase': 'construct', 'rule': 'Populate output fields from analysis, not constants'},
+                {'stage': 'extract', 'rule': 'Read payload values for ' + desired_plugin},
+                {'stage': 'analyze', 'rule': 'Compute capability-specific signals from ' + ', '.join(plugin_keywords[:5])},
+                {'stage': 'construct', 'rule': 'Populate output fields from analysis, not constants'},
             ]
             deterministic_rules = ['No external calls', 'No file mutation', 'Scores derive from observed signals', 'Actions include payload-specific targets']
             data_flow = {'inputs': ['payload', 'config', 'context'], 'analysis': plugin_keywords[:8], 'outputs': ['insights', 'actions', 'scores', 'details']}

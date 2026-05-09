@@ -390,7 +390,7 @@ class RunnerConfig:
     github_publish_enabled: bool = True
     github_remote: str = "origin"
     github_branch: str = "main"
-    allow_phase_expansion: bool = False
+    allow_upgrade_expansion: bool = False
     randomized_expansion: bool = True
 
     def validate(self) -> None:
@@ -509,17 +509,10 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
     """
     roadmap_size = len(AI_CAPABILITY_ROADMAP)
     for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
-        base = blueprint.slug
-        if slug == base:
+        if slug == blueprint.slug:
             return position
-        prefix = f"{base}_phase_"
-        if slug.startswith(prefix):
-            suffix = slug[len(prefix):]
-            if suffix.isdigit():
-                phase = max(int(suffix), 1)
-                return (phase - 1) * roadmap_size + position
     # Continuous expansion specs are generated deterministically after the
-    # curated roadmap. They are canonical modules, not phase upgrades, so scan a
+    # curated roadmap. They are canonical modules, so scan a
     # generous forward window to keep _next_ai_roadmap_index advancing.
     for idx in range(roadmap_size + 1, roadmap_size + 10000):
         try:
@@ -531,27 +524,27 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
     return None
 
 
-def _spec_phase(spec: PluginSpec) -> int:
+def _spec_generation_round(spec: PluginSpec) -> int:
     extra = getattr(spec, "extra", {}) or {}
     try:
-        return max(1, int(extra.get("phase", 1)))
+        return max(1, int(extra.get("generation_round", 1)))
     except Exception:
         return 1
 
 
 def _is_upgrade_attempt_spec(spec: PluginSpec) -> bool:
-    return _spec_phase(spec) > 1
+    return _spec_generation_round(spec) > 1
 
 
 def _canonical_retention_spec(spec: PluginSpec) -> PluginSpec:
     """
-    Convert a phase-expansion spec into a canonical base capability spec.
+    Convert an internal upgrade spec into a canonical base capability spec.
 
-    Phase expansion is an internal improvement attempt. It must never create a
-    second installable module whose only distinction is a _phase_N suffix.
+    Upgrade expansion is an internal improvement attempt. It must never create a
+    second installable module whose only distinction is metadata.
     """
-    phase = _spec_phase(spec)
-    if phase <= 1:
+    generation_round = _spec_generation_round(spec)
+    if generation_round <= 1:
         return spec
 
     extra = getattr(spec, "extra", {}) or {}
@@ -578,14 +571,14 @@ def _canonical_retention_spec(spec: PluginSpec) -> PluginSpec:
     base_spec.owner_id = getattr(spec, "owner_id", None)
     base_spec.tags = [
         tag for tag in list(getattr(spec, "tags", []) or [])
-        if not str(tag).startswith("phase_")
+        if str(tag).strip()
     ]
     if "capability_upgrade" not in base_spec.tags:
         base_spec.tags.append("capability_upgrade")
     base_spec.extra = dict(extra)
-    base_spec.extra["upgrade_attempt_phase"] = phase
-    base_spec.extra["phase"] = 1
-    base_spec.extra["retention_policy"] = "phase candidates overwrite the base capability only when they improve it"
+    base_spec.extra["upgrade_attempt_round"] = generation_round
+    base_spec.extra["generation_round"] = 1
+    base_spec.extra["retention_policy"] = "upgrade candidates overwrite the base capability only when they improve it"
     base_spec.extra["discard_if_not_better"] = True
     return base_spec
 
@@ -594,7 +587,7 @@ def _next_ai_roadmap_index(existing_slugs: Set[str]) -> int:
     """
     Advance from existing AI-roadmap plugins only.
 
-    Old non-AI modules do not push the factory deep into later AI phases.
+    Old non-AI modules do not push the factory deep into later AI capability batches.
     """
     existing_indexes = [
         idx for slug in existing_slugs
@@ -612,8 +605,8 @@ def _randomized_ai_expansion_indexes(existing_slugs: Set[str]) -> list[int]:
 
     This keeps autonomous mode varied after the curated roadmap is complete,
     while still anchoring every candidate to an approved capability family and
-    registered profile. These indexes may be named as phases internally, but a
-    retained artifact must overwrite the canonical base module or be discarded.
+    registered profile. A retained artifact must overwrite the canonical base
+    module or be discarded.
     """
     roadmap_size = len(AI_CAPABILITY_ROADMAP)
     existing_indexes = [
@@ -621,12 +614,12 @@ def _randomized_ai_expansion_indexes(existing_slugs: Set[str]) -> list[int]:
         for idx in [_roadmap_slug_index(slug)]
         if idx is not None
     ]
-    highest_phase = max(((idx - 1) // roadmap_size) + 1 for idx in existing_indexes) if existing_indexes else 1
-    max_candidate_phase = max(2, highest_phase + 2)
+    highest_round = max(((idx - 1) // roadmap_size) + 1 for idx in existing_indexes) if existing_indexes else 1
+    max_candidate_round = max(2, highest_round + 2)
     candidates: list[int] = []
-    for phase in range(2, max_candidate_phase + 1):
+    for generation_round in range(2, max_candidate_round + 1):
         for position in range(1, roadmap_size + 1):
-            idx = (phase - 1) * roadmap_size + position
+            idx = (generation_round - 1) * roadmap_size + position
             spec, _, _ = build_next_spec(idx)
             if spec.slug not in existing_slugs and not (PLUGINS_DIR / f"{spec.slug}.py").exists():
                 candidates.append(idx)
@@ -694,7 +687,7 @@ def _normalize_ai_roadmap_state(state: Dict[str, Any]) -> None:
         if not isinstance(item, dict):
             continue
         slug = str(item.get("slug") or "")
-        if not slug or "_phase_" in slug:
+        if not slug:
             continue
         by_slug[slug] = item
     state["completed"] = list(by_slug.values())[-100:]
@@ -770,7 +763,7 @@ def _upgrade_attempt_record(
         "canonical_slug": canonical_spec.slug,
         "source_name": source_spec.name,
         "canonical_name": canonical_spec.name,
-        "phase": _spec_phase(source_spec),
+        "generation_round": _spec_generation_round(source_spec),
         "status": status,
         "reason": reason[:1000],
         "knowledge_fingerprint": _upgrade_knowledge_fingerprint(),
@@ -862,9 +855,9 @@ def _seed_retained_canonical_upgrade_memory(
     """
     Mark existing registered-profile capabilities as retained upgrade baselines.
 
-    Phase expansion is an upgrade mechanism, not permission to mint duplicates.
-    If the canonical module already exists with the registered profile, a phase
-    suffix alone is not new knowledge and should not create a candidate. The
+    Upgrade expansion is an improvement mechanism, not permission to mint
+    duplicates. If the canonical module already exists with the registered
+    profile, a metadata-only retry is not new knowledge. The
     generation fingerprint keeps this from hiding future improvements after the
     factory's specs, profiles, templates, or Station B rules change.
     """
@@ -885,21 +878,19 @@ def _seed_retained_canonical_upgrade_memory(
         if not _existing_canonical_has_registered_profile(canonical_slug):
             continue
 
-        phase_spec, _, _ = build_next_spec(position)
-        phase_spec = copy.deepcopy(phase_spec)
-        phase_spec.slug = f"{phase_spec.slug}_phase_2"
-        phase_spec.name = f"{phase_spec.name} Phase 2"
-        phase_spec.extra = dict(getattr(phase_spec, "extra", {}) or {})
-        phase_spec.extra["phase"] = 2
-        canonical_spec = _canonical_retention_spec(phase_spec)
+        upgrade_spec, _, _ = build_next_spec(position)
+        upgrade_spec = copy.deepcopy(upgrade_spec)
+        upgrade_spec.extra = dict(getattr(upgrade_spec, "extra", {}) or {})
+        upgrade_spec.extra["generation_round"] = 2
+        canonical_spec = _canonical_retention_spec(upgrade_spec)
         _upgrade_attempt_record(
             state=state,
-            source_spec=phase_spec,
+            source_spec=upgrade_spec,
             canonical_spec=canonical_spec,
             status="retained",
             reason=(
                 "canonical capability already has the current registered profile; "
-                "phase suffix alone is not an improvement"
+                "metadata-only retry is not an improvement"
             ),
             persist=False,
         )
@@ -1435,14 +1426,14 @@ def _capability_quality_score(output: Dict[str, Any]) -> float:
     return round(score, 4)
 
 
-async def _phase_candidate_improves_existing(
+async def _upgrade_candidate_improves_existing(
     *,
     candidate_path: Path,
     existing_path: Path,
     spec: PluginSpec,
 ) -> Tuple[bool, str]:
     """
-    Decide whether a phase candidate earns the right to overwrite the base module.
+    Decide whether an upgrade candidate earns the right to overwrite the base module.
 
     Passing normal validation is not enough. The candidate must produce a
     meaningfully stronger output than the currently retained capability.
@@ -1456,13 +1447,13 @@ async def _phase_candidate_improves_existing(
         {
             "task": "Validate a generated AI capability before publishing it.",
             "objective": "Reject shallow or duplicate output and keep only a capability-specific improvement.",
-            "prompt": "Make this better without just renaming it as a phase.",
-            "constraints": ["must improve the canonical capability", "discard if not better", "no duplicate phase module"],
+            "prompt": "Make this better without just renaming it.",
+            "constraints": ["must improve the canonical capability", "discard if not better", "no duplicate module"],
             "candidate_outputs": [
                 {"summary": "Generic capability output with stock advice."},
                 {"summary": "Specific capability output with measurable validation evidence."},
             ],
-            "quality_failures": ["phase suffix duplicate", "shallow recommendation"],
+            "quality_failures": ["duplicate capability", "shallow recommendation"],
             "current_plan": ["generate candidate", "compare with canonical module", "overwrite only if better"],
             "blocked_steps": ["need proof this candidate improves the retained capability"],
         },
@@ -2012,7 +2003,7 @@ async def _maybe_evaluate_plugin(
     config: RunnerConfig,
 ) -> Optional[Dict[str, Any]]:
     """
-    Optional Station D evaluation / critic phase.
+    Optional Station D evaluation / critic stage.
 
     Behavior:
     - Imports the plugin module from plugin_path.
@@ -2217,7 +2208,7 @@ async def run_factory(config: RunnerConfig) -> None:
         intended_domain: Optional[str] = None
 
         randomized_indexes: list[int] = []
-        if not config.allow_phase_expansion and index_counter > len(AI_CAPABILITY_ROADMAP):
+        if not config.allow_upgrade_expansion and index_counter > len(AI_CAPABILITY_ROADMAP):
             if config.randomized_expansion:
                 next_candidate, _, _ = build_next_spec(index_counter)
                 if (getattr(next_candidate, "extra", {}) or {}).get("continuous_expansion"):
@@ -2295,14 +2286,14 @@ async def run_factory(config: RunnerConfig) -> None:
                 )
                 continue
             if (
-                not config.allow_phase_expansion
+                not config.allow_upgrade_expansion
                 and not randomized_indexes
-                and int((getattr(candidate_spec, "extra", {}) or {}).get("phase", 1)) > 1
+                and int((getattr(candidate_spec, "extra", {}) or {}).get("generation_round", 1)) > 1
             ):
                 LOG.info(
-                    "Skipping phase expansion spec while disabled: slug=%r phase=%r",
+                    "Skipping upgrade expansion spec while disabled: slug=%r round=%r",
                     candidate_spec.slug,
-                    (getattr(candidate_spec, "extra", {}) or {}).get("phase"),
+                    (getattr(candidate_spec, "extra", {}) or {}).get("generation_round"),
                 )
                 break
             if _is_duplicate_spec(
@@ -2353,7 +2344,7 @@ async def run_factory(config: RunnerConfig) -> None:
 
         if is_upgrade_attempt:
             LOG.info(
-                "Treating phase candidate %r as an upgrade attempt for canonical capability %r.",
+                "Treating upgrade candidate %r as an attempt for canonical capability %r.",
                 source_spec.slug,
                 spec.slug,
             )
@@ -2738,7 +2729,7 @@ async def run_factory(config: RunnerConfig) -> None:
         if is_upgrade_attempt:
             existing_canonical_path = PLUGINS_DIR / f"{spec.slug}.py"
             try:
-                upgrade_ok, upgrade_reason = await _phase_candidate_improves_existing(
+                upgrade_ok, upgrade_reason = await _upgrade_candidate_improves_existing(
                     candidate_path=candidate_path,
                     existing_path=existing_canonical_path,
                     spec=spec,
@@ -2749,19 +2740,19 @@ async def run_factory(config: RunnerConfig) -> None:
 
             if upgrade_ok:
                 LOG.info(
-                    "Phase candidate accepted as canonical upgrade for %r: %s",
+                    "Upgrade candidate accepted as canonical upgrade for %r: %s",
                     spec.slug,
                     upgrade_reason,
                 )
             else:
                 LOG.error(
-                    "Discarding phase candidate for %r because it did not improve the canonical capability: %s",
+                    "Discarding upgrade candidate for %r because it did not improve the canonical capability: %s",
                     spec.slug,
                     upgrade_reason,
                 )
                 try:
                     rejected_path = _discard_candidate_plugin(candidate_path, reason=upgrade_reason)
-                    LOG.info("Rejected non-improving phase candidate moved to %s", rejected_path)
+                    LOG.info("Rejected non-improving upgrade candidate moved to %s", rejected_path)
                 except Exception:
                     LOG.warning("Unable to discard non-improving candidate %r", spec.slug, exc_info=True)
                 if source_spec is not None:
@@ -3035,9 +3026,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Git branch pushed after each generated plugin commit.",
     )
     parser.add_argument(
-        "--allow-phase-expansion",
+        "--allow-upgrade-expansion",
         action="store_true",
-        default=_env_bool("FRANCIS_FACTORY_ALLOW_PHASE_EXPANSION", False),
+        default=_env_bool("FRANCIS_FACTORY_ALLOW_UPGRADE_EXPANSION", False),
         help="Allow internal second-pass upgrade attempts after the unique AI roadmap is complete.",
     )
     parser.add_argument(
@@ -3097,7 +3088,7 @@ def build_config_from_args(argv: Optional[Sequence[str]] = None) -> tuple[Runner
         github_publish_enabled=not args.no_github_publish,
         github_remote=args.github_remote,
         github_branch=args.github_branch,
-        allow_phase_expansion=args.allow_phase_expansion,
+        allow_upgrade_expansion=args.allow_upgrade_expansion,
         randomized_expansion=not args.no_randomized_expansion,
     )
     cfg.validate()

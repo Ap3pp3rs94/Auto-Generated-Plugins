@@ -142,10 +142,6 @@ class CapabilityProfileTests(unittest.TestCase):
         missing = [item.slug for item in AI_CAPABILITY_ROADMAP if not registered_profile_id(item.slug)]
 
         self.assertEqual(missing, [])
-        self.assertEqual(
-            registered_profile_id(AI_CAPABILITY_ROADMAP[0].slug + "_phase_2"),
-            registered_profile_id(AI_CAPABILITY_ROADMAP[0].slug),
-        )
 
     def test_profile_plugins_run_with_registered_profile_ids(self) -> None:
         for slug, payload in PROFILE_PAYLOADS.items():
