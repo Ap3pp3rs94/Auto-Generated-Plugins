@@ -201,7 +201,8 @@ The runner defaults are tuned for local Ollama:
 ```text
 model: llama3.1:8b
 temperature: 0.25
-max tokens: 1024
+max tokens: 4096
+context length: 8192
 timeout: 900 seconds
 sleep: 15 seconds
 ```
@@ -239,7 +240,8 @@ Useful flags:
 --max-plugins 3
 --loop
 --model llama3.1:8b
---max-tokens 1024
+--max-tokens 4096
+--context-length 8192
 --timeout-seconds 900
 --sleep-seconds 15
 --github-remote origin

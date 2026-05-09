@@ -40,12 +40,18 @@ class RunnerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             RunnerConfig(llm_timeout_seconds=0).validate()
 
+    def test_context_must_exceed_max_tokens(self) -> None:
+        with self.assertRaises(ValueError):
+            RunnerConfig(llm_max_tokens=4096, llm_context_length=4096).validate()
+
     def test_github_publish_defaults_to_enabled(self) -> None:
         config, _, _ = build_config_from_args(["--once"])
 
         self.assertTrue(config.github_publish_enabled)
         self.assertEqual(config.github_remote, "origin")
         self.assertEqual(config.github_branch, "main")
+        self.assertEqual(config.llm_max_tokens, 4096)
+        self.assertEqual(config.llm_context_length, 8192)
 
     def test_github_publish_can_be_disabled(self) -> None:
         config, _, _ = build_config_from_args(["--once", "--no-github-publish"])

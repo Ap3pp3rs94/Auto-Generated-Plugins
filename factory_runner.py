@@ -80,7 +80,8 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
     class StationBConfig:  # type: ignore[no-redef]
         model: str = "llama3.1:8b"
         temperature: float = 0.25
-        max_tokens: int = 1024
+        max_tokens: int = 4096
+        context_length: int = 8192
         timeout_seconds: int = 900
         max_retries: int = 1
         retry_backoff_seconds: float = 0.0
@@ -360,7 +361,8 @@ class RunnerConfig:
     # LLM CONFIG (Station B)
     llm_model: str = "llama3.1:8b"      # Recommended local model
     llm_temperature: float = 0.25
-    llm_max_tokens: int = 1024
+    llm_max_tokens: int = 4096
+    llm_context_length: int = 8192
     llm_timeout_seconds: int = 900
 
     # Category rotation (to avoid oversaturating a single category)
@@ -392,6 +394,10 @@ class RunnerConfig:
             raise ValueError("llm_temperature must be between 0.0 and 2.0.")
         if self.llm_max_tokens <= 0:
             raise ValueError("llm_max_tokens must be positive.")
+        if self.llm_context_length <= 0:
+            raise ValueError("llm_context_length must be positive.")
+        if self.llm_context_length <= self.llm_max_tokens:
+            raise ValueError("llm_context_length must be greater than llm_max_tokens.")
         if self.llm_timeout_seconds <= 0:
             raise ValueError("llm_timeout_seconds must be positive.")
         if self.max_per_category is not None and self.max_per_category <= 0:
@@ -411,6 +417,7 @@ class RunnerConfig:
             model=self.llm_model,
             temperature=self.llm_temperature,
             max_tokens=self.llm_max_tokens,
+            context_length=self.llm_context_length,
             timeout_seconds=self.llm_timeout_seconds,
             max_retries=1,
             retry_backoff_seconds=0.0,
@@ -2019,8 +2026,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=_env_int("FRANCIS_FACTORY_MAX_TOKENS", 1024),
+        default=_env_int("FRANCIS_FACTORY_MAX_TOKENS", 4096),
         help="Station B maximum output tokens.",
+    )
+    parser.add_argument(
+        "--context-length",
+        type=int,
+        default=_env_int("FRANCIS_FACTORY_CONTEXT_LENGTH", 8192),
+        help="Station B Ollama context length. Must exceed --max-tokens.",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -2119,6 +2132,7 @@ def build_config_from_args(argv: Optional[Sequence[str]] = None) -> tuple[Runner
         llm_model=args.model,
         llm_temperature=args.temperature,
         llm_max_tokens=args.max_tokens,
+        llm_context_length=args.context_length,
         llm_timeout_seconds=args.timeout_seconds,
         rotate_categories=not args.no_category_rotation,
         max_per_category=args.max_per_category,
