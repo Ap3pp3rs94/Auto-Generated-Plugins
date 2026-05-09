@@ -17,8 +17,10 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
 
 try:
     from factory.profiles import registered_profile_id
+    from factory.spec_builder import AI_CAPABILITY_ROADMAP
 except ModuleNotFoundError:
     from profiles import registered_profile_id
+    from spec_builder import AI_CAPABILITY_ROADMAP
 
 
 PROFILE_PAYLOADS = {
@@ -57,6 +59,15 @@ PROFILE_PAYLOADS = {
 
 
 class CapabilityProfileTests(unittest.TestCase):
+    def test_every_ai_roadmap_slug_has_registered_profile(self) -> None:
+        missing = [item.slug for item in AI_CAPABILITY_ROADMAP if not registered_profile_id(item.slug)]
+
+        self.assertEqual(missing, [])
+        self.assertEqual(
+            registered_profile_id(AI_CAPABILITY_ROADMAP[0].slug + "_phase_2"),
+            registered_profile_id(AI_CAPABILITY_ROADMAP[0].slug),
+        )
+
     def test_profile_plugins_run_with_registered_profile_ids(self) -> None:
         for slug, payload in PROFILE_PAYLOADS.items():
             with self.subTest(slug=slug):

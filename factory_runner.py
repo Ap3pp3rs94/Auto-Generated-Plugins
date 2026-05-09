@@ -1663,6 +1663,24 @@ async def run_factory(config: RunnerConfig) -> None:
                         profile_id,
                         spec.slug,
                     )
+            else:
+                LOG.error(
+                    "Rejecting AI roadmap plugin %r because no capability profile is registered.",
+                    spec.slug,
+                )
+                _se_record(
+                    EVENT_FACTORY_STATION_B_ERROR,
+                    slug=spec.slug,
+                    category=getattr(spec, "category", None),
+                    capability_type=capability_type,
+                    domain=intended_domain,
+                    error="missing capability profile",
+                    rejected=True,
+                )
+                if not config.loop_forever:
+                    break
+                await asyncio.sleep(config.sleep_seconds)
+                continue
 
         # -----------------------------------------------------
         # WRITE PLUGIN FILE
