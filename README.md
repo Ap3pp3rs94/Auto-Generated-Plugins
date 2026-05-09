@@ -202,7 +202,7 @@ The runner defaults are tuned for local Ollama:
 model: llama3.1:8b
 temperature: 0.25
 max tokens: 1024
-timeout: 240 seconds
+timeout: 900 seconds
 sleep: 15 seconds
 ```
 
@@ -240,7 +240,7 @@ Useful flags:
 --loop
 --model llama3.1:8b
 --max-tokens 1024
---timeout-seconds 240
+--timeout-seconds 900
 --sleep-seconds 15
 --github-remote origin
 --github-branch main

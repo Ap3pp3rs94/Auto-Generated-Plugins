@@ -81,7 +81,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
         model: str = "llama3.1:8b"
         temperature: float = 0.25
         max_tokens: int = 1024
-        timeout_seconds: int = 240
+        timeout_seconds: int = 900
         max_retries: int = 1
         retry_backoff_seconds: float = 0.0
 
@@ -361,7 +361,7 @@ class RunnerConfig:
     llm_model: str = "llama3.1:8b"      # Recommended local model
     llm_temperature: float = 0.25
     llm_max_tokens: int = 1024
-    llm_timeout_seconds: int = 240
+    llm_timeout_seconds: int = 900
 
     # Category rotation (to avoid oversaturating a single category)
     rotate_categories: bool = True
@@ -2025,7 +2025,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--timeout-seconds",
         type=int,
-        default=_env_int("FRANCIS_FACTORY_TIMEOUT_SECONDS", 240),
+        default=_env_int("FRANCIS_FACTORY_TIMEOUT_SECONDS", 900),
         help="Station B LLM timeout in seconds.",
     )
     parser.add_argument(
