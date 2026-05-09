@@ -994,6 +994,16 @@ PROFILE_BUILDERS: Dict[str, tuple[str, Callable[[PluginSpec, Optional[str], str,
     "ai_response_merge_planner": ("response_merge_planner_profile", _response_comparator),
     "ai_memory_fact_extractor": ("memory_fact_extractor_profile", _memory_compression),
     "ai_regression_watchlist_builder": ("regression_watchlist_builder_profile", _prompt_test_cases),
+    "ai_grounded_answer_planner": ("grounded_answer_planner_profile", _retrieval_query),
+    "ai_tool_result_consistency_checker": ("tool_result_consistency_checker_profile", _workflow_debugger),
+    "ai_operator_status_brief_builder": ("operator_status_brief_builder_profile", _progress_tracker),
+    "ai_prompt_injection_surface_scanner": ("prompt_injection_surface_scanner_profile", _instruction_conflicts),
+    "ai_workflow_retry_strategy_planner": ("workflow_retry_strategy_planner_profile", _workflow_debugger),
+    "ai_model_selection_scorecard": ("model_selection_scorecard_profile", _capability_router),
+    "ai_requirement_gap_analyzer": ("requirement_gap_analyzer_profile", _eval_rubric),
+    "ai_artifact_release_note_generator": ("artifact_release_note_generator_profile", _progress_tracker),
+    "ai_data_contract_mapper": ("data_contract_mapper_profile", _structured_prompt_builder),
+    "ai_autonomous_run_governor": ("autonomous_run_governor_profile", _automation_safety),
 }
 
 

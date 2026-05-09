@@ -23,6 +23,7 @@ env/
 logs/
 *.log
 .factory_runner.lock
+.quality_runner.lock
 .candidate_plugins/
 .quality_candidates/
 registry/*.tmp

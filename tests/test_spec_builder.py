@@ -33,9 +33,10 @@ class SpecBuilderTests(unittest.TestCase):
         slugs = [build_next_spec(i)[0].slug for i in range(1, len(AI_CAPABILITY_ROADMAP) + 1)]
 
         self.assertEqual(len(slugs), len(set(slugs)))
-        self.assertGreaterEqual(len(slugs), 30)
+        self.assertGreaterEqual(len(slugs), 40)
         self.assertIn("ai_citation_need_detector", slugs)
         self.assertIn("ai_regression_watchlist_builder", slugs)
+        self.assertIn("ai_autonomous_run_governor", slugs)
 
     def test_second_phase_slug_is_available_for_explicit_expansion(self) -> None:
         first_spec = build_next_spec(1)[0]
