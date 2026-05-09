@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/peppera091/francis
-EnvironmentFile=-/home/peppera091/francis/factory/production.env
-ExecStart=/home/peppera091/francis/.venv/bin/python -m factory.factory_runner
+WorkingDirectory=/path/to/Auto-Generated-Plugins
+EnvironmentFile=-/path/to/Auto-Generated-Plugins/production.env
+ExecStart=/path/to/Auto-Generated-Plugins/.venv/bin/python -m factory_runner
 Restart=on-failure
 RestartSec=20
 TimeoutStopSec=30

@@ -5,11 +5,16 @@ from pathlib import Path
 import sys
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 FRANCIS_ROOT = Path(__file__).resolve().parents[2]
-if str(FRANCIS_ROOT) not in sys.path:
-    sys.path.insert(0, str(FRANCIS_ROOT))
+for path in (REPO_ROOT, FRANCIS_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
-from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+try:
+    from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+except ModuleNotFoundError:
+    from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
 
 
 class SpecBuilderTests(unittest.TestCase):

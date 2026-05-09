@@ -5,11 +5,16 @@ from pathlib import Path
 import sys
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 FRANCIS_ROOT = Path(__file__).resolve().parents[2]
-if str(FRANCIS_ROOT) not in sys.path:
-    sys.path.insert(0, str(FRANCIS_ROOT))
+for path in (REPO_ROOT, FRANCIS_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
-from factory.factory_runner import RunnerConfig, build_config_from_args
+try:
+    from factory.factory_runner import RunnerConfig, build_config_from_args
+except ModuleNotFoundError:
+    from factory_runner import RunnerConfig, build_config_from_args
 
 
 class RunnerConfigTests(unittest.TestCase):
