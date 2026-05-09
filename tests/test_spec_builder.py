@@ -13,10 +13,10 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
 
 try:
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
-    from factory.factory_runner import _randomized_ai_expansion_indexes
+    from factory.factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
 except ModuleNotFoundError:
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
-    from factory_runner import _randomized_ai_expansion_indexes
+    from factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
 
 
 class SpecBuilderTests(unittest.TestCase):
@@ -43,24 +43,31 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertIn("ai_plugin_quality_gate_designer", slugs)
         self.assertIn("ai_plugin_factory_backlog_planner", slugs)
 
-    def test_second_phase_slug_is_available_for_explicit_expansion(self) -> None:
+    def test_phase_slug_is_internal_upgrade_candidate(self) -> None:
         first_spec = build_next_spec(1)[0]
         second_phase_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]
+        retention_spec = _canonical_retention_spec(second_phase_spec)
 
         self.assertNotEqual(first_spec.slug, second_phase_spec.slug)
         self.assertTrue(second_phase_spec.slug.endswith("_phase_2"))
         self.assertEqual(second_phase_spec.extra["phase"], 2)
         self.assertIn("Phase 2", second_phase_spec.name)
+        self.assertEqual(retention_spec.slug, first_spec.slug)
+        self.assertEqual(retention_spec.name, first_spec.name)
+        self.assertEqual(retention_spec.extra["upgrade_attempt_phase"], 2)
+        self.assertTrue(retention_spec.extra["discard_if_not_better"])
 
-    def test_randomized_expansion_uses_bounded_phase_variants(self) -> None:
+    def test_randomized_expansion_uses_bounded_upgrade_candidates(self) -> None:
         existing = {build_next_spec(i)[0].slug for i in range(1, len(AI_CAPABILITY_ROADMAP) + 1)}
 
         candidates = _randomized_ai_expansion_indexes(existing)
 
         self.assertGreaterEqual(len(candidates), len(AI_CAPABILITY_ROADMAP))
         sample_spec = build_next_spec(candidates[0])[0]
+        retention_spec = _canonical_retention_spec(sample_spec)
         self.assertTrue(sample_spec.slug.endswith("_phase_2") or "_phase_" in sample_spec.slug)
         self.assertNotIn(sample_spec.slug, existing)
+        self.assertIn(retention_spec.slug, existing)
         self.assertIn(sample_spec.extra["phase"], {2, 3})
 
 

@@ -518,6 +518,65 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
     return None
 
 
+def _spec_phase(spec: PluginSpec) -> int:
+    extra = getattr(spec, "extra", {}) or {}
+    try:
+        return max(1, int(extra.get("phase", 1)))
+    except Exception:
+        return 1
+
+
+def _is_upgrade_attempt_spec(spec: PluginSpec) -> bool:
+    return _spec_phase(spec) > 1
+
+
+def _canonical_retention_spec(spec: PluginSpec) -> PluginSpec:
+    """
+    Convert a phase-expansion spec into a canonical base capability spec.
+
+    Phase expansion is an internal improvement attempt. It must never create a
+    second installable module whose only distinction is a _phase_N suffix.
+    """
+    phase = _spec_phase(spec)
+    if phase <= 1:
+        return spec
+
+    extra = getattr(spec, "extra", {}) or {}
+    roadmap_number = extra.get("roadmap_number")
+    if not isinstance(roadmap_number, int) or roadmap_number < 1:
+        return spec
+
+    base_spec, _, _ = build_next_spec(roadmap_number)
+    base_spec.goal = (
+        f"Improve {base_spec.name}: preserve the original capability, add stronger "
+        "edge-case handling, expose clearer user-facing progress signals, and "
+        "produce more actionable next steps."
+    )
+    base_spec.use_cases = list(getattr(spec, "use_cases", []) or base_spec.use_cases)
+    base_spec.example_payload = getattr(spec, "example_payload", None)
+    base_spec.problem_statement = getattr(spec, "problem_statement", None)
+    base_spec.primary_inputs = getattr(spec, "primary_inputs", None)
+    base_spec.primary_outputs = getattr(spec, "primary_outputs", None)
+    base_spec.constraints = getattr(spec, "constraints", None)
+    base_spec.example_use_cases = list(getattr(spec, "example_use_cases", []) or [])
+    base_spec.io_contract = getattr(spec, "io_contract", None)
+    base_spec.capability_type = getattr(spec, "capability_type", None)
+    base_spec.intended_domain = getattr(spec, "intended_domain", None)
+    base_spec.owner_id = getattr(spec, "owner_id", None)
+    base_spec.tags = [
+        tag for tag in list(getattr(spec, "tags", []) or [])
+        if not str(tag).startswith("phase_")
+    ]
+    if "capability_upgrade" not in base_spec.tags:
+        base_spec.tags.append("capability_upgrade")
+    base_spec.extra = dict(extra)
+    base_spec.extra["upgrade_attempt_phase"] = phase
+    base_spec.extra["phase"] = 1
+    base_spec.extra["retention_policy"] = "phase candidates overwrite the base capability only when they improve it"
+    base_spec.extra["discard_if_not_better"] = True
+    return base_spec
+
+
 def _next_ai_roadmap_index(existing_slugs: Set[str]) -> int:
     """
     Advance from existing AI-roadmap plugins only.
@@ -1057,6 +1116,134 @@ async def _semantic_depth_check(plugin_path: Path, spec: PluginSpec) -> Tuple[bo
     )
 
 
+def _module_from_plugin_path(plugin_path: Path, *, slug: str, purpose: str) -> Any:
+    module_name = f"{purpose}_{slug}_{os.getpid()}".replace("-", "_")
+    module_spec = importlib.util.spec_from_file_location(module_name, plugin_path)
+    if module_spec is None or module_spec.loader is None:
+        raise RuntimeError(f"unable to import {plugin_path}")
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)  # type: ignore[call-arg]
+    return module
+
+
+def _capability_quality_score(output: Dict[str, Any]) -> float:
+    text = _jsonish_text(output, max_chars=20000)
+    if any(marker in text for marker in ["fallback applied", "capability_profile_error", "no-op analysis", "semantic_repair"]):
+        return -1.0
+
+    summary = output.get("summary")
+    insights = output.get("primary_insights")
+    actions = output.get("recommended_actions")
+    scores = output.get("scores") if isinstance(output.get("scores"), dict) else {}
+    details = output.get("details") if isinstance(output.get("details"), dict) else {}
+    progress = output.get("progress_state") if isinstance(output.get("progress_state"), dict) else {}
+    user_exp = output.get("user_experience") if isinstance(output.get("user_experience"), dict) else {}
+    fun = output.get("fun_mode") if isinstance(output.get("fun_mode"), dict) else {}
+
+    score = 0.0
+    if isinstance(summary, str) and len(summary.strip()) >= 30:
+        score += 0.10
+    if isinstance(insights, list) and insights:
+        score += min(0.18, 0.045 * len(insights))
+    if isinstance(actions, list) and actions:
+        score += min(0.24, 0.06 * len(actions))
+        action_words = _word_set(_jsonish_text(actions, max_chars=8000))
+        score += min(0.12, 0.006 * len(action_words))
+    confidence = scores.get("confidence")
+    if isinstance(confidence, (int, float)):
+        score += max(0.0, min(0.18, float(confidence) * 0.18))
+    score += min(0.18, 0.018 * len([key for key, value in details.items() if value not in (None, "", [], {})]))
+    if details.get("logic_profile_id"):
+        score += 0.08
+    if progress.get("next_step"):
+        score += 0.05
+    if user_exp.get("plain_language_takeaway"):
+        score += 0.04
+    if fun.get("challenge_label") or fun.get("score_badge"):
+        score += 0.02
+    return round(score, 4)
+
+
+async def _phase_candidate_improves_existing(
+    *,
+    candidate_path: Path,
+    existing_path: Path,
+    spec: PluginSpec,
+) -> Tuple[bool, str]:
+    """
+    Decide whether a phase candidate earns the right to overwrite the base module.
+
+    Passing normal validation is not enough. The candidate must produce a
+    meaningfully stronger output than the currently retained capability.
+    """
+    if not existing_path.exists():
+        return True, "upgrade_gate: no existing base capability; candidate may become canonical"
+
+    candidate_module = _module_from_plugin_path(candidate_path, slug=spec.slug, purpose="upgrade_candidate")
+    existing_module = _module_from_plugin_path(existing_path, slug=spec.slug, purpose="upgrade_existing")
+    probe_payloads = [
+        {
+            "task": "Validate a generated AI capability before publishing it.",
+            "objective": "Reject shallow or duplicate output and keep only a capability-specific improvement.",
+            "prompt": "Make this better without just renaming it as a phase.",
+            "constraints": ["must improve the canonical capability", "discard if not better", "no duplicate phase module"],
+            "candidate_outputs": [
+                {"summary": "Generic capability output with stock advice."},
+                {"summary": "Specific capability output with measurable validation evidence."},
+            ],
+            "quality_failures": ["phase suffix duplicate", "shallow recommendation"],
+            "current_plan": ["generate candidate", "compare with canonical module", "overwrite only if better"],
+            "blocked_steps": ["need proof this candidate improves the retained capability"],
+        },
+        {
+            "task": "Prepare a production-safe AI workflow upgrade.",
+            "objective": "Find concrete risks, verification checks, and the next action.",
+            "prompt": "Review auth/database risk, citation gaps, and tool-result mismatch before release.",
+            "constraints": ["include rollback evidence", "cite uncertainty", "produce non-empty actions"],
+            "trace": [{"tool": "retrieval", "status": "partial", "issue": "citation mismatch"}],
+            "completed_steps": ["generated candidate module"],
+            "blocked_steps": ["prove it is more useful than the current module"],
+        },
+    ]
+
+    candidate_scores: list[float] = []
+    existing_scores: list[float] = []
+    candidate_surfaces: list[str] = []
+    existing_surfaces: list[str] = []
+    for idx, payload in enumerate(probe_payloads, start=1):
+        candidate_output = await _invoke_plugin_for_semantic_check(candidate_module, payload, f"{spec.slug}-candidate-{idx}")
+        existing_output = await _invoke_plugin_for_semantic_check(existing_module, payload, f"{spec.slug}-existing-{idx}")
+        candidate_scores.append(_capability_quality_score(candidate_output))
+        existing_scores.append(_capability_quality_score(existing_output))
+        candidate_surfaces.append(_jsonish_text(_decision_surface(candidate_output), max_chars=10000))
+        existing_surfaces.append(_jsonish_text(_decision_surface(existing_output), max_chars=10000))
+
+    candidate_avg = sum(candidate_scores) / max(1, len(candidate_scores))
+    existing_avg = sum(existing_scores) / max(1, len(existing_scores))
+    candidate_words = _word_set(" ".join(candidate_surfaces))
+    existing_words = _word_set(" ".join(existing_surfaces))
+    union = candidate_words | existing_words
+    similarity = (len(candidate_words & existing_words) / len(union)) if union else 1.0
+
+    if candidate_avg < existing_avg + 0.05:
+        return (
+            False,
+            f"upgrade_gate: candidate not better than canonical capability "
+            f"(candidate={candidate_avg:.3f}, existing={existing_avg:.3f}, similarity={similarity:.2f})",
+        )
+    if similarity > 0.93 and candidate_avg < existing_avg + 0.10:
+        return (
+            False,
+            f"upgrade_gate: candidate output is too similar to canonical capability "
+            f"(candidate={candidate_avg:.3f}, existing={existing_avg:.3f}, similarity={similarity:.2f})",
+        )
+    return (
+        True,
+        f"upgrade_gate: candidate improves canonical capability "
+        f"(candidate={candidate_avg:.3f}, existing={existing_avg:.3f}, similarity={similarity:.2f})",
+    )
+
+
 def _capability_semantic_contract(
     spec: PluginSpec,
     result_a: Dict[str, Any],
@@ -1200,7 +1387,7 @@ def _publish_plugin_to_github(
                 [
                     "commit",
                     "-m",
-                    f"Add generated plugin {spec.slug}",
+                    f"Publish generated capability {spec.slug}",
                     "--",
                     rel,
                 ]
@@ -1752,6 +1939,8 @@ async def run_factory(config: RunnerConfig) -> None:
         # BUILD NEXT AI ROADMAP SPEC
         # -----------------------------------------------------
         spec: Optional[PluginSpec] = None
+        source_spec: Optional[PluginSpec] = None
+        is_upgrade_attempt = False
         capability_type: Optional[str] = None
         intended_domain: Optional[str] = None
 
@@ -1825,20 +2014,32 @@ async def run_factory(config: RunnerConfig) -> None:
                     index_counter = candidate_index + 1
                 continue
 
-            spec = candidate_spec
+            source_spec = candidate_spec
+            spec = _canonical_retention_spec(candidate_spec)
+            is_upgrade_attempt = _is_upgrade_attempt_spec(candidate_spec)
             capability_type = candidate_capability
             intended_domain = candidate_domain
             selected_index = candidate_index
             break
 
-        if spec is None or capability_type is None or intended_domain is None:
+        if spec is None or source_spec is None or capability_type is None or intended_domain is None:
             LOG.error("Unable to find a non-duplicate AI roadmap spec; stopping factory run.")
             break
 
         spec.owner_id = config.user_id
         spec.capability_type = capability_type
         spec.intended_domain = intended_domain
+        source_spec.owner_id = config.user_id
+        source_spec.capability_type = capability_type
+        source_spec.intended_domain = intended_domain
         _attach_ai_handoff_to_spec(spec, ai_roadmap_state)
+
+        if is_upgrade_attempt:
+            LOG.info(
+                "Treating phase candidate %r as an upgrade attempt for canonical capability %r.",
+                source_spec.slug,
+                spec.slug,
+            )
 
         LOG.info(
             "Proposed PluginSpec: name=%r slug=%r category=%r capability=%r domain=%r",
@@ -1863,7 +2064,7 @@ async def run_factory(config: RunnerConfig) -> None:
                 continue
 
         plugin_path = PLUGINS_DIR / f"{spec.slug}.py"
-        if plugin_path.exists():
+        if plugin_path.exists() and not is_upgrade_attempt:
             LOG.warning("Slug %r already exists → skipping", spec.slug)
             existing_slugs.add(spec.slug)
             existing_signatures.add(_spec_signature(spec))
@@ -2200,6 +2401,41 @@ async def run_factory(config: RunnerConfig) -> None:
                     )
                     await asyncio.sleep(config.sleep_seconds)
                     continue
+
+        if is_upgrade_attempt:
+            existing_canonical_path = PLUGINS_DIR / f"{spec.slug}.py"
+            try:
+                upgrade_ok, upgrade_reason = await _phase_candidate_improves_existing(
+                    candidate_path=candidate_path,
+                    existing_path=existing_canonical_path,
+                    spec=spec,
+                )
+            except Exception as exc:
+                upgrade_ok = False
+                upgrade_reason = f"upgrade_gate: check crashed: {exc}"
+
+            if upgrade_ok:
+                LOG.info(
+                    "Phase candidate accepted as canonical upgrade for %r: %s",
+                    spec.slug,
+                    upgrade_reason,
+                )
+            else:
+                LOG.error(
+                    "Discarding phase candidate for %r because it did not improve the canonical capability: %s",
+                    spec.slug,
+                    upgrade_reason,
+                )
+                try:
+                    rejected_path = _discard_candidate_plugin(candidate_path, reason=upgrade_reason)
+                    LOG.info("Rejected non-improving phase candidate moved to %s", rejected_path)
+                except Exception:
+                    LOG.warning("Unable to discard non-improving candidate %r", spec.slug, exc_info=True)
+
+                if not config.loop_forever:
+                    break
+                await asyncio.sleep(config.sleep_seconds)
+                continue
 
         plugin_path = _promote_candidate_plugin(candidate_path, spec.slug)
         LOG.info("✅ Plugin built: %s", plugin_path)
