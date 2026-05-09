@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 import sys
+import tempfile
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -12,11 +13,13 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
         sys.path.insert(0, str(path))
 
 try:
+    from factory import factory_runner as runner
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
     from factory.factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
     from factory.factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
     from factory.factory_runner import _upgrade_backlog_exhausted
 except ModuleNotFoundError:
+    import factory_runner as runner
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
     from factory_runner import _canonical_retention_spec, _randomized_ai_expansion_indexes
     from factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
@@ -115,6 +118,38 @@ class SpecBuilderTests(unittest.TestCase):
             )
 
         self.assertTrue(_upgrade_backlog_exhausted(state, existing))
+
+    def test_existing_registered_profile_can_seed_upgrade_memory(self) -> None:
+        slug = AI_CAPABILITY_ROADMAP[0].slug
+        state = {"completed": [], "next_directive": "", "upgrade_attempts": {}, "upgrade_attempt_order": []}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old_plugins_dir = runner.PLUGINS_DIR
+            old_registered_profile_id = runner._registered_profile_id
+            try:
+                runner.PLUGINS_DIR = Path(tmp)
+                runner._registered_profile_id = lambda candidate: (
+                    "prompt_refinement_profile" if candidate == slug else None
+                )
+                (Path(tmp) / f"{slug}.py").write_text(
+                    "logic_profile_id = 'prompt_refinement_profile'\n",
+                    encoding="utf-8",
+                )
+
+                seeded = runner._seed_retained_canonical_upgrade_memory(
+                    state,
+                    {slug},
+                    persist=False,
+                )
+            finally:
+                runner.PLUGINS_DIR = old_plugins_dir
+                runner._registered_profile_id = old_registered_profile_id
+
+        self.assertEqual(seeded, 1)
+        self.assertTrue(_upgrade_backlog_exhausted(state, {slug}))
+        record = state["upgrade_attempts"][slug]
+        self.assertEqual(record["status"], "retained")
+        self.assertIn("phase suffix alone is not an improvement", record["reason"])
 
 
 if __name__ == "__main__":

@@ -707,18 +707,19 @@ def _normalize_ai_roadmap_state(state: Dict[str, Any]) -> None:
 
 def _upgrade_knowledge_fingerprint() -> str:
     """
-    Fingerprint the factory knowledge that determines upgrade behavior.
+    Fingerprint the knowledge that determines generated capability behavior.
 
-    A failed upgrade attempt should not be retried under the same factory/profile
-    logic. If these files change, the factory has plausibly learned a new way and
-    may re-evaluate prior rejected attempts.
+    Runner bookkeeping changes should not cause rejected upgrades to replay. A
+    retry is only justified when the capability specs, deterministic profiles,
+    prompt/template layer, or Station B generation rules change enough to produce
+    different candidate behavior.
     """
     digest = hashlib.sha256()
     for rel in [
-        "factory_runner.py",
         "spec_builder.py",
         "profiles/registry.py",
-        "quality_runner.py",
+        "plugin_template.py",
+        "station_b_generator.py",
     ]:
         path = FACTORY_DIR / rel
         digest.update(rel.encode("utf-8"))
@@ -811,6 +812,86 @@ def _remembered_upgrade_canonical_slugs(state: Dict[str, Any]) -> Set[str]:
         if canonical:
             remembered.add(canonical)
     return remembered
+
+
+def _existing_canonical_has_registered_profile(slug: str) -> bool:
+    """
+    Return True when the installed canonical module already carries the
+    registered deterministic profile for its capability family.
+
+    This is deliberately conservative: it only treats a capability as retained
+    when the installed source names the profile that the current registry would
+    generate for the same canonical slug. A changed registry/spec/template
+    fingerprint still reopens future upgrade attempts.
+    """
+    if not callable(_registered_profile_id):
+        return False
+    profile_id = _registered_profile_id(slug)
+    if not profile_id:
+        return False
+    plugin_path = PLUGINS_DIR / f"{slug}.py"
+    try:
+        source = plugin_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    expected_literals = [
+        f"logic_profile_id = {profile_id!r}",
+        f"\"logic_profile_id\": {profile_id!r}",
+        f"'logic_profile_id': {profile_id!r}",
+    ]
+    return any(literal in source for literal in expected_literals)
+
+
+def _seed_retained_canonical_upgrade_memory(
+    state: Dict[str, Any],
+    existing_slugs: Set[str],
+    *,
+    persist: bool = True,
+) -> int:
+    """
+    Mark existing registered-profile capabilities as retained upgrade baselines.
+
+    Phase expansion is an upgrade mechanism, not permission to mint duplicates.
+    If the canonical module already exists with the registered profile, a phase
+    suffix alone is not new knowledge and should not create a candidate. The
+    generation fingerprint keeps this from hiding future improvements after the
+    factory's specs, profiles, templates, or Station B rules change.
+    """
+    attempts = state.setdefault("upgrade_attempts", {})
+    if not isinstance(attempts, dict):
+        attempts = {}
+        state["upgrade_attempts"] = attempts
+
+    seeded = 0
+    current_fp = _upgrade_knowledge_fingerprint()
+    for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
+        canonical_slug = blueprint.slug
+        if canonical_slug not in existing_slugs:
+            continue
+        existing_record = attempts.get(canonical_slug)
+        if isinstance(existing_record, dict) and existing_record.get("knowledge_fingerprint") == current_fp:
+            continue
+        if not _existing_canonical_has_registered_profile(canonical_slug):
+            continue
+
+        phase_spec, _, _ = build_next_spec(len(AI_CAPABILITY_ROADMAP) + position)
+        canonical_spec = _canonical_retention_spec(phase_spec)
+        _upgrade_attempt_record(
+            state=state,
+            source_spec=phase_spec,
+            canonical_spec=canonical_spec,
+            status="retained",
+            reason=(
+                "canonical capability already has the current registered profile; "
+                "phase suffix alone is not an improvement"
+            ),
+            persist=False,
+        )
+        seeded += 1
+
+    if seeded and persist:
+        _save_ai_roadmap_state(state)
+    return seeded
 
 
 def _upgrade_backlog_exhausted(state: Dict[str, Any], existing_slugs: Set[str]) -> bool:
@@ -2122,6 +2203,12 @@ async def run_factory(config: RunnerConfig) -> None:
         randomized_indexes: list[int] = []
         if not config.allow_phase_expansion and index_counter > len(AI_CAPABILITY_ROADMAP):
             if config.randomized_expansion:
+                seeded_count = _seed_retained_canonical_upgrade_memory(ai_roadmap_state, existing_slugs)
+                if seeded_count:
+                    LOG.info(
+                        "Recorded %d existing registered-profile capability module(s) as retained under the current factory knowledge.",
+                        seeded_count,
+                    )
                 if _upgrade_backlog_exhausted(ai_roadmap_state, existing_slugs):
                     LOG.info(
                         "All canonical capabilities already have upgrade attempts under the current factory knowledge; idling until factory/profile logic changes."
