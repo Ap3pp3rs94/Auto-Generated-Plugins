@@ -227,6 +227,17 @@ def _memory_compression(spec: PluginSpec, capability_type: Optional[str], profil
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
 raw_items = []
+for key in ['task', 'objective', 'prompt']:
+    value = payload_data.get(key)
+    if value:
+        raw_items.append(str(value)[:500])
+for key in ['constraints', 'current_plan', 'completed_steps', 'blocked_steps', 'trace']:
+    value = payload_data.get(key)
+    if isinstance(value, list):
+        for item in value[:8]:
+            raw_items.append(str(item)[:500])
+    elif value:
+        raw_items.append(str(value)[:500])
 for item in messages + source_notes + candidate_outputs:
     if isinstance(item, dict):
         raw_items.append(str(item.get('content') or item.get('text') or item.get('summary') or item)[:500])
@@ -234,29 +245,63 @@ for item in messages + source_notes + candidate_outputs:
         raw_items.append(str(item)[:500])
 if payload_data.get('previous_results'):
     raw_items.append(str(payload_data.get('previous_results'))[:700])
-joined = ' '.join(raw_items).strip()
+joined = '. '.join(raw_items).strip()
 sentences = [part.strip() for part in joined.replace('\\n', '. ').split('.') if part.strip()]
-durable_facts = [sentence for sentence in sentences if any(token in sentence.lower() for token in ['decided', 'completed', 'uses', 'must', 'constraint', 'blocked', 'owner', 'path'])]
-open_threads = [sentence for sentence in sentences if any(token in sentence.lower() for token in ['todo', 'next', 'blocked', 'unknown', 'question', 'needs'])]
-discard_candidates = [sentence for sentence in sentences if len(sentence.split()) < 4 or sentence.lower() in ['ok', 'thanks', 'done']]
-memory_summary = '; '.join((durable_facts or sentences or [def_text])[:4])[:700]
+def _unique(items, limit):
+    seen = set()
+    kept = []
+    for item in items:
+        key = item.lower().strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        kept.append(item)
+        if len(kept) >= limit:
+            break
+    return kept
+durable_facts = [sentence for sentence in sentences if any(token in sentence.lower() for token in ['decided', 'completed', 'uses', 'must', 'constraint', 'blocked', 'owner', 'path', 'objective', 'plan', 'test', 'rollback', 'citation', 'source'])]
+open_threads = [sentence for sentence in sentences if any(token in sentence.lower() for token in ['todo', 'next', 'blocked', 'unknown', 'question', 'needs', 'verify', 'mismatch', 'unsupported', 'uncertain'])]
+blockers = [sentence for sentence in sentences if any(token in sentence.lower() for token in ['blocked', 'need ', 'needs ', 'owner', 'mismatch', 'unsupported'])]
+evidence_gaps = [sentence for sentence in sentences if any(token in sentence.lower() for token in ['citation', 'source', 'claim', 'unsupported', 'clinical', 'medical', 'grounded'])]
+safety_signals = []
+for label, terms in [
+    ('release_memory', ['production', 'outage', 'rollback', 'migration', 'database']),
+    ('auth_memory', ['auth', 'login', 'session', 'middleware']),
+    ('factual_memory', ['medical', 'clinical', 'citation', 'claim', 'source', 'hallucination']),
+]:
+    hits = [term for term in terms if term in joined.lower()]
+    if hits:
+        safety_signals.append({{'category': label, 'signals': hits}})
+durable_facts = _unique(durable_facts, 10)
+open_threads = _unique(open_threads, 10)
+blockers = _unique(blockers, 10)
+evidence_gaps = _unique(evidence_gaps, 10)
+discard_candidates = _unique([sentence for sentence in sentences if len(sentence.split()) < 4 or sentence.lower() in ['ok', 'thanks', 'done']], 10)
+memory_summary_parts = _unique(durable_facts[:4] + blockers[:2] + evidence_gaps[:2], 6) or _unique(sentences, 5) or [def_text]
+memory_summary = '; '.join(memory_summary_parts)[:900]
 original_tokens = max(1, len(joined) // 4)
 compressed_tokens = max(1, len(memory_summary) // 4)
-compression_ratio = round(compressed_tokens / original_tokens, 2)
-confidence = min(0.92, 0.42 + 0.08 * len(durable_facts[:5]) + 0.05 * len(open_threads[:3]))
+compression_ratio = round(min(1.0, compressed_tokens / original_tokens), 2)
+signal_count = sum(len(item['signals']) for item in safety_signals)
+retained_count = len(durable_facts[:8]) + len(blockers[:4]) + len(evidence_gaps[:4])
+confidence = min(0.92, 0.36 + 0.045 * retained_count + 0.035 * signal_count + (0.08 if memory_summary else 0))
+retention_value = round(min(0.95, 0.36 + 0.055 * len(durable_facts[:8]) + 0.05 * len(blockers[:4]) + 0.06 * len(evidence_gaps[:4])), 2)
+risk = round(min(0.9, max(0.1, 0.22 + 0.045 * len(blockers[:5]) + 0.055 * len(evidence_gaps[:5]) + 0.025 * signal_count - 0.035 * len(durable_facts[:5]))), 2)
 result['summary'] = plugin_name + ': compressed context into durable memory with ratio ' + str(compression_ratio) + '.'
 result['primary_insights'] = [
     {{'title': 'Memory summary', 'detail': memory_summary}},
     {{'title': 'Durable facts', 'detail': durable_facts[:6]}},
     {{'title': 'Open threads', 'detail': open_threads[:5]}},
+    {{'title': 'Safety signals', 'detail': safety_signals or 'No high-safety memory signal detected.'}},
 ]
 result['recommended_actions'] = [
     {{'action': 'Persist memory summary', 'memory_summary': memory_summary}},
     {{'action': 'Carry open threads forward', 'open_threads': open_threads[:5]}},
+    {{'action': 'Preserve blocker/evidence context', 'blockers': blockers[:5], 'evidence_gaps': evidence_gaps[:5]}},
     {{'action': 'Drop low-value chatter', 'discard_candidates': discard_candidates[:5]}},
 ]
-result['scores'] = {{'confidence': round(confidence, 2), 'compression_ratio': compression_ratio, 'retention_value': round(min(0.95, 0.45 + 0.08 * len(durable_facts[:5])), 2), 'risk': round(max(0.12, 0.55 - confidence), 2)}}
-result['details'] = {{'memory_summary': memory_summary, 'durable_facts': durable_facts[:10], 'open_threads': open_threads[:10], 'discard_candidates': discard_candidates[:10], 'original_token_estimate': original_tokens, 'compressed_token_estimate': compressed_tokens, 'missing_inputs': ['messages or source_notes'] if not raw_items else []}}
+result['scores'] = {{'confidence': round(confidence, 2), 'compression_ratio': compression_ratio, 'retention_value': retention_value, 'risk': risk, 'safety_signal_count': signal_count}}
+result['details'] = {{'memory_summary': memory_summary, 'durable_facts': durable_facts[:10], 'open_threads': open_threads[:10], 'blockers': blockers[:10], 'evidence_gaps': evidence_gaps[:10], 'safety_signals': safety_signals, 'discard_candidates': discard_candidates[:10], 'original_token_estimate': original_tokens, 'compressed_token_estimate': compressed_tokens, 'missing_inputs': ['messages or source_notes'] if not raw_items else []}}
 {_common_result_footer("'Persist memory summary'")}
 """.strip()
 
