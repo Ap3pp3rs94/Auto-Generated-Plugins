@@ -5,10 +5,10 @@ download from GitHub.
 
 Current package:
 
-- `ai_prompt_refinement_engine-0.1.1.zip`
+- `ai_prompt_refinement_engine-0.1.2.zip`
 
 Checksum:
 
 ```text
-6e3a66f6af6b420ec9db5a989fb12abd7d4f8926efb9cde68884d8bb94212bcc  ai_prompt_refinement_engine-0.1.1.zip
+4472cb3d24e420041683bbbeda692e2b73624449b517f668c2362ca927137d02  ai_prompt_refinement_engine-0.1.2.zip
 ```

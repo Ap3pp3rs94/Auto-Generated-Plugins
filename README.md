@@ -19,13 +19,13 @@ quality guide.
 The current plugin is packaged as a GitHub-downloadable zip:
 
 ```text
-dist/ai_prompt_refinement_engine-0.1.1.zip
+dist/ai_prompt_refinement_engine-0.1.2.zip
 ```
 
 Direct GitHub download URL after this repository is pushed:
 
 ```text
-https://github.com/Ap3pp3rs94/Auto-Generated-Plugins/raw/main/dist/ai_prompt_refinement_engine-0.1.1.zip
+https://github.com/Ap3pp3rs94/Auto-Generated-Plugins/raw/main/dist/ai_prompt_refinement_engine-0.1.2.zip
 ```
 
 The package contains:
@@ -38,7 +38,7 @@ The package contains:
 Checksum:
 
 ```text
-6e3a66f6af6b420ec9db5a989fb12abd7d4f8926efb9cde68884d8bb94212bcc  ai_prompt_refinement_engine-0.1.1.zip
+4472cb3d24e420041683bbbeda692e2b73624449b517f668c2362ca927137d02  ai_prompt_refinement_engine-0.1.2.zip
 ```
 
 Legacy plugins created before the current AI roadmap guide were removed. The
@@ -98,6 +98,8 @@ Generated output shape:
 The factory also runs a semantic-depth gate. A plugin must produce different
 decision fields for different payload values; echoing the right schema with
 stock advice is not enough.
+Prompt-refinement plugins have an additional contract: they must identify vague
+phrases, name missing constraints, and emit concrete rewritten prompts.
 
 Full walkthrough:
 

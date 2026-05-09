@@ -1,7 +1,7 @@
 {
   "name": "AI Prompt Refinement Engine",
   "slug": "ai_prompt_refinement_engine",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "francis-python-plugin",
   "entrypoint": "ai_prompt_refinement_engine.py",
   "category": "ai_prompting",
@@ -22,9 +22,10 @@
     "station_c_validated": true,
     "semantic_depth_validated": true,
     "legacy_plugin": false,
-    "roadmap_phase": 1
+    "roadmap_phase": 1,
+    "capability_semantics_validated": true
   },
   "download": {
-    "zip": "dist/ai_prompt_refinement_engine-0.1.1.zip"
+    "zip": "dist/ai_prompt_refinement_engine-0.1.2.zip"
   }
 }

@@ -823,6 +823,17 @@ def _decision_surface(result: Dict[str, Any]) -> Dict[str, Any]:
         "scores": result.get("scores"),
         "next_step": progress.get("next_step") if isinstance(progress, dict) else None,
         "plain_language_takeaway": user_exp.get("plain_language_takeaway") if isinstance(user_exp, dict) else None,
+        "details": {
+            "identified_vagueness": (result.get("details") or {}).get("identified_vagueness")
+            if isinstance(result.get("details"), dict)
+            else None,
+            "missing_constraints": (result.get("details") or {}).get("missing_constraints")
+            if isinstance(result.get("details"), dict)
+            else None,
+            "rewrites": (result.get("details") or {}).get("rewrites")
+            if isinstance(result.get("details"), dict)
+            else None,
+        },
     }
 
 
@@ -904,6 +915,11 @@ async def _semantic_depth_check(plugin_path: Path, spec: PluginSpec) -> Tuple[bo
 
     result_a = await _invoke_plugin_for_semantic_check(module, payload_a, spec.slug)
     result_b = await _invoke_plugin_for_semantic_check(module, payload_b, spec.slug)
+
+    capability_ok, capability_reason = _capability_semantic_contract(spec, result_a, result_b)
+    if not capability_ok:
+        return False, capability_reason
+
     decision_a = _decision_surface(result_a)
     decision_b = _decision_surface(result_b)
 
@@ -941,6 +957,68 @@ async def _semantic_depth_check(plugin_path: Path, spec: PluginSpec) -> Tuple[bo
         "semantic_depth: payload values influenced decision fields "
         f"(a={reflected_a[:5]}, b={reflected_b[:5]}, similarity={similarity:.2f}).",
     )
+
+
+def _capability_semantic_contract(
+    spec: PluginSpec,
+    result_a: Dict[str, Any],
+    result_b: Dict[str, Any],
+) -> Tuple[bool, str]:
+    slug = str(getattr(spec, "slug", "") or "").lower()
+    category = str(getattr(spec, "category", "") or "").lower()
+    goal = str(getattr(spec, "goal", "") or "").lower()
+    if "prompt" not in " ".join([slug, category, goal]):
+        return True, "capability_semantic_contract: no specialized contract"
+    return _prompt_refinement_contract(result_a, result_b)
+
+
+def _prompt_refinement_contract(result_a: Dict[str, Any], result_b: Dict[str, Any]) -> Tuple[bool, str]:
+    def _details(result: Dict[str, Any]) -> Dict[str, Any]:
+        details = result.get("details")
+        return details if isinstance(details, dict) else {}
+
+    def _actions_text(result: Dict[str, Any]) -> str:
+        return _jsonish_text(result.get("recommended_actions", []), max_chars=5000)
+
+    failures = []
+    for label, result in [("a", result_a), ("b", result_b)]:
+        details = _details(result)
+        vagueness = details.get("identified_vagueness")
+        missing = details.get("missing_constraints")
+        rewrites = details.get("rewrites")
+        refined = details.get("refined_prompt")
+        actions = _actions_text(result)
+
+        if not isinstance(vagueness, list):
+            failures.append(f"{label}: missing details.identified_vagueness list")
+        if not isinstance(missing, list):
+            failures.append(f"{label}: missing details.missing_constraints list")
+        if not isinstance(rewrites, list) or not rewrites:
+            failures.append(f"{label}: missing details.rewrites list")
+        if not isinstance(refined, str) or len(refined.strip()) < 40:
+            failures.append(f"{label}: missing substantial details.refined_prompt")
+        if "rewrite" not in actions and "refined" not in actions:
+            failures.append(f"{label}: recommended_actions do not include a rewrite/refinement")
+        contract_text = _jsonish_text(
+            {
+                "details": details,
+                "actions": result.get("recommended_actions"),
+                "summary": result.get("summary"),
+            },
+            max_chars=10000,
+        )
+        for required in ["audience", "format", "constraint", "verification"]:
+            if required not in contract_text:
+                failures.append(f"{label}: prompt contract missing {required}")
+
+    refined_a = str(_details(result_a).get("refined_prompt", ""))
+    refined_b = str(_details(result_b).get("refined_prompt", ""))
+    if refined_a and refined_b and refined_a == refined_b:
+        failures.append("refined prompts are identical across different payloads")
+
+    if failures:
+        return False, "prompt_refinement_contract: " + "; ".join(failures[:8])
+    return True, "prompt_refinement_contract: rewrites and missing constraints present"
 
 
 def _quarantine_rejected_plugin(plugin_path: Path, *, reason: str) -> Path:

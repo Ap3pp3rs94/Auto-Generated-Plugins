@@ -149,6 +149,12 @@ Semantic-depth result:
 semantic_depth: payload values influenced decision fields
 ```
 
+Prompt-refinement contract result:
+
+```text
+prompt_refinement_contract: rewrites and missing constraints present
+```
+
 ## Why This Plugin Stayed
 
 This plugin is retained because it satisfies the current library rules:

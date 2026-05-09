@@ -44,9 +44,12 @@ async def invoke(user_id, payload, **kwargs):
         ok, reason = self._run_check(source)
 
         self.assertFalse(ok)
-        self.assertIn("semantic_depth", reason)
+        self.assertTrue(
+            "semantic_depth" in reason or "prompt_refinement_contract" in reason,
+            reason,
+        )
 
-    def test_value_dependent_output_passes(self) -> None:
+    def test_value_dependent_generic_output_passes(self) -> None:
         source = """
 async def invoke(user_id, payload, **kwargs):
     task = str(payload.get("task", "missing task"))
@@ -74,12 +77,79 @@ async def invoke(user_id, payload, **kwargs):
         "meta": {},
     }
 """
-        ok, reason = self._run_check(source)
+        ok, reason = self._run_check(source, spec_index=2)
 
         self.assertTrue(ok, reason)
 
-    def _run_check(self, source: str) -> tuple[bool, str]:
-        spec, _, _ = build_next_spec(1)
+    def test_prompt_refinement_without_rewrite_fails(self) -> None:
+        source = """
+async def invoke(user_id, payload, **kwargs):
+    prompt = str(payload.get("prompt", ""))
+    return {
+        "status": "succeeded",
+        "output": {
+            "summary": "Prompt analyzed: " + prompt,
+            "primary_insights": [{"title": "Prompt", "detail": prompt}],
+            "recommended_actions": [{"action": "Rewrite prompt"}],
+            "scores": {"confidence": 0.8, "risk": 0.2},
+            "details": {"prompt": prompt},
+            "progress_state": {"next_step": "Rewrite prompt"},
+            "user_experience": {"plain_language_takeaway": "The prompt should be improved."},
+        },
+        "error": "",
+        "meta": {},
+    }
+"""
+        ok, reason = self._run_check(source, spec_index=1)
+
+        self.assertFalse(ok)
+        self.assertIn("prompt_refinement_contract", reason)
+
+    def test_prompt_refinement_with_rewrites_passes(self) -> None:
+        source = """
+async def invoke(user_id, payload, **kwargs):
+    prompt = str(payload.get("prompt", ""))
+    task = str(payload.get("task", ""))
+    objective = str(payload.get("objective", ""))
+    refined = "Task: " + task + "\\nObjective: " + objective + "\\nAudience: the intended user\\nOutput format: structured checklist\\nConstraints: include verification and acceptance criteria\\nPrompt: " + prompt
+    missing = [
+        {"category": "audience", "suggestion": "Name the target audience."},
+        {"category": "format", "suggestion": "Specify output format."},
+        {"category": "constraint", "suggestion": "Add hard constraints."},
+        {"category": "verification", "suggestion": "Add verification checks."},
+    ]
+    return {
+        "status": "succeeded",
+        "output": {
+            "summary": "Refined prompt for " + task,
+            "primary_insights": [
+                {"title": "Original prompt", "detail": prompt},
+                {"title": "Missing constraints", "items": missing},
+            ],
+            "recommended_actions": [
+                {"action": "Use rewrite", "rewrite": refined},
+                {"action": "Add constraints", "items": missing},
+            ],
+            "scores": {"confidence": min(0.9, 0.3 + len(prompt) / 200), "risk": max(0.1, 0.8 - len(objective) / 100)},
+            "details": {
+                "identified_vagueness": ["make it better"] if "better" in prompt.lower() else ["ambiguous objective"],
+                "missing_constraints": missing,
+                "rewrites": [{"label": "structured", "rewrite": refined}],
+                "refined_prompt": refined,
+            },
+            "progress_state": {"next_step": "Review rewrite for " + objective},
+            "user_experience": {"plain_language_takeaway": "Use the rewrite for " + task},
+        },
+        "error": "",
+        "meta": {},
+    }
+"""
+        ok, reason = self._run_check(source, spec_index=1)
+
+        self.assertTrue(ok, reason)
+
+    def _run_check(self, source: str, *, spec_index: int = 1) -> tuple[bool, str]:
+        spec, _, _ = build_next_spec(spec_index)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "candidate.py"
             path.write_text(textwrap.dedent(source).strip() + "\n", encoding="utf-8")

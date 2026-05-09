@@ -536,6 +536,69 @@ def _phase_goal(blueprint: AICapabilityBlueprint, phase: int) -> str:
     )
 
 
+def _capability_semantics(blueprint: AICapabilityBlueprint) -> Dict[str, object]:
+    if blueprint.slug != "ai_prompt_refinement_engine":
+        return {}
+    return {
+        "capability_output_semantics": {
+            "details.identified_vagueness": "list of vague phrases extracted from payload['prompt'] or payload['task']",
+            "details.missing_constraints": "list of category/suggestion objects for missing audience, format, length, tone, constraints, acceptance criteria, and verification",
+            "details.rewrites": "list of concrete prompt rewrites, each with a label and rewrite text",
+            "details.refined_prompt": "the primary rewritten prompt, not generic advice",
+            "recommended_actions[*].rewrite": "recommended actions should include actual rewritten prompt text when useful",
+        },
+        "worked_examples": [
+            {
+                "input": {
+                    "task": "Write a blog post about cats.",
+                    "objective": "Increase newsletter signups.",
+                    "prompt": "Make it good.",
+                },
+                "expected": {
+                    "identified_vagueness": ["Make it good"],
+                    "missing_constraints": ["audience", "length", "tone", "format", "acceptance_criteria"],
+                    "rewrite_should_include": [
+                        "newsletter signups",
+                        "target audience",
+                        "blog post length or section format",
+                        "call to action",
+                        "success criteria",
+                    ],
+                },
+            },
+            {
+                "input": {
+                    "task": "Ask an AI coding agent to add tests before changing production code.",
+                    "objective": "Prevent regressions.",
+                    "prompt": "Make this better and don't break stuff.",
+                },
+                "expected": {
+                    "identified_vagueness": ["Make this better", "don't break stuff"],
+                    "missing_constraints": ["test scope", "files/modules", "acceptance criteria", "rollback or verification"],
+                    "rewrite_should_include": [
+                        "write or update tests first",
+                        "name files or modules",
+                        "run verification",
+                        "avoid unrelated refactors",
+                    ],
+                },
+            },
+        ],
+        "semantic_depth_contract": {
+            "must_fail_if": [
+                "Output only says to rewrite the prompt without producing a rewrite.",
+                "details does not include identified_vagueness and missing_constraints.",
+                "Two different prompts produce the same refined_prompt.",
+            ],
+            "must_pass_if": [
+                "The plugin extracts vague phrases from the input prompt.",
+                "The plugin names missing constraints by category.",
+                "The plugin returns concrete rewritten prompt variants.",
+            ],
+        },
+    }
+
+
 def _build_huge_ai_spec(
     blueprint: AICapabilityBlueprint,
     *,
@@ -704,6 +767,7 @@ def _build_huge_ai_spec(
             "Never invent external facts or pretend to run tools.",
         ],
     }
+    extra.update(_capability_semantics(blueprint))
 
     return PluginSpec(
         name=name,
