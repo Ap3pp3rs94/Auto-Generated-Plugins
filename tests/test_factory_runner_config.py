@@ -68,6 +68,15 @@ class RunnerConfigTests(unittest.TestCase):
 
         self.assertTrue(config.allow_phase_expansion)
 
+    def test_randomized_expansion_defaults_on_and_can_be_disabled(self) -> None:
+        config, _, _ = build_config_from_args(["--once"])
+
+        self.assertTrue(config.randomized_expansion)
+
+        disabled, _, _ = build_config_from_args(["--once", "--no-randomized-expansion"])
+
+        self.assertFalse(disabled.randomized_expansion)
+
 
 if __name__ == "__main__":
     unittest.main()

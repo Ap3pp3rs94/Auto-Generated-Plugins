@@ -214,6 +214,26 @@ def _roadmap_specs_by_slug() -> Dict[str, Any]:
     return specs
 
 
+def _roadmap_spec_from_slug(slug: str) -> Optional[Any]:
+    roadmap_size = len(AI_CAPABILITY_ROADMAP)
+    for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
+        if slug == blueprint.slug:
+            spec, capability_type, intended_domain = build_next_spec(position)
+            spec.capability_type = capability_type
+            spec.intended_domain = intended_domain
+            return spec
+        prefix = f"{blueprint.slug}_phase_"
+        if slug.startswith(prefix):
+            suffix = slug[len(prefix):]
+            if suffix.isdigit():
+                phase = max(int(suffix), 1)
+                spec, capability_type, intended_domain = build_next_spec((phase - 1) * roadmap_size + position)
+                spec.capability_type = capability_type
+                spec.intended_domain = intended_domain
+                return spec
+    return None
+
+
 def _candidate_plugin_paths(slugs: Iterable[str]) -> list[Path]:
     requested = {slug.strip() for slug in slugs if slug.strip()}
     paths = sorted(path for path in PLUGINS_DIR.glob("*.py") if path.name != "__init__.py")
@@ -426,7 +446,7 @@ async def run_quality_pass(config: QualityConfig) -> list[AuditResult]:
     repaired_paths: list[Path] = []
 
     for path in _candidate_plugin_paths(config.slugs):
-        spec = specs.get(path.stem)
+        spec = specs.get(path.stem) or _roadmap_spec_from_slug(path.stem)
         if spec is None:
             LOG.info("Skipping non-roadmap plugin %s", path.name)
             continue

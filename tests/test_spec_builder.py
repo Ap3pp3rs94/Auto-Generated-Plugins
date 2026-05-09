@@ -13,8 +13,10 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
 
 try:
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+    from factory.factory_runner import _randomized_ai_expansion_indexes
 except ModuleNotFoundError:
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+    from factory_runner import _randomized_ai_expansion_indexes
 
 
 class SpecBuilderTests(unittest.TestCase):
@@ -49,6 +51,17 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertTrue(second_phase_spec.slug.endswith("_phase_2"))
         self.assertEqual(second_phase_spec.extra["phase"], 2)
         self.assertIn("Phase 2", second_phase_spec.name)
+
+    def test_randomized_expansion_uses_bounded_phase_variants(self) -> None:
+        existing = {build_next_spec(i)[0].slug for i in range(1, len(AI_CAPABILITY_ROADMAP) + 1)}
+
+        candidates = _randomized_ai_expansion_indexes(existing)
+
+        self.assertGreaterEqual(len(candidates), len(AI_CAPABILITY_ROADMAP))
+        sample_spec = build_next_spec(candidates[0])[0]
+        self.assertTrue(sample_spec.slug.endswith("_phase_2") or "_phase_" in sample_spec.slug)
+        self.assertNotIn(sample_spec.slug, existing)
+        self.assertIn(sample_spec.extra["phase"], {2, 3})
 
 
 if __name__ == "__main__":

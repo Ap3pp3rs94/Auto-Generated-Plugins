@@ -41,6 +41,7 @@ import inspect
 import json
 import logging
 import os
+import random
 import subprocess
 import sys
 from dataclasses import dataclass, asdict, field
@@ -387,6 +388,7 @@ class RunnerConfig:
     github_remote: str = "origin"
     github_branch: str = "main"
     allow_phase_expansion: bool = False
+    randomized_expansion: bool = True
 
     def validate(self) -> None:
         """Fail fast on unsafe or nonsensical production configuration."""
@@ -530,6 +532,34 @@ def _next_ai_roadmap_index(existing_slugs: Set[str]) -> int:
     if not existing_indexes:
         return 1
     return max(existing_indexes) + 1
+
+
+def _randomized_ai_expansion_indexes(existing_slugs: Set[str]) -> list[int]:
+    """
+    Return a bounded shuffled list of phase-expansion indexes.
+
+    This keeps autonomous mode varied after the curated roadmap is complete,
+    while still anchoring every new plugin to an approved capability family and
+    registered profile. It deliberately does not create unbounded arbitrary
+    domains.
+    """
+    roadmap_size = len(AI_CAPABILITY_ROADMAP)
+    existing_indexes = [
+        idx for slug in existing_slugs
+        for idx in [_roadmap_slug_index(slug)]
+        if idx is not None
+    ]
+    highest_phase = max(((idx - 1) // roadmap_size) + 1 for idx in existing_indexes) if existing_indexes else 1
+    max_candidate_phase = max(2, highest_phase + 2)
+    candidates: list[int] = []
+    for phase in range(2, max_candidate_phase + 1):
+        for position in range(1, roadmap_size + 1):
+            idx = (phase - 1) * roadmap_size + position
+            spec, _, _ = build_next_spec(idx)
+            if spec.slug not in existing_slugs and not (PLUGINS_DIR / f"{spec.slug}.py").exists():
+                candidates.append(idx)
+    random.SystemRandom().shuffle(candidates)
+    return candidates
 
 
 def _is_duplicate_spec(
@@ -1725,27 +1755,53 @@ async def run_factory(config: RunnerConfig) -> None:
         capability_type: Optional[str] = None
         intended_domain: Optional[str] = None
 
+        randomized_indexes: list[int] = []
         if not config.allow_phase_expansion and index_counter > len(AI_CAPABILITY_ROADMAP):
-            LOG.info(
-                "AI roadmap complete at %d unique plugin(s); phase expansion is disabled.",
-                len(AI_CAPABILITY_ROADMAP),
-            )
-            if config.loop_forever:
+            if config.randomized_expansion:
+                randomized_indexes = _randomized_ai_expansion_indexes(existing_slugs)
                 LOG.info(
-                    "Factory will stay alive and recheck for newly added roadmap specs in %.1f seconds.",
-                    config.sleep_seconds,
+                    "AI roadmap base complete at %d unique plugin(s); randomized bounded expansion has %d candidate(s).",
+                    len(AI_CAPABILITY_ROADMAP),
+                    len(randomized_indexes),
                 )
-                await asyncio.sleep(config.sleep_seconds)
-                existing_slugs = _load_existing_plugin_slugs()
-                existing_signatures = _load_existing_capability_signatures()
-                index_counter = _next_ai_roadmap_index(existing_slugs)
-                continue
-            break
+                if not randomized_indexes:
+                    if config.loop_forever:
+                        LOG.info(
+                            "Factory will stay alive and recheck for new randomized candidates in %.1f seconds.",
+                            config.sleep_seconds,
+                        )
+                        await asyncio.sleep(config.sleep_seconds)
+                        existing_slugs = _load_existing_plugin_slugs()
+                        existing_signatures = _load_existing_capability_signatures()
+                        index_counter = _next_ai_roadmap_index(existing_slugs)
+                        continue
+                    break
+            else:
+                LOG.info(
+                    "AI roadmap complete at %d unique plugin(s); phase expansion and randomized expansion are disabled.",
+                    len(AI_CAPABILITY_ROADMAP),
+                )
+                if config.loop_forever:
+                    LOG.info(
+                        "Factory will stay alive and recheck for newly added roadmap specs in %.1f seconds.",
+                        config.sleep_seconds,
+                    )
+                    await asyncio.sleep(config.sleep_seconds)
+                    existing_slugs = _load_existing_plugin_slugs()
+                    existing_signatures = _load_existing_capability_signatures()
+                    index_counter = _next_ai_roadmap_index(existing_slugs)
+                    continue
+                break
 
-        for _candidate_attempt in range(len(AI_CAPABILITY_ROADMAP) * 3):
-            candidate_spec, candidate_capability, candidate_domain = build_next_spec(index_counter)
+        candidate_indexes = randomized_indexes or list(
+            range(index_counter, index_counter + len(AI_CAPABILITY_ROADMAP) * 3)
+        )
+        selected_index = index_counter
+        for candidate_index in candidate_indexes:
+            candidate_spec, candidate_capability, candidate_domain = build_next_spec(candidate_index)
             if (
                 not config.allow_phase_expansion
+                and not randomized_indexes
                 and int((getattr(candidate_spec, "extra", {}) or {}).get("phase", 1)) > 1
             ):
                 LOG.info(
@@ -1765,12 +1821,14 @@ async def run_factory(config: RunnerConfig) -> None:
                     candidate_spec.name,
                 )
                 existing_slugs.add(candidate_spec.slug)
-                index_counter += 1
+                if not randomized_indexes:
+                    index_counter = candidate_index + 1
                 continue
 
             spec = candidate_spec
             capability_type = candidate_capability
             intended_domain = candidate_domain
+            selected_index = candidate_index
             break
 
         if spec is None or capability_type is None or intended_domain is None:
@@ -2163,7 +2221,7 @@ async def run_factory(config: RunnerConfig) -> None:
 
         if ok and _is_ai_roadmap_spec(spec):
             try:
-                next_spec_for_handoff, _, _ = build_next_spec(index_counter + 1)
+                next_spec_for_handoff, _, _ = build_next_spec(selected_index + 1)
             except Exception:
                 next_spec_for_handoff = None
             ai_roadmap_state = _record_ai_roadmap_success(
@@ -2194,7 +2252,7 @@ async def run_factory(config: RunnerConfig) -> None:
         # BOOKKEEPING
         # -----------------------------------------------------
         built_count += 1
-        index_counter += 1
+        index_counter = max(index_counter, selected_index + 1)
         category_counts[spec.category] = category_counts.get(spec.category, 0) + 1
 
         # Telemetry: per-plugin result summary
@@ -2398,6 +2456,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Allow second-pass phase_N variants after the unique AI roadmap is complete.",
     )
     parser.add_argument(
+        "--no-randomized-expansion",
+        action="store_true",
+        default=_env_bool("FRANCIS_FACTORY_NO_RANDOMIZED_EXPANSION", False),
+        help="Disable bounded randomized phase expansion after the curated roadmap is complete.",
+    )
+    parser.add_argument(
         "--print-config",
         action="store_true",
         help="Print the resolved RunnerConfig as JSON and exit.",
@@ -2449,6 +2513,7 @@ def build_config_from_args(argv: Optional[Sequence[str]] = None) -> tuple[Runner
         github_remote=args.github_remote,
         github_branch=args.github_branch,
         allow_phase_expansion=args.allow_phase_expansion,
+        randomized_expansion=not args.no_randomized_expansion,
     )
     cfg.validate()
     return cfg, str(args.log_level).upper(), bool(args.print_config)
