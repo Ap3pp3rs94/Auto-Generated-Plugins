@@ -1,0 +1,20 @@
+[Unit]
+Description=Francis autonomous AI plugin factory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/peppera091/francis
+EnvironmentFile=-/home/peppera091/francis/factory/production.env
+ExecStart=/home/peppera091/francis/.venv/bin/python -m factory.factory_runner
+Restart=on-failure
+RestartSec=20
+TimeoutStopSec=30
+
+# Keep side-project failures contained.
+Nice=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

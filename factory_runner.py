@@ -33,19 +33,88 @@ Enhancements in this version:
 - Contains a non-fatal hook for a cleanup daemon (cleanup_daemon.run_cleanup_cycle).
 """
 
+import argparse
 import asyncio
 import atexit
+import importlib.util
+import inspect
 import json
 import logging
 import os
+import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Dict, Optional, Set, Tuple
+from typing import Any, Dict, Optional, Sequence, Set, Tuple
 
 from plugin_spec import PluginSpec
 from station_c_validator import validate_plugin_module
-from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
-from station_b import generate_plugin_source, StationBConfig
+try:
+    from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
+    from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+
+try:
+    from station_b import generate_plugin_source, StationBConfig
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
+    from dataclasses import field
+
+    from station_b_generator import station_b_generate
+
+    @dataclass
+    class StationBConfig:  # type: ignore[no-redef]
+        model: str = "llama3.1:8b"
+        temperature: float = 0.25
+        max_tokens: int = 1024
+        timeout_seconds: int = 240
+        max_retries: int = 1
+        retry_backoff_seconds: float = 0.0
+
+    @dataclass
+    class _FallbackStationBResult:
+        source: str
+        raw_llm_output: str = ""
+        logic_profile_id: str = "standalone_station_b_generator"
+        logic_blueprint: Dict[str, Any] = field(default_factory=dict)
+
+    async def generate_plugin_source(  # type: ignore[no-redef]
+        spec: PluginSpec,
+        *,
+        capability_type: Optional[str] = None,
+        intended_domain: Optional[str] = None,
+        extra_instructions: Optional[str] = None,
+        memory_context: Optional[str] = None,
+        mode: str = "generate",
+        existing_source_excerpt: Optional[str] = None,
+        config: Optional[StationBConfig] = None,
+    ) -> _FallbackStationBResult:
+        """
+        Minimal local fallback when the full Francis Station B runtime is absent.
+
+        Production Francis runs should use the richer parent `station_b.py`.
+        This fallback keeps the sidecar repo runnable enough for development,
+        config checks, and emergency local generation.
+        """
+        cfg = config or StationBConfig()
+        source = await asyncio.wait_for(
+            station_b_generate(
+                spec,
+                temperature=cfg.temperature,
+                model=cfg.model,
+            ),
+            timeout=cfg.timeout_seconds,
+        )
+        return _FallbackStationBResult(
+            source=source,
+            raw_llm_output="",
+            logic_blueprint={
+                "capability_type": capability_type,
+                "intended_domain": intended_domain,
+                "extra_instructions": extra_instructions,
+                "memory_context": memory_context,
+                "mode": mode,
+                "existing_source_excerpt": bool(existing_source_excerpt),
+            },
+        )
 
 LOG = logging.getLogger(__name__)
 
@@ -276,8 +345,30 @@ class RunnerConfig:
     evaluation_profile: Optional[str] = None  # e.g. "research", "default"
     evaluation_log_only: bool = True     # If False, you could later add auto-reject logic.
 
+    def validate(self) -> None:
+        """Fail fast on unsafe or nonsensical production configuration."""
+        if self.max_plugins is not None and self.max_plugins <= 0:
+            raise ValueError("max_plugins must be positive when provided.")
+        if self.sleep_seconds < 0:
+            raise ValueError("sleep_seconds must be >= 0.")
+        if not self.user_id.strip():
+            raise ValueError("user_id must be non-empty.")
+        if not self.llm_model.strip():
+            raise ValueError("llm_model must be non-empty.")
+        if not 0.0 <= self.llm_temperature <= 2.0:
+            raise ValueError("llm_temperature must be between 0.0 and 2.0.")
+        if self.llm_max_tokens <= 0:
+            raise ValueError("llm_max_tokens must be positive.")
+        if self.llm_timeout_seconds <= 0:
+            raise ValueError("llm_timeout_seconds must be positive.")
+        if self.max_per_category is not None and self.max_per_category <= 0:
+            raise ValueError("max_per_category must be positive when provided.")
+        if not 0.0 <= self.evaluation_threshold <= 1.0:
+            raise ValueError("evaluation_threshold must be between 0.0 and 1.0.")
+
     def station_b_config(self) -> StationBConfig:
         """Helper to build a StationBConfig from this RunnerConfig."""
+        self.validate()
         return StationBConfig(
             model=self.llm_model,
             temperature=self.llm_temperature,
@@ -592,8 +683,42 @@ def _write_plugin_file(slug: str, source: str) -> Path:
     return path
 
 
-def _validate_plugin_file(path: Path) -> Tuple[bool, str]:
-    return validate_plugin_module(path)
+async def _validate_plugin_file(path: Path, spec: PluginSpec) -> Tuple[bool, str]:
+    """
+    Validate a generated plugin across old and new Station C entrypoint shapes.
+
+    Parent Francis currently exposes a path-based sync helper. The sidecar
+    factory validator exposes an async module/spec helper. Supporting both keeps
+    this runner usable in production and in isolated repo checks.
+    """
+    sig = inspect.signature(validate_plugin_module)
+    params = list(sig.parameters)
+
+    if len(params) == 1:
+        result = validate_plugin_module(path)
+    else:
+        module_name = spec.slug.replace("-", "_")
+        module_spec = importlib.util.spec_from_file_location(module_name, path)
+        if module_spec is None or module_spec.loader is None:
+            return False, f"Unable to import generated plugin from {path}"
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)  # type: ignore[call-arg]
+        result = validate_plugin_module(module, spec)
+
+    if inspect.isawaitable(result):
+        result = await result
+
+    if isinstance(result, tuple) and len(result) >= 2:
+        return bool(result[0]), str(result[1])
+
+    ok = bool(getattr(result, "ok", False))
+    report = str(getattr(result, "error_report", "") or "")
+    if not report:
+        errors = getattr(result, "errors", None)
+        warnings = getattr(result, "warnings", None)
+        if errors or warnings:
+            report = f"errors={errors or []}; warnings={warnings or []}"
+    return ok, report
 
 
 def _build_memory_context(existing_slugs: Set[str], *, max_items: int = 50) -> Optional[str]:
@@ -1021,7 +1146,7 @@ async def run_factory(config: RunnerConfig) -> None:
         # -----------------------------------------------------
         # VALIDATE WITH STATION C
         # -----------------------------------------------------
-        ok, reason = _validate_plugin_file(plugin_path)
+        ok, reason = await _validate_plugin_file(plugin_path, spec)
         if ok:
             LOG.info(
                 "Plugin validation OK%s%s",
@@ -1064,7 +1189,7 @@ async def run_factory(config: RunnerConfig) -> None:
                 if repair_info.get("repaired"):
                     final_path_str = repair_info.get("final_path") or str(plugin_path)
                     final_path = Path(final_path_str)
-                    ok, reason = _validate_plugin_file(final_path)
+                    ok, reason = await _validate_plugin_file(final_path, spec)
                     LOG.info(
                         "Re-validation of repaired plugin %r → ok=%r reason=%r",
                         spec.slug,
@@ -1172,26 +1297,206 @@ async def run_factory(config: RunnerConfig) -> None:
 # CLI
 # =====================================================================
 
-def main() -> None:
+def _env(name: str, default: Optional[str] = None) -> Optional[str]:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return default
+    return value
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = _env(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: Optional[int]) -> Optional[int]:
+    raw = _env(name)
+    if raw is None:
+        return default
+    return int(raw)
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = _env(name)
+    if raw is None:
+        return default
+    return float(raw)
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m factory.factory_runner",
+        description="Run the Francis autonomous AI plugin factory.",
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Build one plugin and stop. Overrides loop mode unless --max-plugins is provided.",
+    )
+    parser.add_argument(
+        "--max-plugins",
+        type=int,
+        default=_env_int("FRANCIS_FACTORY_MAX_PLUGINS", None),
+        help="Build a finite number of plugins and stop.",
+    )
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        default=_env_bool("FRANCIS_FACTORY_LOOP", True),
+        help="Run continuously. Enabled by default for side-project operation.",
+    )
+    parser.add_argument(
+        "--sleep-seconds",
+        type=float,
+        default=_env_float("FRANCIS_FACTORY_SLEEP_SECONDS", 15.0),
+        help="Seconds to sleep between production attempts.",
+    )
+    parser.add_argument(
+        "--user-id",
+        default=_env("FRANCIS_FACTORY_USER_ID", "francis-factory"),
+        help="User/owner id recorded on generated plugin specs.",
+    )
+    parser.add_argument(
+        "--model",
+        default=_env("FRANCIS_FACTORY_MODEL", "llama3.1:8b"),
+        help="Ollama model used by Station B.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=_env_float("FRANCIS_FACTORY_TEMPERATURE", 0.25),
+        help="Station B model temperature.",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=_env_int("FRANCIS_FACTORY_MAX_TOKENS", 1024),
+        help="Station B maximum output tokens.",
+    )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=_env_int("FRANCIS_FACTORY_TIMEOUT_SECONDS", 240),
+        help="Station B LLM timeout in seconds.",
+    )
+    parser.add_argument(
+        "--evaluation-enabled",
+        action="store_true",
+        default=_env_bool("FRANCIS_FACTORY_EVALUATION_ENABLED", False),
+        help="Enable optional Station D evaluation when available.",
+    )
+    parser.add_argument(
+        "--evaluation-threshold",
+        type=float,
+        default=_env_float("FRANCIS_FACTORY_EVALUATION_THRESHOLD", 0.65),
+        help="Minimum acceptable Station D evaluation score.",
+    )
+    parser.add_argument(
+        "--evaluation-profile",
+        default=_env("FRANCIS_FACTORY_EVALUATION_PROFILE", None),
+        help="Optional Station D evaluation profile.",
+    )
+    parser.add_argument(
+        "--evaluation-enforce",
+        action="store_true",
+        default=_env_bool("FRANCIS_FACTORY_EVALUATION_ENFORCE", False),
+        help="Reserve flag for future reject-on-low-score behavior.",
+    )
+    parser.add_argument(
+        "--no-category-rotation",
+        action="store_true",
+        default=_env_bool("FRANCIS_FACTORY_NO_CATEGORY_ROTATION", False),
+        help="Disable category rotation guardrails.",
+    )
+    parser.add_argument(
+        "--max-per-category",
+        type=int,
+        default=_env_int("FRANCIS_FACTORY_MAX_PER_CATEGORY", None),
+        help="Maximum plugins per category during a loop run.",
+    )
+    parser.add_argument(
+        "--print-config",
+        action="store_true",
+        help="Print the resolved RunnerConfig as JSON and exit.",
+    )
+    parser.add_argument(
+        "--log-level",
+        default=_env("FRANCIS_FACTORY_LOG_LEVEL", "INFO"),
+        help="Python logging level: DEBUG, INFO, WARNING, ERROR.",
+    )
+    return parser
+
+
+def build_config_from_args(argv: Optional[Sequence[str]] = None) -> tuple[RunnerConfig, str, bool]:
+    """
+    Resolve production configuration from environment variables and CLI flags.
+
+    Environment variables use the FRANCIS_FACTORY_* prefix; CLI flags take
+    precedence naturally because argparse receives env-backed defaults.
+    """
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+
+    max_plugins = args.max_plugins
+    loop_forever = bool(args.loop)
+    if args.once:
+        loop_forever = False
+        if max_plugins is None:
+            max_plugins = 1
+    elif max_plugins is not None:
+        loop_forever = False
+
+    cfg = RunnerConfig(
+        max_plugins=max_plugins,
+        sleep_seconds=args.sleep_seconds,
+        loop_forever=loop_forever,
+        user_id=args.user_id,
+        llm_model=args.model,
+        llm_temperature=args.temperature,
+        llm_max_tokens=args.max_tokens,
+        llm_timeout_seconds=args.timeout_seconds,
+        rotate_categories=not args.no_category_rotation,
+        max_per_category=args.max_per_category,
+        evaluation_enabled=args.evaluation_enabled,
+        evaluation_threshold=args.evaluation_threshold,
+        evaluation_profile=args.evaluation_profile,
+        evaluation_log_only=not args.evaluation_enforce,
+    )
+    cfg.validate()
+    return cfg, str(args.log_level).upper(), bool(args.print_config)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    try:
+        cfg, log_level_name, print_config = build_config_from_args(argv)
+    except Exception as exc:
+        print(f"factory_runner configuration error: {exc}", file=sys.stderr)
+        return 2
+
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, log_level_name, logging.INFO),
         format="[%(asctime)s] [%(levelname)s] %(message)s",
     )
 
-    cfg = RunnerConfig(
-        loop_forever=True,
-        llm_model="llama3.1:8b",
-        llm_temperature=0.25,
-        llm_max_tokens=1024,
-        llm_timeout_seconds=240,
-        # You can flip this on once Station D evaluator is implemented.
-        evaluation_enabled=False,
-        evaluation_threshold=0.65,
-        evaluation_log_only=True,
-    )
+    if print_config:
+        print(json.dumps(asdict(cfg), indent=2, sort_keys=True))
+        return 0
 
-    asyncio.run(run_factory(cfg))
+    try:
+        asyncio.run(run_factory(cfg))
+    except FactoryAlreadyRunningError as exc:
+        LOG.error("%s", exc)
+        return 3
+    except KeyboardInterrupt:
+        LOG.info("Factory runner stopped by operator.")
+        return 130
+    except Exception:
+        LOG.exception("Factory runner crashed.")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

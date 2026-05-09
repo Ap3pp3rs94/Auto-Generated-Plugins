@@ -28,6 +28,11 @@ The factory is tuned to produce plugins specifically for AI functionality and AI
 workflow progress. It should not wander into random categories just because it
 can generate code.
 
+Legacy plugins created before these guides are intentionally not part of the
+current tracked plugin library. The repository should only keep generated
+plugins that were produced under the AI roadmap, handoff, duplicate-control, and
+user-experience standards described here.
+
 The intended output is a growing library of complementary AI capabilities such
 as:
 
@@ -100,6 +105,10 @@ That split is intentional:
 The Git repository for this factory was created inside `factory/`, not at the
 parent Francis project root.
 
+Tracked plugin artifacts in this repository should be curated. If an old plugin
+was not produced under the current AI roadmap guide, remove it instead of
+letting it define the quality bar for future generation.
+
 ## Important Files
 
 | File | Purpose |
@@ -150,6 +159,94 @@ loop: forever
 These defaults are intentionally conservative for a CPU-bound local Ollama
 setup. On machines without GPU acceleration, an 8B model can still take several
 minutes per plugin.
+
+## Production Configuration
+
+The runner can be configured with CLI flags or `FRANCIS_FACTORY_*` environment
+variables. CLI flags are best for manual runs; the env file is better for a
+side-project service.
+
+Print the resolved config without generating anything:
+
+```bash
+cd /home/peppera091/francis
+./.venv/bin/python -m factory.factory_runner --print-config --once
+```
+
+Run one plugin and stop:
+
+```bash
+cd /home/peppera091/francis
+./.venv/bin/python -m factory.factory_runner --once
+```
+
+Run a finite batch:
+
+```bash
+cd /home/peppera091/francis
+./.venv/bin/python -m factory.factory_runner --max-plugins 3
+```
+
+Run continuously with explicit model settings:
+
+```bash
+cd /home/peppera091/francis
+./.venv/bin/python -m factory.factory_runner \
+  --loop \
+  --model llama3.1:8b \
+  --max-tokens 1024 \
+  --timeout-seconds 240 \
+  --sleep-seconds 15
+```
+
+The example production environment file is:
+
+```text
+factory/production.env.example
+```
+
+Copy it to `factory/production.env`, tune values, and keep the real env file out
+of git.
+
+Important environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `FRANCIS_FACTORY_LOOP` | Run continuously when true. |
+| `FRANCIS_FACTORY_MAX_PLUGINS` | Finite batch size. |
+| `FRANCIS_FACTORY_SLEEP_SECONDS` | Delay between attempts. |
+| `FRANCIS_FACTORY_MODEL` | Ollama model for Station B. |
+| `FRANCIS_FACTORY_MAX_TOKENS` | Station B output token cap. |
+| `FRANCIS_FACTORY_TIMEOUT_SECONDS` | LLM timeout. |
+| `FRANCIS_FACTORY_EVALUATION_ENABLED` | Enables optional Station D evaluation. |
+| `FRANCIS_FACTORY_LOG_LEVEL` | Logging level for unattended runs. |
+
+## Side-Project Service
+
+A systemd user service template is included:
+
+```text
+factory/ops/francis-factory.service
+```
+
+Typical install path:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp /home/peppera091/francis/factory/ops/francis-factory.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable francis-factory.service
+systemctl --user start francis-factory.service
+```
+
+View logs:
+
+```bash
+journalctl --user -u francis-factory.service -f
+```
+
+Keep Ollama running separately. The service assumes `ollama serve` is already
+available on `127.0.0.1:11434`.
 
 ## Timeout Behavior
 
@@ -376,6 +473,13 @@ Keep factory changes focused on production quality:
 - improve handoff state so generated plugins compose better
 
 Avoid broad rewrites unless the station boundary genuinely needs to change.
+
+Run the focused sidecar tests from the parent Francis project:
+
+```bash
+cd /home/peppera091/francis
+./.venv/bin/python -m unittest discover -s factory/tests
+```
 
 ## Git Workflow
 
