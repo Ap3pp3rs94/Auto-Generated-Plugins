@@ -979,6 +979,18 @@ PROFILE_BUILDERS: Dict[str, tuple[str, Callable[[PluginSpec, Optional[str], str,
     "ai_eval_rubric_generator": ("eval_rubric_generator_profile", _eval_rubric),
     "ai_automation_safety_gate": ("automation_safety_gate_profile", _automation_safety),
     "ai_progress_tracker": ("progress_tracker_profile", _progress_tracker),
+    "ai_citation_need_detector": ("citation_need_detector_profile", _hallucination),
+    "ai_model_context_budget_estimator": ("model_context_budget_estimator_profile", _context_optimizer),
+    "ai_tool_call_sequence_builder": ("tool_call_sequence_builder_profile", _tool_selection),
+    "ai_agent_checkpoint_generator": ("agent_checkpoint_generator_profile", _task_planner),
+    "ai_user_intent_classifier": ("user_intent_classifier_profile", _capability_router),
+    "ai_acceptance_criteria_extractor": ("acceptance_criteria_extractor_profile", _eval_rubric),
+    "ai_prompt_constraint_mapper": ("prompt_constraint_mapper_profile", _prompt_refinement),
+    "ai_risk_register_builder": ("risk_register_builder_profile", _automation_safety),
+    "ai_trace_signal_extractor": ("trace_signal_extractor_profile", _workflow_debugger),
+    "ai_response_merge_planner": ("response_merge_planner_profile", _response_comparator),
+    "ai_memory_fact_extractor": ("memory_fact_extractor_profile", _memory_compression),
+    "ai_regression_watchlist_builder": ("regression_watchlist_builder_profile", _prompt_test_cases),
 }
 
 

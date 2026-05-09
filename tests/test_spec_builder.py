@@ -29,6 +29,14 @@ class SpecBuilderTests(unittest.TestCase):
             self.assertTrue(spec.extra["duplicate_policy"]["slug_must_be_unique"])
             self.assertIn("fun_mode", spec.extra["expected_result_shape"])
 
+    def test_roadmap_contains_distinct_continuous_backlog(self) -> None:
+        slugs = [build_next_spec(i)[0].slug for i in range(1, len(AI_CAPABILITY_ROADMAP) + 1)]
+
+        self.assertEqual(len(slugs), len(set(slugs)))
+        self.assertGreaterEqual(len(slugs), 30)
+        self.assertIn("ai_citation_need_detector", slugs)
+        self.assertIn("ai_regression_watchlist_builder", slugs)
+
     def test_second_phase_slug_is_available_for_explicit_expansion(self) -> None:
         first_spec = build_next_spec(1)[0]
         second_phase_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]

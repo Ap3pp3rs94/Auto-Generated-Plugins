@@ -1730,6 +1730,16 @@ async def run_factory(config: RunnerConfig) -> None:
                 "AI roadmap complete at %d unique plugin(s); phase expansion is disabled.",
                 len(AI_CAPABILITY_ROADMAP),
             )
+            if config.loop_forever:
+                LOG.info(
+                    "Factory will stay alive and recheck for newly added roadmap specs in %.1f seconds.",
+                    config.sleep_seconds,
+                )
+                await asyncio.sleep(config.sleep_seconds)
+                existing_slugs = _load_existing_plugin_slugs()
+                existing_signatures = _load_existing_capability_signatures()
+                index_counter = _next_ai_roadmap_index(existing_slugs)
+                continue
             break
 
         for _candidate_attempt in range(len(AI_CAPABILITY_ROADMAP) * 3):
