@@ -386,6 +386,7 @@ class RunnerConfig:
     github_publish_enabled: bool = True
     github_remote: str = "origin"
     github_branch: str = "main"
+    allow_phase_expansion: bool = False
 
     def validate(self) -> None:
         """Fail fast on unsafe or nonsensical production configuration."""
@@ -1724,8 +1725,25 @@ async def run_factory(config: RunnerConfig) -> None:
         capability_type: Optional[str] = None
         intended_domain: Optional[str] = None
 
+        if not config.allow_phase_expansion and index_counter > len(AI_CAPABILITY_ROADMAP):
+            LOG.info(
+                "AI roadmap complete at %d unique plugin(s); phase expansion is disabled.",
+                len(AI_CAPABILITY_ROADMAP),
+            )
+            break
+
         for _candidate_attempt in range(len(AI_CAPABILITY_ROADMAP) * 3):
             candidate_spec, candidate_capability, candidate_domain = build_next_spec(index_counter)
+            if (
+                not config.allow_phase_expansion
+                and int((getattr(candidate_spec, "extra", {}) or {}).get("phase", 1)) > 1
+            ):
+                LOG.info(
+                    "Skipping phase expansion spec while disabled: slug=%r phase=%r",
+                    candidate_spec.slug,
+                    (getattr(candidate_spec, "extra", {}) or {}).get("phase"),
+                )
+                break
             if _is_duplicate_spec(
                 candidate_spec,
                 existing_slugs=existing_slugs,
@@ -2364,6 +2382,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Git branch pushed after each generated plugin commit.",
     )
     parser.add_argument(
+        "--allow-phase-expansion",
+        action="store_true",
+        default=_env_bool("FRANCIS_FACTORY_ALLOW_PHASE_EXPANSION", False),
+        help="Allow second-pass phase_N variants after the unique AI roadmap is complete.",
+    )
+    parser.add_argument(
         "--print-config",
         action="store_true",
         help="Print the resolved RunnerConfig as JSON and exit.",
@@ -2414,6 +2438,7 @@ def build_config_from_args(argv: Optional[Sequence[str]] = None) -> tuple[Runner
         github_publish_enabled=not args.no_github_publish,
         github_remote=args.github_remote,
         github_branch=args.github_branch,
+        allow_phase_expansion=args.allow_phase_expansion,
     )
     cfg.validate()
     return cfg, str(args.log_level).upper(), bool(args.print_config)

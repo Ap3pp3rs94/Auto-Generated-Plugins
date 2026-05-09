@@ -29,13 +29,14 @@ class SpecBuilderTests(unittest.TestCase):
             self.assertTrue(spec.extra["duplicate_policy"]["slug_must_be_unique"])
             self.assertIn("fun_mode", spec.extra["expected_result_shape"])
 
-    def test_second_phase_slug_is_distinct(self) -> None:
+    def test_second_phase_slug_is_available_for_explicit_expansion(self) -> None:
         first_spec = build_next_spec(1)[0]
         second_phase_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0]
 
         self.assertNotEqual(first_spec.slug, second_phase_spec.slug)
         self.assertTrue(second_phase_spec.slug.endswith("_phase_2"))
         self.assertEqual(second_phase_spec.extra["phase"], 2)
+        self.assertIn("Phase 2", second_phase_spec.name)
 
 
 if __name__ == "__main__":
