@@ -445,34 +445,45 @@ result['details'] = {{'evaluated_response': response_text[:1200], 'covered_requi
 def _hallucination(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
-text = str(payload_data.get('response') or payload_data.get('answer') or (candidate_outputs[0] if candidate_outputs else '')).strip()
+raw_text = payload_data.get('response') or payload_data.get('answer')
+if raw_text is None and candidate_outputs:
+    raw_text = ' '.join(str(item.get('summary') or item.get('text') or item) if isinstance(item, dict) else str(item) for item in candidate_outputs[:4])
+context_text = ' '.join([def_text, objective_text, ' '.join(str(item) for item in constraints), str(payload_data.get('trace') or '')]).strip()
+text = (str(raw_text or '') + '. ' + context_text).strip()
 sentences = [part.strip() for part in text.replace('\\n', '. ').split('.') if part.strip()]
-risk_terms = ['always', 'never', 'guaranteed', 'latest', 'current', 'law', 'legal', 'medical', 'financial', 'price', 'study', 'research', 'statistic', 'percent']
+risk_terms = ['always', 'never', 'guaranteed', 'latest', 'current', 'law', 'legal', 'medical', 'clinical', 'financial', 'price', 'study', 'research', 'statistic', 'percent', 'dosage', 'unsupported', 'citation', 'source', 'claim', 'auth', 'login', 'database', 'migration', 'rollback']
 claims = []
 for sentence in sentences:
     lower = sentence.lower()
     signals = [term for term in risk_terms if term in lower]
     has_citation = 'http' in lower or '[' in sentence or 'source' in lower or 'citation' in lower
     if signals or any(ch.isdigit() for ch in sentence):
-        claims.append({{'claim': sentence[:220], 'risk_signals': signals, 'has_citation': has_citation, 'needs_verification': bool(signals) and not has_citation}})
+        needs_verification = bool(signals) and not has_citation
+        if any(term in signals for term in ['unsupported', 'claim', 'dosage', 'medical', 'clinical']):
+            needs_verification = True
+        claims.append({{'claim': sentence[:220], 'risk_signals': signals, 'has_citation': has_citation, 'needs_verification': needs_verification}})
 high_risk = [claim for claim in claims if claim['needs_verification']]
+context_signals = sorted(set(term for term in risk_terms if term in context_text.lower()))
 safer_rewrites = []
 for claim in high_risk[:5]:
     safer_rewrites.append({{'original': claim['claim'], 'rewrite': 'Verify before relying on this claim: ' + claim['claim']}})
-risk_score = round(min(0.95, 0.18 + 0.12 * len(high_risk) + 0.04 * len(claims)), 2)
+risk_score = round(min(0.95, 0.14 + 0.11 * len(high_risk) + 0.035 * len(claims) + 0.02 * len(context_signals)), 2)
 result['summary'] = plugin_name + ': found ' + str(len(high_risk)) + ' claim(s) needing verification.'
 result['primary_insights'] = [
     {{'title': 'Claims needing verification', 'detail': high_risk[:6]}},
     {{'title': 'Citation coverage', 'detail': str(len([c for c in claims if c['has_citation']])) + ' cited of ' + str(len(claims)) + ' flagged claims'}},
     {{'title': 'Risk domains', 'detail': sorted(set(term for claim in claims for term in claim['risk_signals']))}},
+    {{'title': 'Context signals', 'detail': context_signals or 'No context risk signals.'}},
 ]
 result['recommended_actions'] = [
     {{'action': 'Verify claim', 'claim': claim['claim'], 'signals': claim['risk_signals']}} for claim in high_risk[:5]
 ]
+if not result['recommended_actions'] and context_signals:
+    result['recommended_actions'].append({{'action': 'Preserve context caveat', 'signals': context_signals, 'context': context_text[:240]}})
 if safer_rewrites:
     result['recommended_actions'].append({{'action': 'Use safer rewrites', 'rewrites': safer_rewrites}})
-result['scores'] = {{'confidence': round(0.5 + min(0.35, 0.06 * len(sentences)), 2), 'hallucination_risk': risk_score, 'citation_coverage': round(len([c for c in claims if c['has_citation']]) / max(1, len(claims)), 2), 'risk': risk_score}}
-result['details'] = {{'claims': claims, 'high_risk_claims': high_risk, 'safer_rewrites': safer_rewrites, 'missing_inputs': ['response or candidate_outputs'] if not text else []}}
+result['scores'] = {{'confidence': round(min(0.92, 0.44 + min(0.24, 0.045 * len(sentences)) + min(0.16, 0.025 * len(context_signals)) + (0.08 if claims else 0)), 2), 'hallucination_risk': risk_score, 'citation_coverage': round(len([c for c in claims if c['has_citation']]) / max(1, len(claims)), 2), 'risk': risk_score, 'context_signal_count': len(context_signals)}}
+result['details'] = {{'claims': claims, 'high_risk_claims': high_risk, 'context_signals': context_signals, 'evaluated_text': text[:1200], 'safer_rewrites': safer_rewrites, 'missing_inputs': ['response or candidate_outputs'] if not raw_text and not candidate_outputs else []}}
 {_common_result_footer("'Verify the highest-risk uncited claim.'")}
 """.strip()
 
