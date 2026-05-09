@@ -16,6 +16,7 @@ try:
         PROFILE_REQUIRED_DETAIL_KEYS,
         QualityConfig,
         _profile_specific_checks,
+        _required_detail_keys,
         _roadmap_spec_from_slug,
         build_config_from_args,
         AuditResult,
@@ -26,6 +27,7 @@ except ModuleNotFoundError:
         PROFILE_REQUIRED_DETAIL_KEYS,
         QualityConfig,
         _profile_specific_checks,
+        _required_detail_keys,
         _roadmap_spec_from_slug,
         build_config_from_args,
         AuditResult,
@@ -114,6 +116,16 @@ class QualityRunnerTests(unittest.TestCase):
         self.assertEqual(spec.slug, slug)
         self.assertTrue(spec.extra["continuous_expansion"])
         self.assertEqual(registered_profile_id(slug), "continuous_prompt_contract_designer_profile")
+
+    def test_continuous_profiles_inherit_required_detail_keys(self) -> None:
+        self.assertEqual(
+            _required_detail_keys("continuous_prompt_contract_designer_profile"),
+            PROFILE_REQUIRED_DETAIL_KEYS["structured_prompt_builder_profile"],
+        )
+        self.assertEqual(
+            _required_detail_keys("continuous_tool_argument_checker_profile"),
+            PROFILE_REQUIRED_DETAIL_KEYS["prompt_injection_surface_scanner_profile"],
+        )
 
     def test_tool_routing_probe_rejects_missing_github_tool(self) -> None:
         result = AuditResult(

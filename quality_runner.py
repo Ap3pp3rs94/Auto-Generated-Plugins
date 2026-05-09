@@ -135,6 +135,44 @@ PROFILE_REQUIRED_DETAIL_KEYS: Dict[str, set[str]] = {
 }
 
 
+CONTINUOUS_PROFILE_REQUIRED_KEY_FALLBACKS: tuple[tuple[str, str], ...] = (
+    ("continuous_prompt_contract_designer_profile", "structured_prompt_builder_profile"),
+    ("continuous_prompt_clarity_auditor_profile", "prompt_refinement_profile"),
+    ("continuous_evidence_gap_detector_profile", "grounded_answer_planner_profile"),
+    ("continuous_source_quality_ranker_profile", "grounded_answer_planner_profile"),
+    ("continuous_context_noise_filter_profile", "context_window_optimizer_profile"),
+    ("continuous_memory_update_recommender_profile", "memory_compression_profile"),
+    ("continuous_agent_handoff_checker_profile", "multi_agent_handoff_profile"),
+    ("continuous_parallelization_planner_profile", "task_planner_profile"),
+    ("continuous_tool_safety_reviewer_profile", "automation_safety_gate_profile"),
+    ("continuous_tool_argument_checker_profile", "prompt_injection_surface_scanner_profile"),
+    ("continuous_output_completeness_grader_profile", "output_quality_scorer_profile"),
+    ("continuous_response_action_planner_profile", "output_quality_scorer_profile"),
+    ("continuous_assumption_risk_mapper_profile", "requirement_gap_analyzer_profile"),
+    ("continuous_verification_checklist_builder_profile", "prompt_test_case_generator_profile"),
+    ("continuous_rollback_guard_builder_profile", "automation_safety_gate_profile"),
+    ("continuous_anomaly_watch_builder_profile", "autonomous_run_governor_profile"),
+    ("continuous_capability_overlap_checker_profile", "plugin_factory_backlog_planner_profile"),
+    ("continuous_release_evidence_summarizer_profile", "artifact_release_note_generator_profile"),
+    ("continuous_trace_failure_router_profile", "workflow_debugger_profile"),
+    ("continuous_retrieval_query_planner_profile", "retrieval_query_expander_profile"),
+    ("continuous_citation_priority_scorer_profile", "hallucination_risk_auditor_profile"),
+    ("continuous_model_fit_triage_profile", "model_selection_scorecard_profile"),
+    ("continuous_instruction_hierarchy_checker_profile", "instruction_conflict_detector_profile"),
+    ("continuous_data_contract_validator_profile", "data_contract_mapper_profile"),
+)
+
+
+def _required_detail_keys(profile_id: str) -> set[str]:
+    required = PROFILE_REQUIRED_DETAIL_KEYS.get(profile_id)
+    if required is not None:
+        return required
+    for continuous_profile, base_profile in CONTINUOUS_PROFILE_REQUIRED_KEY_FALLBACKS:
+        if profile_id == continuous_profile:
+            return PROFILE_REQUIRED_DETAIL_KEYS.get(base_profile, set())
+    return set()
+
+
 @dataclass
 class QualityIssue:
     code: str
@@ -287,7 +325,7 @@ def _profile_specific_checks(result: AuditResult, output: Dict[str, Any]) -> Non
     if result.profile_id and actual_profile != result.profile_id:
         result.add("profile_mismatch", f"expected {result.profile_id!r}, got {actual_profile!r}")
 
-    required = PROFILE_REQUIRED_DETAIL_KEYS.get(profile_id, set())
+    required = _required_detail_keys(profile_id)
     missing = sorted(key for key in required if key not in details)
     if missing:
         result.add("missing_detail_keys", ", ".join(missing))
