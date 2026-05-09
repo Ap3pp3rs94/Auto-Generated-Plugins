@@ -491,7 +491,14 @@ result['details'] = {{'claims': claims, 'high_risk_claims': high_risk, 'context_
 def _retrieval_query(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
-base = ' '.join([def_text, objective_text]).strip()
+context_parts = [def_text, objective_text, str(payload_data.get('prompt') or '')]
+for key in ['constraints', 'current_plan', 'blocked_steps', 'trace']:
+    value = payload_data.get(key)
+    if value:
+        context_parts.append(str(value))
+for item in candidate_outputs[:4]:
+    context_parts.append(str(item.get('summary') or item.get('text') or item) if isinstance(item, dict) else str(item))
+base = ' '.join(context_parts).strip()
 noise = ['please', 'help', 'make', 'better', 'stuff', 'things', 'very']
 tokens = [word.strip('.,:;!?').lower() for word in base.split()]
 keywords = []
@@ -502,18 +509,26 @@ facet_terms = {{
     'implementation': [word for word in keywords if word in ['code', 'python', 'api', 'plugin', 'test', 'error']],
     'evaluation': [word for word in keywords if word in ['quality', 'rubric', 'score', 'verify', 'citation']],
     'planning': [word for word in keywords if word in ['agent', 'workflow', 'handoff', 'task', 'plan']],
+    'factual_risk': [word for word in keywords if word in ['medical', 'clinical', 'claim', 'source', 'unsupported', 'retrieval']],
+    'release_risk': [word for word in keywords if word in ['auth', 'login', 'database', 'migration', 'rollback', 'production']],
 }}
 expanded_queries = []
 core = ' '.join(keywords[:8]) or base[:120] or goal
 expanded_queries.append(core)
-expanded_queries.append(core + ' examples implementation')
+if facet_terms['factual_risk']:
+    expanded_queries.append(core + ' source citation verification')
+if facet_terms['release_risk']:
+    expanded_queries.append(core + ' rollback migration test evidence')
+if facet_terms['implementation']:
+    expanded_queries.append(core + ' examples implementation')
 expanded_queries.append(core + ' best practices validation')
 if objective_text:
     expanded_queries.append(core + ' ' + objective_text[:80])
 negative_terms = [word for word in noise if word in tokens]
+facet_count = sum(len(values) for values in facet_terms.values())
 grounding_plan = [
     'Search broad query first: ' + expanded_queries[0],
-    'Then search implementation-specific query if code or plugin signals appear.',
+    'Then search facet-specific queries: ' + ', '.join(name for name, values in facet_terms.items() if values) if any(facet_terms.values()) else 'Then ask for more concrete retrieval signals.',
     'Prefer primary documentation or direct source artifacts over summaries.',
 ]
 result['summary'] = plugin_name + ': expanded retrieval into ' + str(len(expanded_queries)) + ' grounded queries.'
@@ -525,7 +540,7 @@ result['primary_insights'] = [
 result['recommended_actions'] = [
     {{'action': 'Run retrieval query', 'query': query}} for query in expanded_queries
 ]
-result['scores'] = {{'confidence': round(min(0.9, 0.42 + 0.05 * len(keywords)), 2), 'query_specificity': round(min(0.95, 0.3 + 0.06 * len(keywords)), 2), 'grounding_value': round(0.58 + min(0.3, 0.06 * len(expanded_queries)), 2), 'risk': round(0.22 + (0.12 if len(keywords) < 3 else 0), 2)}}
+result['scores'] = {{'confidence': round(min(0.9, 0.38 + 0.035 * len(keywords[:12]) + 0.035 * len(expanded_queries)), 2), 'query_specificity': round(min(0.95, 0.28 + 0.045 * len(keywords[:14]) + 0.04 * facet_count), 2), 'grounding_value': round(min(0.94, 0.5 + 0.055 * len(expanded_queries) + 0.04 * len(facet_terms['factual_risk'])), 2), 'risk': round(min(0.9, 0.18 + (0.12 if len(keywords) < 3 else 0) + 0.035 * len(facet_terms['factual_risk']) + 0.025 * len(facet_terms['release_risk'])), 2), 'facet_signal_count': facet_count}}
 result['details'] = {{'core_query': core, 'expanded_queries': expanded_queries, 'facet_terms': facet_terms, 'negative_terms': negative_terms, 'grounding_plan': grounding_plan, 'missing_inputs': ['task or objective'] if not base else []}}
 {_common_result_footer("'Run retrieval query: ' + expanded_queries[0]")}
 """.strip()
