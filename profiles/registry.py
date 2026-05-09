@@ -713,30 +713,51 @@ def _instruction_conflicts(spec: PluginSpec, capability_type: Optional[str], pro
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
 instruction_sources = []
-for key in ['system', 'developer', 'user', 'prompt', 'constraints']:
+for key in ['system', 'developer', 'user', 'prompt', 'constraints', 'task', 'objective', 'current_plan', 'blocked_steps']:
     value = payload_data.get(key)
     if value not in (None, '', [], {{}}):
         instruction_sources.append({{'source': key, 'text': str(value)}})
 text = ' '.join(item['text'] for item in instruction_sources).lower()
 conflicts = []
+source_previews = [{{'source': item['source'], 'preview': item['text'][:180]}} for item in instruction_sources]
+instruction_risk_tags = []
+for label, terms in [
+    ('release_or_auth_instruction', ['auth', 'login', 'database', 'migration', 'rollback', 'production', 'session']),
+    ('factual_grounding_instruction', ['medical', 'clinical', 'citation', 'claim', 'source', 'unsupported', 'hallucination']),
+    ('tooling_instruction', ['browse', 'retrieval', 'tool', 'trace', 'consistency']),
+    ('coordination_instruction', ['multi-agent', 'owner', 'blocked', 'handoff']),
+]:
+    hits = [term for term in terms if term in text]
+    if hits:
+        instruction_risk_tags.append({{'category': label, 'signals': hits}})
 if 'do not' in text and any(word in text for word in ['must', 'always', 'required']):
-    conflicts.append({{'type': 'possible prohibition conflict', 'evidence': 'contains both prohibition and mandate language'}})
+    conflicts.append({{'type': 'possible prohibition conflict', 'evidence': 'contains both prohibition and mandate language', 'signals': ['do not', 'must/always/required']}})
 if 'delete' in text and ('do not delete' in text or 'preserve' in text):
-    conflicts.append({{'type': 'destructive action conflict', 'evidence': 'delete conflicts with preserve/do-not-delete'}})
+    conflicts.append({{'type': 'destructive action conflict', 'evidence': 'delete conflicts with preserve/do-not-delete', 'signals': ['delete', 'preserve']}})
 if 'no external' in text and any(word in text for word in ['browse', 'internet', 'latest', 'current']):
-    conflicts.append({{'type': 'external-source conflict', 'evidence': 'external lookup requested while external access is disallowed'}})
-clarified = 'Follow higher-priority instructions first; resolve conflicts before execution; preserve safety constraints.'
+    conflicts.append({{'type': 'external-source conflict', 'evidence': 'external lookup requested while external access is disallowed', 'signals': ['no external', 'browse/latest/current']}})
+if 'medical' in text or 'clinical' in text or 'citation' in text:
+    if any(word in text for word in ['answer', 'claim', 'current']) and not any(word in text for word in ['cite', 'source', 'verify']):
+        conflicts.append({{'type': 'grounding conflict', 'evidence': 'high-risk factual answer lacks explicit citation or verification rule', 'signals': ['medical/clinical/citation', 'answer/claim']}})
+if 'auth' in text or 'database' in text or 'migration' in text:
+    if any(word in text for word in ['ship', 'change', 'deploy']) and not any(word in text for word in ['test', 'rollback', 'verify']):
+        conflicts.append({{'type': 'release-safety conflict', 'evidence': 'release-sensitive change lacks test or rollback rule', 'signals': ['auth/database/migration', 'ship/change/deploy']}})
+clarified = 'Follow higher-priority instructions first; resolve conflicts before execution; preserve safety constraints. Sources: ' + ', '.join(item['source'] for item in instruction_sources[:6])
 result['summary'] = plugin_name + ': found ' + str(len(conflicts)) + ' instruction conflict signal(s).'
 result['primary_insights'] = [
     {{'title': 'Conflicts', 'detail': conflicts}},
-    {{'title': 'Instruction sources', 'detail': [item['source'] for item in instruction_sources]}},
+    {{'title': 'Instruction sources', 'detail': source_previews}},
+    {{'title': 'Instruction risk tags', 'detail': instruction_risk_tags or 'No specialized instruction risk tags.'}},
 ]
 result['recommended_actions'] = [
     {{'action': 'Resolve conflict before execution', 'conflicts': conflicts}},
+    {{'action': 'Review instruction risk tags', 'risk_tags': instruction_risk_tags}},
     {{'action': 'Use clarified instruction set', 'clarified_instruction': clarified}},
 ]
-result['scores'] = {{'confidence': round(0.5 + min(0.35, 0.1 * len(instruction_sources)), 2), 'conflict_count': len(conflicts), 'safety_risk': round(min(0.9, 0.18 + 0.2 * len(conflicts)), 2), 'risk': round(min(0.9, 0.18 + 0.2 * len(conflicts)), 2)}}
-result['details'] = {{'instruction_sources': instruction_sources, 'conflicts': conflicts, 'clarified_instruction': clarified, 'missing_inputs': ['instructions'] if not instruction_sources else []}}
+signal_count = sum(len(item.get('signals', [])) for item in conflicts)
+risk_tag_signal_count = sum(len(item.get('signals', [])) for item in instruction_risk_tags)
+result['scores'] = {{'confidence': round(min(0.92, 0.42 + min(0.24, 0.055 * len(instruction_sources)) + min(0.14, 0.025 * (signal_count + risk_tag_signal_count))), 2), 'conflict_count': len(conflicts), 'safety_risk': round(min(0.9, 0.12 + 0.16 * len(conflicts) + 0.03 * signal_count + 0.022 * risk_tag_signal_count), 2), 'risk': round(min(0.9, 0.12 + 0.16 * len(conflicts) + 0.03 * signal_count + 0.022 * risk_tag_signal_count), 2), 'signal_count': signal_count, 'risk_tag_signal_count': risk_tag_signal_count}}
+result['details'] = {{'instruction_sources': source_previews, 'conflicts': conflicts, 'instruction_risk_tags': instruction_risk_tags, 'clarified_instruction': clarified, 'missing_inputs': ['instructions'] if not instruction_sources else []}}
 {_common_result_footer("'Resolve conflict before execution'")}
 """.strip()
 
