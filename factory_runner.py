@@ -54,6 +54,21 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
 
 try:
+    from factory.profiles import (
+        build_profile_source as _build_profile_source,
+        registered_profile_id as _registered_profile_id,
+    )
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
+    try:
+        from profiles import (  # type: ignore
+            build_profile_source as _build_profile_source,
+            registered_profile_id as _registered_profile_id,
+        )
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover
+        _build_profile_source = None  # type: ignore[assignment]
+        _registered_profile_id = None  # type: ignore[assignment]
+
+try:
     from station_b import generate_plugin_source, StationBConfig
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
     from dataclasses import field
@@ -1048,6 +1063,17 @@ def _build_semantic_repair_source(
     This uses Station B's same envelope helpers when the full Francis runtime is
     present. Standalone checkouts without those internals simply skip repair.
     """
+    if callable(_build_profile_source):
+        profile_source = _build_profile_source(
+            source,
+            spec,
+            capability_type,
+            logic_profile_id,
+            reason=reason,
+        )
+        if profile_source:
+            return profile_source
+
     if not (
         callable(_station_b_deterministic_ai_body)
         and callable(_station_b_wrap_logic_body)
@@ -1432,29 +1458,76 @@ async def run_factory(config: RunnerConfig) -> None:
 
         if _is_ai_roadmap_spec(spec) and _station_b_result_is_fallback(result):
             raw_reason = str(getattr(result, "raw_llm_output", "") or "unknown Station B fallback")
-            LOG.error(
-                "Rejecting AI roadmap plugin %r because Station B returned fallback output: %s",
-                spec.slug,
-                raw_reason,
-            )
-            _se_record(
-                EVENT_FACTORY_STATION_B_ERROR,
-                slug=spec.slug,
-                category=getattr(spec, "category", None),
-                capability_type=capability_type,
-                domain=intended_domain,
-                error=raw_reason,
-                rejected=True,
-            )
-            if not config.loop_forever:
-                break
+            profile_id = _registered_profile_id(spec.slug) if callable(_registered_profile_id) else None
+            if profile_id and callable(_build_profile_source):
+                profile_source = _build_profile_source(
+                    result.source,
+                    spec,
+                    capability_type,
+                    getattr(result, "logic_profile_id", None),
+                    reason=f"Station B fallback replaced by capability profile: {raw_reason}",
+                )
+                if profile_source:
+                    result.source = profile_source
+                    try:
+                        result.logic_profile_id = profile_id
+                    except Exception:
+                        pass
+                    LOG.warning(
+                        "Station B fallback for AI roadmap plugin %r was replaced by capability profile %r.",
+                        spec.slug,
+                        profile_id,
+                    )
+                else:
+                    profile_id = None
+            if profile_id:
+                pass
+            else:
+                LOG.error(
+                    "Rejecting AI roadmap plugin %r because Station B returned fallback output: %s",
+                    spec.slug,
+                    raw_reason,
+                )
+                _se_record(
+                    EVENT_FACTORY_STATION_B_ERROR,
+                    slug=spec.slug,
+                    category=getattr(spec, "category", None),
+                    capability_type=capability_type,
+                    domain=intended_domain,
+                    error=raw_reason,
+                    rejected=True,
+                )
+                if not config.loop_forever:
+                    break
 
-            LOG.info(
-                "AI roadmap generation did not produce real model logic; retrying same spec in %.1f seconds.",
-                config.sleep_seconds,
-            )
-            await asyncio.sleep(config.sleep_seconds)
-            continue
+                LOG.info(
+                    "AI roadmap generation did not produce real model logic; retrying same spec in %.1f seconds.",
+                    config.sleep_seconds,
+                )
+                await asyncio.sleep(config.sleep_seconds)
+                continue
+
+        if _is_ai_roadmap_spec(spec) and callable(_build_profile_source):
+            profile_id = _registered_profile_id(spec.slug) if callable(_registered_profile_id) else None
+            if profile_id:
+                profile_source = _build_profile_source(
+                    result.source,
+                    spec,
+                    capability_type,
+                    getattr(result, "logic_profile_id", None),
+                    reason="capability profile registry override",
+                )
+                if profile_source:
+                    result.source = profile_source
+                    try:
+                        result.logic_profile_id = profile_id
+                    except Exception:
+                        pass
+                    LOG.info(
+                        "Applied capability profile %r to AI roadmap plugin %r.",
+                        profile_id,
+                        spec.slug,
+                    )
 
         # -----------------------------------------------------
         # WRITE PLUGIN FILE

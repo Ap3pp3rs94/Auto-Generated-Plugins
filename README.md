@@ -144,6 +144,7 @@ keep fallback logic after a timeout.
 | `station_c_validator.py` | Structural and runtime validation helpers. |
 | `plugin_template.py` | Plugin source template. |
 | `plugin_spec.py` | Serializable plugin specification model. |
+| `profiles/` | Capability-specific deterministic profiles used to repair or override shallow generated bodies. |
 | `learning/` | Dataset and learning hooks. |
 | `ops/` | Side-project operations templates. |
 | `archive/legacy/` | Older station experiments kept out of the main path. |
@@ -276,7 +277,8 @@ Generated plugins are kept only when they satisfy the current guide:
 
 - produced from the deterministic AI roadmap
 - unique slug and distinct capability
-- real Station B output, not timeout fallback output
+- backed by a capability-specific profile when the roadmap has one
+- real Station B output, or a registered deterministic profile replacing timeout fallback output
 - Python syntax compiles
 - plugin contract validates
 - runtime smoke check passes

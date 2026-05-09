@@ -168,92 +168,25 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
     The return value MUST be a JSON-serializable dict.
     """
     # === LOGIC START ===
-    # Auto-generated Station B core logic envelope. Edits may be overwritten by the factory.
+    # Auto-generated capability-profile core logic envelope. Edits may be overwritten by the factory.
     import base64
     try:
         from schema_tools import infer_tabular_schema, pick_numeric_field
     except Exception:  # pragma: no cover
-        # Fallback no-op schema helpers if schema_tools is missing
         def infer_tabular_schema(data):
             return {}
         def pick_numeric_field(schema, hints=None):
             return None
-
-    try:
-        from deterministic_core import (
-            ensure_list_of_dicts,
-            summarize_key_coverage,
-            analyze_deployment_plans,
-            group_logs_by_service_and_error,
-            find_recurring_errors,
-        )
-    except Exception:  # pragma: no cover
-        # Fallback lightweight helpers if deterministic_core is missing
-        def ensure_list_of_dicts(data):
-            if data is None:
-                return [], ['No data provided.']
-            if isinstance(data, dict):
-                if data and all(isinstance(v, dict) for v in data.values()):
-                    return list(data.values()), []
-                return [data], []
-            if isinstance(data, (list, tuple, set)):
-                records = [d for d in data if isinstance(d, dict)]
-                warnings = []
-                if len(records) != len(data):
-                    warnings.append('Some items were not dicts and were ignored.')
-                return records, warnings
-            return [{'value': data}], ['Coerced scalar to single-record list.']
-
-        def summarize_key_coverage(records, candidate_keys=None, max_keys=32):
-            total = len(records or [])
-            return {'total_records': total, 'keys': {}}
-
-        def analyze_deployment_plans(plans, *, min_steps_reasonable=3):
-            return {
-                'total_plans': 0,
-                'steps_per_plan': {},
-                'too_simple_plans': [],
-                'invalid_plans': [],
-                'min_steps_reasonable': min_steps_reasonable,
-                'dangerous_plans': [],
-                'warnings': ['deterministic_core missing; using fallback analyze_deployment_plans.'],
-            }
-
-        def group_logs_by_service_and_error(logs, *, service_keys=None, error_keys=None):
-            return {
-                'counts': {},
-                'total_logs': len(logs or []),
-                'top_services': [],
-                'top_errors': [],
-            }
-
-        def find_recurring_errors(logs, *, min_count=2, error_keys=None):
-            return {
-                'total_logs': len(logs or []),
-                'min_count': min_count,
-                'error_counts': {},
-                'recurring_errors': {},
-                'top_error': None,
-            }
-
     try:
         if hasattr(context, 'log_info'):
-            context.log_info(
-                'Executing LLM-generated core logic.',
-                plugin_slug=_PLUGIN_SLUG,
-            )
+            context.log_info('Executing capability-profile core logic.', plugin_slug=_PLUGIN_SLUG)
     except Exception:
         pass
-
-    _llm_body_source_preview = 'plugin_name = \'AI Memory Compression Synthesizer\'\ngoal = \'Compress conversation or project history into durable memory notes without losing decisions.\'\ndomain = \'AI memory, context management, and long-running work\'\ncapability_type = \'research_synthesizer\'\nlogic_profile_id = \'research_synthesis\'\nfallback_reason = "semantic_depth: decision fields do not reflect enough payload values (a=[], b=[\'this\'])."\nuse_cases = [\'Summarize long work sessions into concise durable memory.\', \'Extract stable preferences, constraints, and project facts.\', \'Separate decisions from transient discussion.\', \'Show a compact progress state for this AI capability during baseline capability.\']\npayload_data = payload if isinstance(payload, dict) else {}\npayload_warnings = [] if isinstance(payload, dict) else [\'payload was not a dict; using empty payload\']\nimportant_keys = [\'task\', \'objective\', \'prompt\', \'messages\', \'candidate_outputs\', \'trace\', \'current_plan\', \'completed_steps\', \'blocked_steps\', \'constraints\', \'previous_results\', \'roadmap_state\']\npresent_keys = [key for key in important_keys if payload_data.get(key) not in (None, \'\', [], {})]\nmissing_keys = [key for key in important_keys[:8] if key not in present_keys]\nevidence = [{\'field\': key, \'value_preview\': str(payload_data.get(key))[:220]} for key in present_keys[:8]]\ntask_preview = str(payload_data.get(\'task\') or payload_data.get(\'objective\') or payload_data.get(\'prompt\') or \'the requested AI workflow\')[:180]\nobjective_preview = str(payload_data.get(\'objective\') or goal)[:180]\nblocker_preview = str((payload_data.get(\'blocked_steps\') or missing_keys[:2] or [\'no explicit blockers\'])[0])[:160] if isinstance(payload_data.get(\'blocked_steps\') or missing_keys[:2] or [\'no explicit blockers\'], list) else str(payload_data.get(\'blocked_steps\'))[:160]\ncandidate_preview = str((payload_data.get(\'candidate_outputs\') or payload_data.get(\'trace\') or [\'no candidate output provided\'])[0])[:180] if isinstance(payload_data.get(\'candidate_outputs\') or payload_data.get(\'trace\') or [\'no candidate output provided\'], list) else str(payload_data.get(\'candidate_outputs\') or payload_data.get(\'trace\'))[:180]\nprimary_insights = []\nprimary_insights.append({\'title\': \'Capability focus\', \'detail\': \'Apply \' + plugin_name + \' to: \' + task_preview, \'domain\': domain})\nif present_keys:\n    primary_insights.append({\'title\': \'Available context\', \'detail\': \'Use objective: \' + objective_preview, \'fields\': present_keys})\nelse:\n    primary_insights.append({\'title\': \'Missing context\', \'detail\': \'No strong task context was provided.\', \'missing_fields\': missing_keys})\nprimary_insights.append({\'title\': \'Key blocker or uncertainty\', \'detail\': blocker_preview})\nprimary_insights.append({\'title\': \'Candidate evidence\', \'detail\': candidate_preview})\nif payload_data.get(\'previous_results\') or payload_data.get(\'roadmap_state\'):\n    primary_insights.append({\'title\': \'Roadmap continuity\', \'detail\': \'Previous AI roadmap context is available and should be reused.\'})\nrecommended_actions = []\nrecommended_actions.append({\'action\': \'Define the next AI workflow step for \' + task_preview, \'why\': \'Keeps autonomous progress concrete and testable.\'})\nrecommended_actions.append({\'action\': \'Separate blocking work around \' + blocker_preview + \' from parallel work\', \'why\': \'Prevents duplicated agent effort and drift.\'})\nrecommended_actions.append({\'action\': \'Record a verification checkpoint for \' + objective_preview, \'why\': \'Makes the result easier for later plugins to consume.\'})\nif missing_keys:\n    recommended_actions.append({\'action\': \'Provide missing context\', \'fields\': missing_keys[:5]})\nconfidence = min(0.9, 0.25 + (0.08 * len(present_keys)))\nrisk = max(0.1, min(0.9, 0.68 - (0.04 * len(present_keys)) + (0.08 if missing_keys else 0.0)))\nresult[\'summary\'] = plugin_name + \': produced deterministic AI workflow guidance for \' + task_preview + \' in \' + domain + \'.\'\nresult[\'primary_insights\'] = primary_insights\nresult[\'recommended_actions\'] = recommended_actions\nresult[\'scores\'] = {\'confidence\': round(confidence, 2), \'usefulness\': round(0.55 + min(0.35, 0.05 * len(recommended_actions)), 2), \'novelty\': round(0.52 + min(0.28, 0.04 * len(present_keys)), 2), \'risk\': round(risk, 2)}\nresult[\'details\'] = {\'evidence\': evidence, \'missing_keys\': missing_keys, \'use_cases\': use_cases, \'generation_note\': fallback_reason, \'capability_type\': capability_type, \'logic_profile_id\': logic_profile_id, \'payload_warnings\': payload_warnings}\nresult[\'progress_state\'] = {\'current_stage\': \'roadmap_capability_generated\', \'next_step\': recommended_actions[0][\'action\'], \'blockers\': missing_keys[:3] + ([blocker_preview] if blocker_preview and blocker_preview != \'no explicit blockers\' else []), \'done_signals\': [\'structured_result_returned\', \'recommendations_available\']}\nresult[\'user_experience\'] = {\'plain_language_takeaway\': \'The next move for \' + task_preview + \' is: \' + recommended_actions[0][\'action\'], \'beginner_tip\': \'Start by making \' + objective_preview + \' testable.\', \'power_user_tip\': \'Pass previous_results and roadmap_state into the next plugin to preserve continuity for \' + task_preview + \'.\', \'interaction_suggestions\': [\'Review blocker: \' + blocker_preview, \'Choose a checkpoint for \' + objective_preview, \'Pass this result forward\']}\nresult[\'fun_mode\'] = {\'challenge_label\': \'Next Step Locked\', \'score_badge\': \'Ready to Route\' if confidence >= 0.5 else \'Needs Context\', \'microcopy\': \'Small clear steps beat repeated work on \' + task_preview + \'.\', \'optional_next_challenge\': \'Turn the first action into a testable prompt for \' + objective_preview + \'.\'}'
-    _llm_body_b64 = "cGx1Z2luX25hbWUgPSAnQUkgTWVtb3J5IENvbXByZXNzaW9uIFN5bnRoZXNpemVyJwpnb2FsID0gJ0NvbXByZXNzIGNvbnZlcnNhdGlvbiBvciBwcm9qZWN0IGhpc3RvcnkgaW50byBkdXJhYmxlIG1lbW9yeSBub3RlcyB3aXRob3V0IGxvc2luZyBkZWNpc2lvbnMuJwpkb21haW4gPSAnQUkgbWVtb3J5LCBjb250ZXh0IG1hbmFnZW1lbnQsIGFuZCBsb25nLXJ1bm5pbmcgd29yaycKY2FwYWJpbGl0eV90eXBlID0gJ3Jlc2VhcmNoX3N5bnRoZXNpemVyJwpsb2dpY19wcm9maWxlX2lkID0gJ3Jlc2VhcmNoX3N5bnRoZXNpcycKZmFsbGJhY2tfcmVhc29uID0gInNlbWFudGljX2RlcHRoOiBkZWNpc2lvbiBmaWVsZHMgZG8gbm90IHJlZmxlY3QgZW5vdWdoIHBheWxvYWQgdmFsdWVzIChhPVtdLCBiPVsndGhpcyddKS4iCnVzZV9jYXNlcyA9IFsnU3VtbWFyaXplIGxvbmcgd29yayBzZXNzaW9ucyBpbnRvIGNvbmNpc2UgZHVyYWJsZSBtZW1vcnkuJywgJ0V4dHJhY3Qgc3RhYmxlIHByZWZlcmVuY2VzLCBjb25zdHJhaW50cywgYW5kIHByb2plY3QgZmFjdHMuJywgJ1NlcGFyYXRlIGRlY2lzaW9ucyBmcm9tIHRyYW5zaWVudCBkaXNjdXNzaW9uLicsICdTaG93IGEgY29tcGFjdCBwcm9ncmVzcyBzdGF0ZSBmb3IgdGhpcyBBSSBjYXBhYmlsaXR5IGR1cmluZyBiYXNlbGluZSBjYXBhYmlsaXR5LiddCnBheWxvYWRfZGF0YSA9IHBheWxvYWQgaWYgaXNpbnN0YW5jZShwYXlsb2FkLCBkaWN0KSBlbHNlIHt9CnBheWxvYWRfd2FybmluZ3MgPSBbXSBpZiBpc2luc3RhbmNlKHBheWxvYWQsIGRpY3QpIGVsc2UgWydwYXlsb2FkIHdhcyBub3QgYSBkaWN0OyB1c2luZyBlbXB0eSBwYXlsb2FkJ10KaW1wb3J0YW50X2tleXMgPSBbJ3Rhc2snLCAnb2JqZWN0aXZlJywgJ3Byb21wdCcsICdtZXNzYWdlcycsICdjYW5kaWRhdGVfb3V0cHV0cycsICd0cmFjZScsICdjdXJyZW50X3BsYW4nLCAnY29tcGxldGVkX3N0ZXBzJywgJ2Jsb2NrZWRfc3RlcHMnLCAnY29uc3RyYWludHMnLCAncHJldmlvdXNfcmVzdWx0cycsICdyb2FkbWFwX3N0YXRlJ10KcHJlc2VudF9rZXlzID0gW2tleSBmb3Iga2V5IGluIGltcG9ydGFudF9rZXlzIGlmIHBheWxvYWRfZGF0YS5nZXQoa2V5KSBub3QgaW4gKE5vbmUsICcnLCBbXSwge30pXQptaXNzaW5nX2tleXMgPSBba2V5IGZvciBrZXkgaW4gaW1wb3J0YW50X2tleXNbOjhdIGlmIGtleSBub3QgaW4gcHJlc2VudF9rZXlzXQpldmlkZW5jZSA9IFt7J2ZpZWxkJzoga2V5LCAndmFsdWVfcHJldmlldyc6IHN0cihwYXlsb2FkX2RhdGEuZ2V0KGtleSkpWzoyMjBdfSBmb3Iga2V5IGluIHByZXNlbnRfa2V5c1s6OF1dCnRhc2tfcHJldmlldyA9IHN0cihwYXlsb2FkX2RhdGEuZ2V0KCd0YXNrJykgb3IgcGF5bG9hZF9kYXRhLmdldCgnb2JqZWN0aXZlJykgb3IgcGF5bG9hZF9kYXRhLmdldCgncHJvbXB0Jykgb3IgJ3RoZSByZXF1ZXN0ZWQgQUkgd29ya2Zsb3cnKVs6MTgwXQpvYmplY3RpdmVfcHJldmlldyA9IHN0cihwYXlsb2FkX2RhdGEuZ2V0KCdvYmplY3RpdmUnKSBvciBnb2FsKVs6MTgwXQpibG9ja2VyX3ByZXZpZXcgPSBzdHIoKHBheWxvYWRfZGF0YS5nZXQoJ2Jsb2NrZWRfc3RlcHMnKSBvciBtaXNzaW5nX2tleXNbOjJdIG9yIFsnbm8gZXhwbGljaXQgYmxvY2tlcnMnXSlbMF0pWzoxNjBdIGlmIGlzaW5zdGFuY2UocGF5bG9hZF9kYXRhLmdldCgnYmxvY2tlZF9zdGVwcycpIG9yIG1pc3Npbmdfa2V5c1s6Ml0gb3IgWydubyBleHBsaWNpdCBibG9ja2VycyddLCBsaXN0KSBlbHNlIHN0cihwYXlsb2FkX2RhdGEuZ2V0KCdibG9ja2VkX3N0ZXBzJykpWzoxNjBdCmNhbmRpZGF0ZV9wcmV2aWV3ID0gc3RyKChwYXlsb2FkX2RhdGEuZ2V0KCdjYW5kaWRhdGVfb3V0cHV0cycpIG9yIHBheWxvYWRfZGF0YS5nZXQoJ3RyYWNlJykgb3IgWydubyBjYW5kaWRhdGUgb3V0cHV0IHByb3ZpZGVkJ10pWzBdKVs6MTgwXSBpZiBpc2luc3RhbmNlKHBheWxvYWRfZGF0YS5nZXQoJ2NhbmRpZGF0ZV9vdXRwdXRzJykgb3IgcGF5bG9hZF9kYXRhLmdldCgndHJhY2UnKSBvciBbJ25vIGNhbmRpZGF0ZSBvdXRwdXQgcHJvdmlkZWQnXSwgbGlzdCkgZWxzZSBzdHIocGF5bG9hZF9kYXRhLmdldCgnY2FuZGlkYXRlX291dHB1dHMnKSBvciBwYXlsb2FkX2RhdGEuZ2V0KCd0cmFjZScpKVs6MTgwXQpwcmltYXJ5X2luc2lnaHRzID0gW10KcHJpbWFyeV9pbnNpZ2h0cy5hcHBlbmQoeyd0aXRsZSc6ICdDYXBhYmlsaXR5IGZvY3VzJywgJ2RldGFpbCc6ICdBcHBseSAnICsgcGx1Z2luX25hbWUgKyAnIHRvOiAnICsgdGFza19wcmV2aWV3LCAnZG9tYWluJzogZG9tYWlufSkKaWYgcHJlc2VudF9rZXlzOgogICAgcHJpbWFyeV9pbnNpZ2h0cy5hcHBlbmQoeyd0aXRsZSc6ICdBdmFpbGFibGUgY29udGV4dCcsICdkZXRhaWwnOiAnVXNlIG9iamVjdGl2ZTogJyArIG9iamVjdGl2ZV9wcmV2aWV3LCAnZmllbGRzJzogcHJlc2VudF9rZXlzfSkKZWxzZToKICAgIHByaW1hcnlfaW5zaWdodHMuYXBwZW5kKHsndGl0bGUnOiAnTWlzc2luZyBjb250ZXh0JywgJ2RldGFpbCc6ICdObyBzdHJvbmcgdGFzayBjb250ZXh0IHdhcyBwcm92aWRlZC4nLCAnbWlzc2luZ19maWVsZHMnOiBtaXNzaW5nX2tleXN9KQpwcmltYXJ5X2luc2lnaHRzLmFwcGVuZCh7J3RpdGxlJzogJ0tleSBibG9ja2VyIG9yIHVuY2VydGFpbnR5JywgJ2RldGFpbCc6IGJsb2NrZXJfcHJldmlld30pCnByaW1hcnlfaW5zaWdodHMuYXBwZW5kKHsndGl0bGUnOiAnQ2FuZGlkYXRlIGV2aWRlbmNlJywgJ2RldGFpbCc6IGNhbmRpZGF0ZV9wcmV2aWV3fSkKaWYgcGF5bG9hZF9kYXRhLmdldCgncHJldmlvdXNfcmVzdWx0cycpIG9yIHBheWxvYWRfZGF0YS5nZXQoJ3JvYWRtYXBfc3RhdGUnKToKICAgIHByaW1hcnlfaW5zaWdodHMuYXBwZW5kKHsndGl0bGUnOiAnUm9hZG1hcCBjb250aW51aXR5JywgJ2RldGFpbCc6ICdQcmV2aW91cyBBSSByb2FkbWFwIGNvbnRleHQgaXMgYXZhaWxhYmxlIGFuZCBzaG91bGQgYmUgcmV1c2VkLid9KQpyZWNvbW1lbmRlZF9hY3Rpb25zID0gW10KcmVjb21tZW5kZWRfYWN0aW9ucy5hcHBlbmQoeydhY3Rpb24nOiAnRGVmaW5lIHRoZSBuZXh0IEFJIHdvcmtmbG93IHN0ZXAgZm9yICcgKyB0YXNrX3ByZXZpZXcsICd3aHknOiAnS2VlcHMgYXV0b25vbW91cyBwcm9ncmVzcyBjb25jcmV0ZSBhbmQgdGVzdGFibGUuJ30pCnJlY29tbWVuZGVkX2FjdGlvbnMuYXBwZW5kKHsnYWN0aW9uJzogJ1NlcGFyYXRlIGJsb2NraW5nIHdvcmsgYXJvdW5kICcgKyBibG9ja2VyX3ByZXZpZXcgKyAnIGZyb20gcGFyYWxsZWwgd29yaycsICd3aHknOiAnUHJldmVudHMgZHVwbGljYXRlZCBhZ2VudCBlZmZvcnQgYW5kIGRyaWZ0Lid9KQpyZWNvbW1lbmRlZF9hY3Rpb25zLmFwcGVuZCh7J2FjdGlvbic6ICdSZWNvcmQgYSB2ZXJpZmljYXRpb24gY2hlY2twb2ludCBmb3IgJyArIG9iamVjdGl2ZV9wcmV2aWV3LCAnd2h5JzogJ01ha2VzIHRoZSByZXN1bHQgZWFzaWVyIGZvciBsYXRlciBwbHVnaW5zIHRvIGNvbnN1bWUuJ30pCmlmIG1pc3Npbmdfa2V5czoKICAgIHJlY29tbWVuZGVkX2FjdGlvbnMuYXBwZW5kKHsnYWN0aW9uJzogJ1Byb3ZpZGUgbWlzc2luZyBjb250ZXh0JywgJ2ZpZWxkcyc6IG1pc3Npbmdfa2V5c1s6NV19KQpjb25maWRlbmNlID0gbWluKDAuOSwgMC4yNSArICgwLjA4ICogbGVuKHByZXNlbnRfa2V5cykpKQpyaXNrID0gbWF4KDAuMSwgbWluKDAuOSwgMC42OCAtICgwLjA0ICogbGVuKHByZXNlbnRfa2V5cykpICsgKDAuMDggaWYgbWlzc2luZ19rZXlzIGVsc2UgMC4wKSkpCnJlc3VsdFsnc3VtbWFyeSddID0gcGx1Z2luX25hbWUgKyAnOiBwcm9kdWNlZCBkZXRlcm1pbmlzdGljIEFJIHdvcmtmbG93IGd1aWRhbmNlIGZvciAnICsgdGFza19wcmV2aWV3ICsgJyBpbiAnICsgZG9tYWluICsgJy4nCnJlc3VsdFsncHJpbWFyeV9pbnNpZ2h0cyddID0gcHJpbWFyeV9pbnNpZ2h0cwpyZXN1bHRbJ3JlY29tbWVuZGVkX2FjdGlvbnMnXSA9IHJlY29tbWVuZGVkX2FjdGlvbnMKcmVzdWx0WydzY29yZXMnXSA9IHsnY29uZmlkZW5jZSc6IHJvdW5kKGNvbmZpZGVuY2UsIDIpLCAndXNlZnVsbmVzcyc6IHJvdW5kKDAuNTUgKyBtaW4oMC4zNSwgMC4wNSAqIGxlbihyZWNvbW1lbmRlZF9hY3Rpb25zKSksIDIpLCAnbm92ZWx0eSc6IHJvdW5kKDAuNTIgKyBtaW4oMC4yOCwgMC4wNCAqIGxlbihwcmVzZW50X2tleXMpKSwgMiksICdyaXNrJzogcm91bmQocmlzaywgMil9CnJlc3VsdFsnZGV0YWlscyddID0geydldmlkZW5jZSc6IGV2aWRlbmNlLCAnbWlzc2luZ19rZXlzJzogbWlzc2luZ19rZXlzLCAndXNlX2Nhc2VzJzogdXNlX2Nhc2VzLCAnZ2VuZXJhdGlvbl9ub3RlJzogZmFsbGJhY2tfcmVhc29uLCAnY2FwYWJpbGl0eV90eXBlJzogY2FwYWJpbGl0eV90eXBlLCAnbG9naWNfcHJvZmlsZV9pZCc6IGxvZ2ljX3Byb2ZpbGVfaWQsICdwYXlsb2FkX3dhcm5pbmdzJzogcGF5bG9hZF93YXJuaW5nc30KcmVzdWx0Wydwcm9ncmVzc19zdGF0ZSddID0geydjdXJyZW50X3N0YWdlJzogJ3JvYWRtYXBfY2FwYWJpbGl0eV9nZW5lcmF0ZWQnLCAnbmV4dF9zdGVwJzogcmVjb21tZW5kZWRfYWN0aW9uc1swXVsnYWN0aW9uJ10sICdibG9ja2Vycyc6IG1pc3Npbmdfa2V5c1s6M10gKyAoW2Jsb2NrZXJfcHJldmlld10gaWYgYmxvY2tlcl9wcmV2aWV3IGFuZCBibG9ja2VyX3ByZXZpZXcgIT0gJ25vIGV4cGxpY2l0IGJsb2NrZXJzJyBlbHNlIFtdKSwgJ2RvbmVfc2lnbmFscyc6IFsnc3RydWN0dXJlZF9yZXN1bHRfcmV0dXJuZWQnLCAncmVjb21tZW5kYXRpb25zX2F2YWlsYWJsZSddfQpyZXN1bHRbJ3VzZXJfZXhwZXJpZW5jZSddID0geydwbGFpbl9sYW5ndWFnZV90YWtlYXdheSc6ICdUaGUgbmV4dCBtb3ZlIGZvciAnICsgdGFza19wcmV2aWV3ICsgJyBpczogJyArIHJlY29tbWVuZGVkX2FjdGlvbnNbMF1bJ2FjdGlvbiddLCAnYmVnaW5uZXJfdGlwJzogJ1N0YXJ0IGJ5IG1ha2luZyAnICsgb2JqZWN0aXZlX3ByZXZpZXcgKyAnIHRlc3RhYmxlLicsICdwb3dlcl91c2VyX3RpcCc6ICdQYXNzIHByZXZpb3VzX3Jlc3VsdHMgYW5kIHJvYWRtYXBfc3RhdGUgaW50byB0aGUgbmV4dCBwbHVnaW4gdG8gcHJlc2VydmUgY29udGludWl0eSBmb3IgJyArIHRhc2tfcHJldmlldyArICcuJywgJ2ludGVyYWN0aW9uX3N1Z2dlc3Rpb25zJzogWydSZXZpZXcgYmxvY2tlcjogJyArIGJsb2NrZXJfcHJldmlldywgJ0Nob29zZSBhIGNoZWNrcG9pbnQgZm9yICcgKyBvYmplY3RpdmVfcHJldmlldywgJ1Bhc3MgdGhpcyByZXN1bHQgZm9yd2FyZCddfQpyZXN1bHRbJ2Z1bl9tb2RlJ10gPSB7J2NoYWxsZW5nZV9sYWJlbCc6ICdOZXh0IFN0ZXAgTG9ja2VkJywgJ3Njb3JlX2JhZGdlJzogJ1JlYWR5IHRvIFJvdXRlJyBpZiBjb25maWRlbmNlID49IDAuNSBlbHNlICdOZWVkcyBDb250ZXh0JywgJ21pY3JvY29weSc6ICdTbWFsbCBjbGVhciBzdGVwcyBiZWF0IHJlcGVhdGVkIHdvcmsgb24gJyArIHRhc2tfcHJldmlldyArICcuJywgJ29wdGlvbmFsX25leHRfY2hhbGxlbmdlJzogJ1R1cm4gdGhlIGZpcnN0IGFjdGlvbiBpbnRvIGEgdGVzdGFibGUgcHJvbXB0IGZvciAnICsgb2JqZWN0aXZlX3ByZXZpZXcgKyAnLid9"
+    _profile_body_b64 = 'cGx1Z2luX25hbWUgPSAnQUkgTWVtb3J5IENvbXByZXNzaW9uIFN5bnRoZXNpemVyJwpnb2FsID0gJ0NvbXByZXNzIGNvbnZlcnNhdGlvbiBvciBwcm9qZWN0IGhpc3RvcnkgaW50byBkdXJhYmxlIG1lbW9yeSBub3RlcyB3aXRob3V0IGxvc2luZyBkZWNpc2lvbnMuJwpkb21haW4gPSAnQUkgbWVtb3J5LCBjb250ZXh0IG1hbmFnZW1lbnQsIGFuZCBsb25nLXJ1bm5pbmcgd29yaycKY2FwYWJpbGl0eV90eXBlID0gJ3Jlc2VhcmNoX3N5bnRoZXNpemVyJwpsb2dpY19wcm9maWxlX2lkID0gJ21lbW9yeV9jb21wcmVzc2lvbl9wcm9maWxlJwpnZW5lcmF0aW9uX25vdGUgPSAnY2FwYWJpbGl0eS1zcGVjaWZpYyBwcm9maWxlIHJlcGxhY2VtZW50IGZvciBnZW5lcmljIHNlbWFudGljIHJlcGFpcicKdXNlX2Nhc2VzID0gWydTdW1tYXJpemUgbG9uZyB3b3JrIHNlc3Npb25zIGludG8gY29uY2lzZSBkdXJhYmxlIG1lbW9yeS4nLCAnRXh0cmFjdCBzdGFibGUgcHJlZmVyZW5jZXMsIGNvbnN0cmFpbnRzLCBhbmQgcHJvamVjdCBmYWN0cy4nLCAnU2VwYXJhdGUgZGVjaXNpb25zIGZyb20gdHJhbnNpZW50IGRpc2N1c3Npb24uJywgJ1Nob3cgYSBjb21wYWN0IHByb2dyZXNzIHN0YXRlIGZvciB0aGlzIEFJIGNhcGFiaWxpdHkgZHVyaW5nIGJhc2VsaW5lIGNhcGFiaWxpdHkuJywgJ1JldHVybiB1c2VyLWZhY2luZyBndWlkYW5jZSB0aGF0IGlzIHVzZWZ1bCwgY29uY2lzZSwgYW5kIHNhZmUgdG8gYWN0IG9uLicsICdBdm9pZCBkdXBsaWNhdGluZyBleGlzdGluZyBBSSBwbHVnaW4gYmVoYXZpb3I7IGlkZW50aWZ5IHdoYXQgaXMgdW5pcXVlIGFib3V0IHRoaXMgY2FwYWJpbGl0eS4nXQpwYXlsb2FkX2RhdGEgPSBwYXlsb2FkIGlmIGlzaW5zdGFuY2UocGF5bG9hZCwgZGljdCkgZWxzZSB7fQpwYXlsb2FkX3dhcm5pbmdzID0gW10gaWYgaXNpbnN0YW5jZShwYXlsb2FkLCBkaWN0KSBlbHNlIFsncGF5bG9hZCB3YXMgbm90IGEgZGljdDsgdXNpbmcgZW1wdHkgcGF5bG9hZCddCmRlZl90ZXh0ID0gc3RyKHBheWxvYWRfZGF0YS5nZXQoJ3Rhc2snKSBvciBwYXlsb2FkX2RhdGEuZ2V0KCdvYmplY3RpdmUnKSBvciBwYXlsb2FkX2RhdGEuZ2V0KCdwcm9tcHQnKSBvciBnb2FsKS5zdHJpcCgpCm9iamVjdGl2ZV90ZXh0ID0gc3RyKHBheWxvYWRfZGF0YS5nZXQoJ29iamVjdGl2ZScpIG9yIGdvYWwpLnN0cmlwKCkKY29uc3RyYWludHMgPSBwYXlsb2FkX2RhdGEuZ2V0KCdjb25zdHJhaW50cycpIGlmIGlzaW5zdGFuY2UocGF5bG9hZF9kYXRhLmdldCgnY29uc3RyYWludHMnKSwgbGlzdCkgZWxzZSBbXQptZXNzYWdlcyA9IHBheWxvYWRfZGF0YS5nZXQoJ21lc3NhZ2VzJykgaWYgaXNpbnN0YW5jZShwYXlsb2FkX2RhdGEuZ2V0KCdtZXNzYWdlcycpLCBsaXN0KSBlbHNlIFtdCmNhbmRpZGF0ZV9vdXRwdXRzID0gcGF5bG9hZF9kYXRhLmdldCgnY2FuZGlkYXRlX291dHB1dHMnKSBpZiBpc2luc3RhbmNlKHBheWxvYWRfZGF0YS5nZXQoJ2NhbmRpZGF0ZV9vdXRwdXRzJyksIGxpc3QpIGVsc2UgW10Kc291cmNlX25vdGVzID0gcGF5bG9hZF9kYXRhLmdldCgnc291cmNlX25vdGVzJykgaWYgaXNpbnN0YW5jZShwYXlsb2FkX2RhdGEuZ2V0KCdzb3VyY2Vfbm90ZXMnKSwgbGlzdCkgZWxzZSBbXQpyYXdfaXRlbXMgPSBbXQpmb3IgaXRlbSBpbiBtZXNzYWdlcyArIHNvdXJjZV9ub3RlcyArIGNhbmRpZGF0ZV9vdXRwdXRzOgogICAgaWYgaXNpbnN0YW5jZShpdGVtLCBkaWN0KToKICAgICAgICByYXdfaXRlbXMuYXBwZW5kKHN0cihpdGVtLmdldCgnY29udGVudCcpIG9yIGl0ZW0uZ2V0KCd0ZXh0Jykgb3IgaXRlbS5nZXQoJ3N1bW1hcnknKSBvciBpdGVtKVs6NTAwXSkKICAgIGVsc2U6CiAgICAgICAgcmF3X2l0ZW1zLmFwcGVuZChzdHIoaXRlbSlbOjUwMF0pCmlmIHBheWxvYWRfZGF0YS5nZXQoJ3ByZXZpb3VzX3Jlc3VsdHMnKToKICAgIHJhd19pdGVtcy5hcHBlbmQoc3RyKHBheWxvYWRfZGF0YS5nZXQoJ3ByZXZpb3VzX3Jlc3VsdHMnKSlbOjcwMF0pCmpvaW5lZCA9ICcgJy5qb2luKHJhd19pdGVtcykuc3RyaXAoKQpzZW50ZW5jZXMgPSBbcGFydC5zdHJpcCgpIGZvciBwYXJ0IGluIGpvaW5lZC5yZXBsYWNlKCdcbicsICcuICcpLnNwbGl0KCcuJykgaWYgcGFydC5zdHJpcCgpXQpkdXJhYmxlX2ZhY3RzID0gW3NlbnRlbmNlIGZvciBzZW50ZW5jZSBpbiBzZW50ZW5jZXMgaWYgYW55KHRva2VuIGluIHNlbnRlbmNlLmxvd2VyKCkgZm9yIHRva2VuIGluIFsnZGVjaWRlZCcsICdjb21wbGV0ZWQnLCAndXNlcycsICdtdXN0JywgJ2NvbnN0cmFpbnQnLCAnYmxvY2tlZCcsICdvd25lcicsICdwYXRoJ10pXQpvcGVuX3RocmVhZHMgPSBbc2VudGVuY2UgZm9yIHNlbnRlbmNlIGluIHNlbnRlbmNlcyBpZiBhbnkodG9rZW4gaW4gc2VudGVuY2UubG93ZXIoKSBmb3IgdG9rZW4gaW4gWyd0b2RvJywgJ25leHQnLCAnYmxvY2tlZCcsICd1bmtub3duJywgJ3F1ZXN0aW9uJywgJ25lZWRzJ10pXQpkaXNjYXJkX2NhbmRpZGF0ZXMgPSBbc2VudGVuY2UgZm9yIHNlbnRlbmNlIGluIHNlbnRlbmNlcyBpZiBsZW4oc2VudGVuY2Uuc3BsaXQoKSkgPCA0IG9yIHNlbnRlbmNlLmxvd2VyKCkgaW4gWydvaycsICd0aGFua3MnLCAnZG9uZSddXQptZW1vcnlfc3VtbWFyeSA9ICc7ICcuam9pbigoZHVyYWJsZV9mYWN0cyBvciBzZW50ZW5jZXMgb3IgW2RlZl90ZXh0XSlbOjRdKVs6NzAwXQpvcmlnaW5hbF90b2tlbnMgPSBtYXgoMSwgbGVuKGpvaW5lZCkgLy8gNCkKY29tcHJlc3NlZF90b2tlbnMgPSBtYXgoMSwgbGVuKG1lbW9yeV9zdW1tYXJ5KSAvLyA0KQpjb21wcmVzc2lvbl9yYXRpbyA9IHJvdW5kKGNvbXByZXNzZWRfdG9rZW5zIC8gb3JpZ2luYWxfdG9rZW5zLCAyKQpjb25maWRlbmNlID0gbWluKDAuOTIsIDAuNDIgKyAwLjA4ICogbGVuKGR1cmFibGVfZmFjdHNbOjVdKSArIDAuMDUgKiBsZW4ob3Blbl90aHJlYWRzWzozXSkpCnJlc3VsdFsnc3VtbWFyeSddID0gcGx1Z2luX25hbWUgKyAnOiBjb21wcmVzc2VkIGNvbnRleHQgaW50byBkdXJhYmxlIG1lbW9yeSB3aXRoIHJhdGlvICcgKyBzdHIoY29tcHJlc3Npb25fcmF0aW8pICsgJy4nCnJlc3VsdFsncHJpbWFyeV9pbnNpZ2h0cyddID0gWwogICAgeyd0aXRsZSc6ICdNZW1vcnkgc3VtbWFyeScsICdkZXRhaWwnOiBtZW1vcnlfc3VtbWFyeX0sCiAgICB7J3RpdGxlJzogJ0R1cmFibGUgZmFjdHMnLCAnZGV0YWlsJzogZHVyYWJsZV9mYWN0c1s6Nl19LAogICAgeyd0aXRsZSc6ICdPcGVuIHRocmVhZHMnLCAnZGV0YWlsJzogb3Blbl90aHJlYWRzWzo1XX0sCl0KcmVzdWx0WydyZWNvbW1lbmRlZF9hY3Rpb25zJ10gPSBbCiAgICB7J2FjdGlvbic6ICdQZXJzaXN0IG1lbW9yeSBzdW1tYXJ5JywgJ21lbW9yeV9zdW1tYXJ5JzogbWVtb3J5X3N1bW1hcnl9LAogICAgeydhY3Rpb24nOiAnQ2Fycnkgb3BlbiB0aHJlYWRzIGZvcndhcmQnLCAnb3Blbl90aHJlYWRzJzogb3Blbl90aHJlYWRzWzo1XX0sCiAgICB7J2FjdGlvbic6ICdEcm9wIGxvdy12YWx1ZSBjaGF0dGVyJywgJ2Rpc2NhcmRfY2FuZGlkYXRlcyc6IGRpc2NhcmRfY2FuZGlkYXRlc1s6NV19LApdCnJlc3VsdFsnc2NvcmVzJ10gPSB7J2NvbmZpZGVuY2UnOiByb3VuZChjb25maWRlbmNlLCAyKSwgJ2NvbXByZXNzaW9uX3JhdGlvJzogY29tcHJlc3Npb25fcmF0aW8sICdyZXRlbnRpb25fdmFsdWUnOiByb3VuZChtaW4oMC45NSwgMC40NSArIDAuMDggKiBsZW4oZHVyYWJsZV9mYWN0c1s6NV0pKSwgMiksICdyaXNrJzogcm91bmQobWF4KDAuMTIsIDAuNTUgLSBjb25maWRlbmNlKSwgMil9CnJlc3VsdFsnZGV0YWlscyddID0geydtZW1vcnlfc3VtbWFyeSc6IG1lbW9yeV9zdW1tYXJ5LCAnZHVyYWJsZV9mYWN0cyc6IGR1cmFibGVfZmFjdHNbOjEwXSwgJ29wZW5fdGhyZWFkcyc6IG9wZW5fdGhyZWFkc1s6MTBdLCAnZGlzY2FyZF9jYW5kaWRhdGVzJzogZGlzY2FyZF9jYW5kaWRhdGVzWzoxMF0sICdvcmlnaW5hbF90b2tlbl9lc3RpbWF0ZSc6IG9yaWdpbmFsX3Rva2VucywgJ2NvbXByZXNzZWRfdG9rZW5fZXN0aW1hdGUnOiBjb21wcmVzc2VkX3Rva2VucywgJ21pc3NpbmdfaW5wdXRzJzogWydtZXNzYWdlcyBvciBzb3VyY2Vfbm90ZXMnXSBpZiBub3QgcmF3X2l0ZW1zIGVsc2UgW119CnJlc3VsdFsnZGV0YWlscyddWyd1c2VfY2FzZXMnXSA9IHVzZV9jYXNlcwpyZXN1bHRbJ2RldGFpbHMnXVsnZ2VuZXJhdGlvbl9ub3RlJ10gPSBnZW5lcmF0aW9uX25vdGUKcmVzdWx0WydkZXRhaWxzJ11bJ2NhcGFiaWxpdHlfdHlwZSddID0gY2FwYWJpbGl0eV90eXBlCnJlc3VsdFsnZGV0YWlscyddWydsb2dpY19wcm9maWxlX2lkJ10gPSBsb2dpY19wcm9maWxlX2lkCnJlc3VsdFsnZGV0YWlscyddWydwYXlsb2FkX3dhcm5pbmdzJ10gPSBwYXlsb2FkX3dhcm5pbmdzCnJlc3VsdFsncHJvZ3Jlc3Nfc3RhdGUnXSA9IHsKICAgICdjdXJyZW50X3N0YWdlJzogbG9naWNfcHJvZmlsZV9pZCwKICAgICduZXh0X3N0ZXAnOiAnUGVyc2lzdCBtZW1vcnkgc3VtbWFyeScsCiAgICAnYmxvY2tlcnMnOiByZXN1bHRbJ2RldGFpbHMnXS5nZXQoJ21pc3NpbmdfaW5wdXRzJywgW10pWzo0XSwKICAgICdkb25lX3NpZ25hbHMnOiBbJ2NhcGFiaWxpdHlfc3BlY2lmaWNfYW5hbHlzaXNfY29tcGxldGUnLCBsb2dpY19wcm9maWxlX2lkXSwKfQpyZXN1bHRbJ3VzZXJfZXhwZXJpZW5jZSddID0gewogICAgJ3BsYWluX2xhbmd1YWdlX3Rha2Vhd2F5JzogcmVzdWx0WydzdW1tYXJ5J10sCiAgICAnYmVnaW5uZXJfdGlwJzogJ1VzZSB0aGUgZmlyc3QgcmVjb21tZW5kYXRpb24gYXMgdGhlIG5leHQgY29uY3JldGUgc3RlcC4nLAogICAgJ3Bvd2VyX3VzZXJfdGlwJzogJ1Bhc3MgZGV0YWlscyBhbmQgc2NvcmVzIGludG8gdGhlIG5leHQgQUkgY2FwYWJpbGl0eSBwbHVnaW4uJywKICAgICdpbnRlcmFjdGlvbl9zdWdnZXN0aW9ucyc6IFtpdGVtLmdldCgnYWN0aW9uJywgc3RyKGl0ZW0pKSBmb3IgaXRlbSBpbiByZXN1bHQuZ2V0KCdyZWNvbW1lbmRlZF9hY3Rpb25zJywgW10pWzozXV0sCn0KcmVzdWx0WydmdW5fbW9kZSddID0gewogICAgJ2NoYWxsZW5nZV9sYWJlbCc6ICdDYXBhYmlsaXR5IFJ1bicsCiAgICAnc2NvcmVfYmFkZ2UnOiAnU3Ryb25nIFNpZ25hbCcgaWYgcmVzdWx0LmdldCgnc2NvcmVzJywge30pLmdldCgnY29uZmlkZW5jZScsIDApID49IDAuNjUgZWxzZSAnTmVlZHMgQ29udGV4dCcsCiAgICAnbWljcm9jb3B5JzogJ1RoZSByZXN1bHQgaXMgc3RydWN0dXJlZCBzbyBhbm90aGVyIGFnZW50IGNhbiBwaWNrIGl0IHVwIGNsZWFubHkuJywKICAgICdvcHRpb25hbF9uZXh0X2NoYWxsZW5nZSc6ICdQZXJzaXN0IG1lbW9yeSBzdW1tYXJ5JywKfQ=='
     try:
-        _llm_source_bytes = base64.b64decode(_llm_body_b64.encode('ascii'))
-        _llm_body_source = _llm_source_bytes.decode('utf-8')
+        _profile_body_source = base64.b64decode(_profile_body_b64.encode('ascii')).decode('utf-8')
     except Exception:
-        _llm_body_source = ''
-
-    # Initialize a default result; LLM code is expected to UPDATE this
+        _profile_body_source = ''
     result = {
         'summary': '',
         'primary_insights': [],
@@ -261,13 +194,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         'scores': {'confidence': 0.0},
         'details': {},
     }
-
-    # Derive a simple tabular schema from payload['data'], if possible
-    data_obj = None
-    if isinstance(payload, dict):
-        data_obj = payload.get('data')
-    schema = infer_tabular_schema(data_obj)
-
+    schema = infer_tabular_schema(payload.get('data') if isinstance(payload, dict) else None)
     local_vars = {
         'context': context,
         'payload': payload,
@@ -275,92 +202,27 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         'schema': schema,
         'pick_numeric_field': pick_numeric_field,
         'result': result,
-        # Deterministic-core helpers (preferred for heavy analysis)
-        'ensure_list_of_dicts': ensure_list_of_dicts,
-        'summarize_key_coverage': summarize_key_coverage,
-        'analyze_deployment_plans': analyze_deployment_plans,
-        'group_logs_by_service_and_error': group_logs_by_service_and_error,
-        'find_recurring_errors': find_recurring_errors,
     }
-
-    if _llm_body_source.strip():
+    if _profile_body_source.strip():
         try:
-            # Execute the LLM-generated body in an isolated namespace
-            exec(_llm_body_source, {}, local_vars)
-            # Prefer the result from local_vars, if present
-            if 'result' in local_vars:
+            exec(_profile_body_source, local_vars, local_vars)
+            if isinstance(local_vars.get('result'), dict):
                 result = local_vars['result']
         except Exception as _exc:
-            try:
-                if hasattr(context, 'log_error'):
-                    context.log_error(
-                        'LLM logic execution failed.',
-                        error=str(_exc),
-                        plugin_slug=_PLUGIN_SLUG,
-                    )
-            except Exception:
-                pass
-            if isinstance(result, dict):
-                details = result.get('details')
-                if not isinstance(details, dict):
-                    details = {}
-                details['llm_error'] = str(_exc)
-                result['details'] = details
-            else:
-                result = {
-                    'summary': 'Core logic failed; fallback applied.',
-                    'primary_insights': [],
-                    'recommended_actions': [],
-                    'scores': {'confidence': 0.0},
-                    'details': {'error': str(_exc)},
-                }
-    else:
-        # No LLM body found; provide a minimal fallback
-        result = {
-            'summary': 'Core logic executed but returned no details.',
-            'primary_insights': [],
-            'recommended_actions': [],
-            'scores': {'confidence': 0.0},
-            'details': {'note': 'Fallback result injected by factory.'},
-        }
-
-    # Normalize the final result to a dict with the expected shape.
+            result = {
+                'summary': 'Capability profile failed; fallback applied.',
+                'primary_insights': [],
+                'recommended_actions': ['Review payload and capability profile.'],
+                'scores': {'confidence': 0.0},
+                'details': {'error': str(_exc), 'logic_profile_id': 'capability_profile_error'},
+            }
     if not isinstance(result, dict):
-        result = {
-            'summary': 'Core logic returned a non-dict result; fallback applied.',
-            'primary_insights': [],
-            'recommended_actions': [],
-            'scores': {'confidence': 0.0},
-            'details': {'raw_result': repr(result)},
-        }
-
-    # Ensure non-empty result for Station C
-    if (
-        not result
-        or (
-            not result.get('summary')
-            and not result.get('primary_insights')
-            and not result.get('recommended_actions')
-        )
-    ):
-        result = {
-            'summary': 'Core logic produced an empty result; fallback applied.',
-            'primary_insights': [
-                {
-                    'title': 'No-op analysis',
-                    'description': 'Plugin executed but did not generate insights; fallback applied by the factory.',
-                }
-            ],
-            'recommended_actions': [
-                'Review payload format and plugin logic for this skill.',
-                'Consider regenerating the plugin with stricter prompts.',
-            ],
-            'scores': {'confidence': 0.0},
-            'details': {
-                'note': 'Fallback result injected by factory due to empty or missing output.',
-            },
-        }
-
+        result = {'summary': 'Capability profile returned non-dict output.', 'primary_insights': [], 'recommended_actions': [], 'scores': {'confidence': 0.0}, 'details': {}}
+    result.setdefault('summary', 'Capability profile completed.')
+    result.setdefault('primary_insights', [])
+    result.setdefault('recommended_actions', [])
+    result.setdefault('scores', {'confidence': 0.0})
+    result.setdefault('details', {})
     return result
 # === LOGIC END ===
 
