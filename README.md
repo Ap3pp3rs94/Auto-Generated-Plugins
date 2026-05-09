@@ -242,8 +242,15 @@ Useful flags:
 --max-tokens 1024
 --timeout-seconds 240
 --sleep-seconds 15
+--github-remote origin
+--github-branch main
+--no-github-publish
 --print-config
 ```
+
+By default, every validated plugin is committed and pushed to `origin/main`.
+The autonomous commit is limited to that plugin file, so runtime state and
+unrelated local edits are not swept into the publish.
 
 See `production.env.example` for service-friendly environment settings.
 

@@ -40,6 +40,22 @@ class RunnerConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             RunnerConfig(llm_timeout_seconds=0).validate()
 
+    def test_github_publish_defaults_to_enabled(self) -> None:
+        config, _, _ = build_config_from_args(["--once"])
+
+        self.assertTrue(config.github_publish_enabled)
+        self.assertEqual(config.github_remote, "origin")
+        self.assertEqual(config.github_branch, "main")
+
+    def test_github_publish_can_be_disabled(self) -> None:
+        config, _, _ = build_config_from_args(["--once", "--no-github-publish"])
+
+        self.assertFalse(config.github_publish_enabled)
+
+    def test_invalid_github_remote_is_rejected_when_enabled(self) -> None:
+        with self.assertRaises(ValueError):
+            RunnerConfig(github_remote="").validate()
+
 
 if __name__ == "__main__":
     unittest.main()

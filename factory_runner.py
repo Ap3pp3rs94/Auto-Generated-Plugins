@@ -41,6 +41,7 @@ import inspect
 import json
 import logging
 import os
+import subprocess
 import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -372,6 +373,11 @@ class RunnerConfig:
     evaluation_profile: Optional[str] = None  # e.g. "research", "default"
     evaluation_log_only: bool = True     # If False, you could later add auto-reject logic.
 
+    # Publishing
+    github_publish_enabled: bool = True
+    github_remote: str = "origin"
+    github_branch: str = "main"
+
     def validate(self) -> None:
         """Fail fast on unsafe or nonsensical production configuration."""
         if self.max_plugins is not None and self.max_plugins <= 0:
@@ -392,6 +398,11 @@ class RunnerConfig:
             raise ValueError("max_per_category must be positive when provided.")
         if not 0.0 <= self.evaluation_threshold <= 1.0:
             raise ValueError("evaluation_threshold must be between 0.0 and 1.0.")
+        if self.github_publish_enabled:
+            if not self.github_remote.strip():
+                raise ValueError("github_remote must be non-empty when publishing is enabled.")
+            if not self.github_branch.strip():
+                raise ValueError("github_branch must be non-empty when publishing is enabled.")
 
     def station_b_config(self) -> StationBConfig:
         """Helper to build a StationBConfig from this RunnerConfig."""
@@ -1047,6 +1058,130 @@ def _quarantine_rejected_plugin(plugin_path: Path, *, reason: str) -> Path:
     reason_path = target.with_suffix(target.suffix + ".reason.txt")
     reason_path.write_text(reason, encoding="utf-8")
     return target
+
+
+def _git_run(args: Sequence[str], *, timeout_seconds: int = 180) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(FACTORY_DIR), *args],
+        text=True,
+        capture_output=True,
+        timeout=timeout_seconds,
+        check=False,
+    )
+
+
+def _publish_plugin_to_github(
+    *,
+    plugin_path: Path,
+    spec: PluginSpec,
+    config: RunnerConfig,
+) -> bool:
+    """
+    Commit the generated plugin artifact and push it to GitHub.
+
+    The commit is intentionally limited to the plugin file so runtime state,
+    lock files, and unrelated local edits never get swept into autonomous
+    publishes.
+    """
+    if not config.github_publish_enabled:
+        LOG.info("GitHub publish disabled; leaving %s local only.", plugin_path)
+        return True
+
+    if not (FACTORY_DIR / ".git").exists():
+        LOG.error("GitHub publish requested, but %s is not a Git repository.", FACTORY_DIR)
+        return False
+
+    try:
+        relative_path = plugin_path.resolve().relative_to(FACTORY_DIR.resolve())
+    except ValueError:
+        LOG.error("Refusing to publish plugin outside factory repo: %s", plugin_path)
+        return False
+
+    rel = relative_path.as_posix()
+
+    try:
+        status = _git_run(["status", "--porcelain", "--", rel])
+    except Exception as exc:
+        LOG.error("Git status failed before publishing %r: %s", spec.slug, exc)
+        return False
+
+    if status.returncode != 0:
+        LOG.error(
+            "Git status failed before publishing %r: %s",
+            spec.slug,
+            (status.stderr or status.stdout).strip(),
+        )
+        return False
+
+    if status.stdout.strip():
+        add_result = _git_run(["add", "--", rel])
+        if add_result.returncode != 0:
+            LOG.error(
+                "Git add failed for plugin %r: %s",
+                spec.slug,
+                (add_result.stderr or add_result.stdout).strip(),
+            )
+            return False
+
+        diff_result = _git_run(["diff", "--cached", "--quiet", "--", rel])
+        if diff_result.returncode == 1:
+            commit_result = _git_run(
+                [
+                    "commit",
+                    "-m",
+                    f"Add generated plugin {spec.slug}",
+                    "--",
+                    rel,
+                ]
+            )
+            if commit_result.returncode != 0:
+                LOG.error(
+                    "Git commit failed for plugin %r: %s",
+                    spec.slug,
+                    (commit_result.stderr or commit_result.stdout).strip(),
+                )
+                return False
+            LOG.info(
+                "Committed generated plugin %r to %s.",
+                spec.slug,
+                rel,
+            )
+        elif diff_result.returncode == 0:
+            LOG.info("Generated plugin %r has no staged file changes.", spec.slug)
+        else:
+            LOG.error(
+                "Git diff check failed for plugin %r: %s",
+                spec.slug,
+                (diff_result.stderr or diff_result.stdout).strip(),
+            )
+            return False
+    else:
+        LOG.info(
+            "Generated plugin %r already matches Git working tree; pushing any pending commits.",
+            spec.slug,
+        )
+
+    push_result = _git_run(
+        ["push", config.github_remote, config.github_branch],
+        timeout_seconds=300,
+    )
+    if push_result.returncode != 0:
+        LOG.error(
+            "GitHub push failed for plugin %r to %s/%s: %s",
+            spec.slug,
+            config.github_remote,
+            config.github_branch,
+            (push_result.stderr or push_result.stdout).strip(),
+        )
+        return False
+
+    LOG.info(
+        "GitHub updated for generated plugin %r via %s/%s.",
+        spec.slug,
+        config.github_remote,
+        config.github_branch,
+    )
+    return True
 
 
 def _build_semantic_repair_source(
@@ -1718,6 +1853,19 @@ async def run_factory(config: RunnerConfig) -> None:
                 spec.slug,
             )
 
+        if ok:
+            publish_ok = _publish_plugin_to_github(
+                plugin_path=plugin_path,
+                spec=spec,
+                config=config,
+            )
+            if not publish_ok:
+                LOG.error(
+                    "GitHub was not updated for generated plugin %r. The local artifact remains at %s.",
+                    spec.slug,
+                    plugin_path,
+                )
+
         # -----------------------------------------------------
         # BOOKKEEPING
         # -----------------------------------------------------
@@ -1898,6 +2046,22 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Maximum plugins per category during a loop run.",
     )
     parser.add_argument(
+        "--no-github-publish",
+        action="store_true",
+        default=_env_bool("FRANCIS_FACTORY_NO_GITHUB_PUBLISH", False),
+        help="Disable automatic git commit/push for each validated plugin.",
+    )
+    parser.add_argument(
+        "--github-remote",
+        default=_env("FRANCIS_FACTORY_GITHUB_REMOTE", "origin"),
+        help="Git remote used when publishing generated plugins.",
+    )
+    parser.add_argument(
+        "--github-branch",
+        default=_env("FRANCIS_FACTORY_GITHUB_BRANCH", "main"),
+        help="Git branch pushed after each generated plugin commit.",
+    )
+    parser.add_argument(
         "--print-config",
         action="store_true",
         help="Print the resolved RunnerConfig as JSON and exit.",
@@ -1944,6 +2108,9 @@ def build_config_from_args(argv: Optional[Sequence[str]] = None) -> tuple[Runner
         evaluation_threshold=args.evaluation_threshold,
         evaluation_profile=args.evaluation_profile,
         evaluation_log_only=not args.evaluation_enforce,
+        github_publish_enabled=not args.no_github_publish,
+        github_remote=args.github_remote,
+        github_branch=args.github_branch,
     )
     cfg.validate()
     return cfg, str(args.log_level).upper(), bool(args.print_config)
