@@ -1,0 +1,38 @@
+# Python/runtime artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Local Codex/agent state
+.codex/
+.agents/
+
+# Runtime outputs
+logs/
+*.log
+.factory_runner.lock
+registry/*.tmp
+registry/ai_roadmap_state.json
+registry/plugins.json
+library/registry.json
+library/plugins/
+plugins/
+junk_plugins/
+
+# Editor/OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
