@@ -81,7 +81,10 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertNotIn(expansion_spec.slug, existing)
         self.assertEqual(expansion_spec.extra["generation_round"], 1)
         self.assertTrue(expansion_spec.extra["continuous_expansion"])
-        self.assertEqual(expansion_spec.slug, "ai_coding_agent_prompt_contract_designer")
+        self.assertEqual(expansion_spec.slug, f"ai_prompt_contract_designer_{len(AI_CAPABILITY_ROADMAP) + 1:06d}")
+        self.assertEqual(expansion_spec.name, f"AI Prompt Contract Designer {len(AI_CAPABILITY_ROADMAP) + 1:06d}")
+        self.assertIn("Coding Agent", expansion_spec.use_cases[0])
+        self.assertIn("coding agent", expansion_spec.intended_domain.lower())
 
     def test_continuous_expansion_capacity_supports_large_unique_goal(self) -> None:
         capacity = (
@@ -94,12 +97,13 @@ class SpecBuilderTests(unittest.TestCase):
 
         self.assertGreaterEqual(capacity, 500_000)
 
-    def test_second_continuous_wave_uses_descriptive_dimensions_not_set_suffix(self) -> None:
+    def test_second_continuous_wave_keeps_use_case_in_metadata_not_slug(self) -> None:
         first_wave_size = len(CONTINUOUS_EXPANSION_TARGETS) * len(CONTINUOUS_EXPANSION_FAMILIES)
         next_wave_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + first_wave_size + 1)[0]
 
         self.assertTrue(next_wave_spec.extra["continuous_expansion"])
-        self.assertIn("agentic_planning", next_wave_spec.slug)
+        self.assertRegex(next_wave_spec.slug, r"^ai_[a-z_]+_[0-9]{6}$")
+        self.assertNotIn("agentic_planning", next_wave_spec.slug)
         self.assertNotIn("_set_", next_wave_spec.slug)
         self.assertIn("agentic planning", next_wave_spec.intended_domain.lower())
 
@@ -157,7 +161,10 @@ class SpecBuilderTests(unittest.TestCase):
                 runner.PLUGINS_DIR = old_plugins_dir
 
         self.assertEqual(state["anticipated_next_capabilities"], anticipated)
-        self.assertEqual(anticipated[0]["slug"], "ai_coding_agent_prompt_contract_designer")
+        self.assertEqual(
+            anticipated[0]["slug"],
+            f"ai_prompt_contract_designer_{len(AI_CAPABILITY_ROADMAP) + 1:06d}",
+        )
         self.assertEqual(anticipated[0]["reason"], "fresh canonical capability after current installed set")
 
     def test_upgrade_attempt_memory_skips_repeated_retry_under_same_knowledge(self) -> None:

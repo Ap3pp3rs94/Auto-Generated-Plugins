@@ -1486,11 +1486,12 @@ CONTINUOUS_EXPANSION_FAMILIES: Tuple[ContinuousExpansionFamily, ...] = (
 )
 
 
-# The first live continuous-expansion waves were already published with verbose
-# slugs such as ai_content_strategy_agentic_planning_capability_overlap_checker.
-# Keep those indexes stable for existing modules, then switch future generation
-# to short numbered names whose distinctness lives in the use-case scenario.
-CONTINUOUS_SHORT_SLUG_START_INDEX = 833
+# The first live continuous-expansion waves were published with verbose slugs
+# such as ai_content_strategy_agentic_planning_capability_overlap_checker.  Keep
+# recognizing those legacy slugs for lookup/cursor continuity, but generate all
+# new continuous capabilities with short numbered names whose distinctness lives
+# in the use-case scenario and manifest metadata.
+CONTINUOUS_SHORT_SLUG_START_INDEX = len(AI_CAPABILITY_ROADMAP) + 1
 
 
 @dataclass(frozen=True)

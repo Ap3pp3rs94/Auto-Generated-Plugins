@@ -108,7 +108,7 @@ class QualityRunnerTests(unittest.TestCase):
                 self.assertIn(required_key, PROFILE_REQUIRED_DETAIL_KEYS[profile_id])
 
     def test_continuous_expansion_slug_resolves_to_spec(self) -> None:
-        slug = "ai_coding_agent_prompt_contract_designer"
+        slug = "ai_prompt_contract_designer_000073"
 
         spec = _roadmap_spec_from_slug(slug)
 
