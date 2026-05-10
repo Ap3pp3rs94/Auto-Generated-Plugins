@@ -1466,21 +1466,47 @@ if failure_clusters.get('timeout', 0) >= 2:
     retry_decision = 'pause_and_reduce_model_load'
 top_cluster = sorted(failure_clusters, key=failure_clusters.get, reverse=True)[0] if failure_clusters else 'no_failure'
 first_failure_preview = failures[0]['evidence'] if failures else def_text[:180]
+retry_context = {{
+    'trace_items': len(trace_items),
+    'candidate_outputs': len(candidate_outputs),
+    'blocked_steps': len(blocked),
+    'plan_steps': len(plan),
+    'constraints': len(constraints),
+}}
 retry_strategy = [
     {{'step': 1, 'action': 'Change one variable for ' + top_cluster, 'target': sorted(failure_clusters, key=failure_clusters.get, reverse=True)[:3], 'evidence': first_failure_preview}},
     {{'step': 2, 'action': 'Re-run checks that address ' + top_cluster, 'target': ['structural_validation', 'semantic_depth', top_cluster]}},
     {{'step': 3, 'action': 'Stop if ' + top_cluster + ' repeats', 'target': list(failure_clusters.keys())[:5]}},
 ]
+checkpoint_plan = [
+    {{'checkpoint': 'capture_failure_evidence', 'ready': bool(trace_items or failures or blocked or candidate_outputs)}},
+    {{'checkpoint': 'change_one_variable', 'ready': bool(retry_strategy)}},
+    {{'checkpoint': 'rerun_validation', 'ready': any('validate' in str(item).lower() or 'semantic' in str(item).lower() for item in plan + constraints)}},
+    {{'checkpoint': 'stop_condition_named', 'ready': True}},
+]
+diagnostic_questions = []
+if not trace_items and (failures or blocked or candidate_outputs):
+    diagnostic_questions.append('Can the next run attach the exact trace item for the observed blocker or candidate output?')
+if not failures:
+    diagnostic_questions.append('What concrete failure signal should be monitored on the next retry?')
+if blocked:
+    diagnostic_questions.append('Who owns the blocker before another retry starts?')
 stop_conditions = ['same failure repeats twice', 'repair candidate fails validation', 'risk controls are missing for production-affecting work']
 result['summary'] = plugin_name + ': selected retry decision ' + retry_decision + ' for top signal ' + top_cluster + ' from ' + str(len(failures)) + ' failure signal(s).'
 result['primary_insights'] = [
     {{'title': 'Failure clusters', 'detail': failure_clusters}},
     {{'title': 'Retry decision', 'detail': retry_decision}},
     {{'title': 'Retry strategy', 'detail': retry_strategy}},
+    {{'title': 'Checkpoint plan', 'detail': checkpoint_plan}},
+    {{'title': 'Diagnostic questions', 'detail': diagnostic_questions or 'No extra diagnostic question required.'}},
 ]
 result['recommended_actions'] = [{{'action': item['action'], 'target': item['target']}} for item in retry_strategy]
-result['scores'] = {{'confidence': round(min(0.92, 0.46 + 0.06 * len(failures) + 0.05 * len(failure_clusters)), 2), 'retry_readiness': round(max(0.1, 0.86 - 0.08 * len(failure_clusters)), 2), 'risk': round(min(0.9, 0.18 + 0.1 * len(failure_clusters)), 2), 'failure_signal_count': len(failures)}}
-result['details'] = {{'retry_strategy': retry_strategy, 'failure_clusters': failure_clusters, 'retry_decision': retry_decision, 'stop_conditions': stop_conditions, 'failure_signals': failures, 'top_cluster': top_cluster, 'missing_inputs': ['trace'] if not trace_items else []}}
+result['recommended_actions'].append({{'action': 'Attach checkpoint plan to next retry', 'checkpoint_plan': checkpoint_plan}})
+if diagnostic_questions:
+    result['recommended_actions'].append({{'action': 'Answer retry diagnostic questions', 'questions': diagnostic_questions}})
+evidence_available = bool(trace_items or failures or blocked or candidate_outputs or plan)
+result['scores'] = {{'confidence': round(min(0.92, 0.46 + 0.06 * len(failures) + 0.05 * len(failure_clusters) + (0.12 if evidence_available else 0) + min(0.08, 0.02 * len(checkpoint_plan))), 2), 'retry_readiness': round(max(0.1, 0.86 - 0.08 * len(failure_clusters) + (0.04 if evidence_available else 0)), 2), 'risk': round(min(0.9, 0.18 + 0.1 * len(failure_clusters) + (0.06 if blocked else 0)), 2), 'failure_signal_count': len(failures), 'checkpoint_readiness': round(len([item for item in checkpoint_plan if item['ready']]) / max(1, len(checkpoint_plan)), 2)}}
+result['details'] = {{'retry_strategy': retry_strategy, 'failure_clusters': failure_clusters, 'retry_decision': retry_decision, 'stop_conditions': stop_conditions, 'failure_signals': failures, 'top_cluster': top_cluster, 'retry_context': retry_context, 'checkpoint_plan': checkpoint_plan, 'diagnostic_questions': diagnostic_questions, 'missing_inputs': ['trace or retry evidence'] if not evidence_available else []}}
 {_common_result_footer("retry_strategy[0]['action']")}
 """.strip()
 
