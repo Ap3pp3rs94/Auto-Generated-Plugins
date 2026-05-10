@@ -22,6 +22,7 @@ try:
     from factory.spec_builder import CONTINUOUS_EXPANSION_SURFACES
     from factory.spec_builder import CONTINUOUS_EXPANSION_TARGETS
     from factory.factory_runner import _anticipated_capability_candidates
+    from factory.factory_runner import _capability_rejection_record, _capability_rejection_skip_reason
     from factory.factory_runner import _refresh_anticipation_state
     from factory.factory_runner import _canonical_retention_spec
     from factory.factory_runner import _roadmap_slug_index
@@ -36,6 +37,7 @@ except ModuleNotFoundError:
     from spec_builder import CONTINUOUS_EXPANSION_SURFACES
     from spec_builder import CONTINUOUS_EXPANSION_TARGETS
     from factory_runner import _anticipated_capability_candidates
+    from factory_runner import _capability_rejection_record, _capability_rejection_skip_reason
     from factory_runner import _refresh_anticipation_state
     from factory_runner import _canonical_retention_spec
     from factory_runner import _roadmap_slug_index
@@ -170,6 +172,22 @@ class SpecBuilderTests(unittest.TestCase):
         later_reason = _upgrade_attempt_skip_reason(state, later_upgrade_spec)
         self.assertIsNotNone(later_reason)
         self.assertIn("already rejected", later_reason or "")
+
+    def test_rejected_capability_memory_skips_repeated_generation_under_same_knowledge(self) -> None:
+        spec = copy.deepcopy(build_next_spec(len(AI_CAPABILITY_ROADMAP) + 1)[0])
+        state = {"completed": [], "next_directive": "", "rejected_capabilities": {}, "rejected_capability_order": []}
+
+        _capability_rejection_record(
+            state=state,
+            spec=spec,
+            reason="production_quality: score 0.9300 < threshold 0.95",
+            persist=False,
+        )
+
+        reason = _capability_rejection_skip_reason(state, spec)
+
+        self.assertIsNotNone(reason)
+        self.assertIn("already rejected", reason or "")
 
     def test_upgrade_backlog_exhausted_after_all_canonical_attempts_remembered(self) -> None:
         existing = {blueprint.slug for blueprint in AI_CAPABILITY_ROADMAP}

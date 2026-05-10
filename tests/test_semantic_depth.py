@@ -16,9 +16,11 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
 
 try:
     from factory.factory_runner import _semantic_depth_check
+    from factory.factory_runner import _production_quality_gate
     from factory.spec_builder import build_next_spec
 except ModuleNotFoundError:
     from factory_runner import _semantic_depth_check
+    from factory_runner import _production_quality_gate
     from spec_builder import build_next_spec
 
 
@@ -148,12 +150,86 @@ async def invoke(user_id, payload, **kwargs):
 
         self.assertTrue(ok, reason)
 
+    def test_production_quality_gate_rejects_sub_095_output(self) -> None:
+        source = """
+async def invoke(user_id, payload, **kwargs):
+    return {
+        "status": "succeeded",
+        "output": {
+            "summary": "Thin output that runs but is not production grade.",
+            "primary_insights": [{"title": "One"}],
+            "recommended_actions": [{"action": "Review manually"}],
+            "scores": {"confidence": 0.4},
+            "details": {"logic_profile_id": "thin_profile"},
+        },
+        "error": "",
+        "meta": {},
+    }
+"""
+        ok, reason = self._run_production_gate(source, spec_index=2)
+
+        self.assertFalse(ok)
+        self.assertIn("production_quality", reason)
+        self.assertIn("< threshold 0.95", reason)
+
+    def test_production_quality_gate_accepts_strong_output(self) -> None:
+        source = """
+async def invoke(user_id, payload, **kwargs):
+    details = {
+        "logic_profile_id": "strong_profile",
+        "risk_signals": ["duplicate", "shallow"],
+        "handoff_packet": {"owner": "validator"},
+        "evidence": ["semantic depth passed"],
+        "checklist": ["validate", "score", "publish"],
+        "missing_inputs": [],
+        "decision": "publish",
+        "score_basis": ["details", "actions", "insights"],
+        "payload_warnings": [],
+        "next_probe": "quality",
+    }
+    return {
+        "status": "succeeded",
+        "output": {
+            "summary": "Strong capability output with enough evidence and concrete production actions.",
+            "primary_insights": [
+                {"title": "Specific signal", "detail": "uses payload values"},
+                {"title": "Risk", "detail": "duplicate avoided"},
+                {"title": "Evidence", "detail": "semantic depth passed"},
+                {"title": "Decision", "detail": "publish after validation"},
+            ],
+            "recommended_actions": [
+                {"action": "Validate semantic depth before publishing"},
+                {"action": "Compare candidate against existing capability"},
+                {"action": "Keep stable family key for duplicate detection"},
+                {"action": "Commit only after quality score passes threshold"},
+            ],
+            "scores": {"confidence": 0.92, "usefulness": 0.95, "risk": 0.12},
+            "details": details,
+            "progress_state": {"next_step": "Publish after validation"},
+            "user_experience": {"plain_language_takeaway": "This capability has enough evidence to keep."},
+            "fun_mode": {"challenge_label": "Production Ready", "score_badge": "0.95+"},
+        },
+        "error": "",
+        "meta": {},
+    }
+"""
+        ok, reason = self._run_production_gate(source, spec_index=2)
+
+        self.assertTrue(ok, reason)
+
     def _run_check(self, source: str, *, spec_index: int = 1) -> tuple[bool, str]:
         spec, _, _ = build_next_spec(spec_index)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "candidate.py"
             path.write_text(textwrap.dedent(source).strip() + "\n", encoding="utf-8")
             return asyncio.run(_semantic_depth_check(path, spec))
+
+    def _run_production_gate(self, source: str, *, spec_index: int = 1) -> tuple[bool, str]:
+        spec, _, _ = build_next_spec(spec_index)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candidate.py"
+            path.write_text(textwrap.dedent(source).strip() + "\n", encoding="utf-8")
+            return asyncio.run(_production_quality_gate(path, spec))
 
 
 if __name__ == "__main__":

@@ -285,6 +285,35 @@ EVENT_FACTORY_PLUGIN_PASSING_SCORE = "factory_plugin_passing_score"
 EVENT_FACTORY_PLUGIN_EVAL_ERROR = "factory_plugin_evaluation_error"
 EVENT_FACTORY_PLUGIN_RESULT = "factory_plugin_result"
 
+# Production quality theology:
+# A generated capability must be useful enough to score at least this high
+# before it is allowed to leave .candidate_plugins/ and become a live plugin.
+PRODUCTION_QUALITY_THRESHOLD = 0.95
+
+PRODUCTION_QUALITY_PROBE_PAYLOAD: Dict[str, Any] = {
+    "task": "Validate a generated AI capability before publishing it.",
+    "objective": "Reject shallow or duplicate output and keep only capability-specific work.",
+    "prompt": "Make this production worthy without relabeling generic advice.",
+    "constraints": [
+        "must produce capability-specific details",
+        "must expose concrete next actions",
+        "must be useful to an autonomous AI workflow",
+        "do not invent facts",
+    ],
+    "current_plan": ["generate candidate", "validate plugin", "semantic depth check", "commit and push"],
+    "completed_steps": ["candidate module generated"],
+    "blocked_steps": ["need proof the capability does what it says"],
+    "candidate_outputs": [
+        {"summary": "Generic capability output with stock advice."},
+        {"summary": "Specific capability output with measurable validation evidence."},
+    ],
+    "source_notes": [
+        "Production standard is 0.95 or better.",
+        "Sub-threshold capabilities must be discarded instead of published.",
+    ],
+    "quality_failures": ["duplicate capability", "shallow recommendation", "missing capability-specific outputs"],
+}
+
 
 class FactoryAlreadyRunningError(RuntimeError):
     """Raised when another factory runner process appears to be active."""
@@ -670,6 +699,8 @@ def _load_ai_roadmap_state() -> Dict[str, Any]:
     data.setdefault("next_directive", "")
     data.setdefault("upgrade_attempts", {})
     data.setdefault("upgrade_attempt_order", [])
+    data.setdefault("rejected_capabilities", {})
+    data.setdefault("rejected_capability_order", [])
     _normalize_ai_roadmap_state(data)
     return data
 
@@ -712,6 +743,24 @@ def _normalize_ai_roadmap_state(state: Dict[str, Any]) -> None:
     if not isinstance(order, list):
         order = []
     state["upgrade_attempt_order"] = [str(item) for item in order if str(item) in normalized_attempts][-500:]
+
+    rejected = state.get("rejected_capabilities")
+    if not isinstance(rejected, dict):
+        rejected = {}
+    normalized_rejected: Dict[str, Dict[str, Any]] = {}
+    for key, item in rejected.items():
+        if isinstance(item, dict) and key:
+            slug = str(item.get("slug") or key)
+            if slug:
+                normalized_rejected[slug] = item
+    state["rejected_capabilities"] = normalized_rejected
+
+    rejected_order = state.get("rejected_capability_order")
+    if not isinstance(rejected_order, list):
+        rejected_order = []
+    state["rejected_capability_order"] = [
+        str(item) for item in rejected_order if str(item) in normalized_rejected
+    ][-2000:]
 
 
 def _upgrade_knowledge_fingerprint() -> str:
@@ -802,6 +851,62 @@ def _upgrade_attempt_skip_reason(state: Dict[str, Any], source_spec: PluginSpec)
     reason = str(record.get("reason") or "")
     return (
         f"already {status} under current factory knowledge "
+        f"(fingerprint={current_fp}, reason={reason[:240]})"
+    )
+
+
+def _capability_rejection_record(
+    *,
+    state: Dict[str, Any],
+    spec: PluginSpec,
+    reason: str,
+    persist: bool = True,
+) -> Dict[str, Any]:
+    rejected = state.setdefault("rejected_capabilities", {})
+    if not isinstance(rejected, dict):
+        rejected = {}
+        state["rejected_capabilities"] = rejected
+    order = state.setdefault("rejected_capability_order", [])
+    if not isinstance(order, list):
+        order = []
+        state["rejected_capability_order"] = order
+
+    key = str(spec.slug)
+    record = {
+        "slug": key,
+        "name": spec.name,
+        "category": spec.category,
+        "capability_type": getattr(spec, "capability_type", None),
+        "intended_domain": getattr(spec, "intended_domain", None),
+        "reason": reason[:1000],
+        "knowledge_fingerprint": _upgrade_knowledge_fingerprint(),
+        "rejected_at_unix": int(time.time()),
+    }
+    rejected[key] = record
+    if key in order:
+        order.remove(key)
+    order.append(key)
+    for stale_key in order[:-2000]:
+        rejected.pop(stale_key, None)
+    state["rejected_capability_order"] = order[-2000:]
+    if persist:
+        _save_ai_roadmap_state(state)
+    return record
+
+
+def _capability_rejection_skip_reason(state: Dict[str, Any], spec: PluginSpec) -> Optional[str]:
+    rejected = state.get("rejected_capabilities")
+    if not isinstance(rejected, dict):
+        return None
+    record = rejected.get(str(spec.slug))
+    if not isinstance(record, dict):
+        return None
+    current_fp = _upgrade_knowledge_fingerprint()
+    if record.get("knowledge_fingerprint") != current_fp:
+        return None
+    reason = str(record.get("reason") or "")
+    return (
+        f"already rejected under current factory knowledge "
         f"(fingerprint={current_fp}, reason={reason[:240]})"
     )
 
@@ -1513,6 +1618,37 @@ def _capability_quality_score(output: Dict[str, Any]) -> float:
     if fun.get("challenge_label") or fun.get("score_badge"):
         score += 0.02
     return round(score, 4)
+
+
+async def _production_quality_gate(
+    plugin_path: Path,
+    spec: PluginSpec,
+    *,
+    threshold: float = PRODUCTION_QUALITY_THRESHOLD,
+) -> Tuple[bool, str]:
+    """
+    Enforce the production score before a candidate becomes installable.
+
+    This is intentionally stricter than structural validation and semantic
+    depth: those gates prove the module runs and reacts to payloads; this gate
+    proves it returns enough useful, capability-specific surface area to keep.
+    """
+    module = _module_from_plugin_path(plugin_path, slug=spec.slug, purpose="production_quality")
+    output = await _invoke_plugin_for_semantic_check(
+        module,
+        PRODUCTION_QUALITY_PROBE_PAYLOAD,
+        f"{spec.slug}-production-quality",
+    )
+    score = _capability_quality_score(output)
+    if score < threshold:
+        return (
+            False,
+            f"production_quality: score {score:.4f} < threshold {threshold:.2f}",
+        )
+    return (
+        True,
+        f"production_quality: score {score:.4f} >= threshold {threshold:.2f}",
+    )
 
 
 async def _upgrade_candidate_improves_existing(
@@ -2373,6 +2509,16 @@ async def run_factory(config: RunnerConfig) -> None:
         selected_index = index_counter
         for candidate_index in candidate_indexes:
             candidate_spec, candidate_capability, candidate_domain = build_next_spec(candidate_index)
+            rejection_reason = _capability_rejection_skip_reason(ai_roadmap_state, candidate_spec)
+            if rejection_reason:
+                LOG.info(
+                    "Skipping remembered rejected capability %r → %s",
+                    candidate_spec.slug,
+                    rejection_reason,
+                )
+                if not randomized_indexes:
+                    index_counter = candidate_index + 1
+                continue
             skip_reason = _upgrade_attempt_skip_reason(ai_roadmap_state, candidate_spec)
             if skip_reason:
                 LOG.info(
@@ -2821,6 +2967,69 @@ async def run_factory(config: RunnerConfig) -> None:
                     )
                     await asyncio.sleep(config.sleep_seconds)
                     continue
+
+        # -----------------------------------------------------
+        # PRODUCTION QUALITY SCORE GATE (AI roadmap only)
+        # -----------------------------------------------------
+        if ok and _is_ai_roadmap_spec(spec):
+            try:
+                production_ok, production_reason = await _production_quality_gate(candidate_path, spec)
+            except Exception as exc:
+                production_ok = False
+                production_reason = f"production_quality: check crashed: {exc}"
+
+            if production_ok:
+                LOG.info("Plugin production quality OK: %s", production_reason)
+            else:
+                LOG.error(
+                    "Production quality FAILED for AI roadmap plugin %r → %s",
+                    spec.slug,
+                    production_reason,
+                )
+                try:
+                    rejected_path = _discard_candidate_plugin(candidate_path, reason=production_reason)
+                    LOG.info("Rejected sub-threshold candidate moved to %s", rejected_path)
+                except Exception:
+                    LOG.warning("Unable to discard sub-threshold candidate %r", spec.slug, exc_info=True)
+                if is_upgrade_attempt and source_spec is not None:
+                    _upgrade_attempt_record(
+                        state=ai_roadmap_state,
+                        source_spec=source_spec,
+                        canonical_spec=spec,
+                        status="rejected",
+                        reason=production_reason,
+                    )
+                elif source_spec is not None:
+                    _capability_rejection_record(
+                        state=ai_roadmap_state,
+                        spec=source_spec,
+                        reason=production_reason,
+                    )
+                    existing_slugs.add(spec.slug)
+                    existing_signatures.add(_spec_signature(spec))
+                    index_counter = selected_index + 1
+
+                _se_record(
+                    EVENT_FACTORY_PLUGIN_LOW_SCORE,
+                    slug=spec.slug,
+                    category=getattr(spec, "category", None),
+                    capability_type=capability_type,
+                    domain=intended_domain,
+                    score=0.0,
+                    threshold=PRODUCTION_QUALITY_THRESHOLD,
+                    reason=production_reason,
+                    production_quality_failed=True,
+                )
+
+                if not config.loop_forever:
+                    break
+
+                LOG.info(
+                    "AI roadmap plugin scored below production threshold; retrying same spec in %.1f seconds.",
+                    config.sleep_seconds,
+                )
+                await asyncio.sleep(config.sleep_seconds)
+                continue
 
         if is_upgrade_attempt:
             existing_canonical_path = PLUGINS_DIR / f"{spec.slug}.py"

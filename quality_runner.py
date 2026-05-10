@@ -25,7 +25,9 @@ try:
     from factory.factory_runner import (
         FACTORY_DIR,
         PLUGINS_DIR,
+        PRODUCTION_QUALITY_THRESHOLD,
         _build_registered_profile_result,
+        _capability_quality_score,
         _extract_output_payload,
         _git_run,
         _semantic_depth_check,
@@ -37,7 +39,9 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - direct sidecar 
     from factory_runner import (  # type: ignore
         FACTORY_DIR,
         PLUGINS_DIR,
+        PRODUCTION_QUALITY_THRESHOLD,
         _build_registered_profile_result,
+        _capability_quality_score,
         _extract_output_payload,
         _git_run,
         _semantic_depth_check,
@@ -373,6 +377,13 @@ async def audit_plugin_path(path: Path, spec: Any) -> AuditResult:
         result.add("missing_insights", "primary_insights is empty")
     if not output.get("recommended_actions"):
         result.add("missing_actions", "recommended_actions is empty")
+
+    production_score = _capability_quality_score(output)
+    if production_score < PRODUCTION_QUALITY_THRESHOLD:
+        result.add(
+            "production_quality",
+            f"score {production_score:.4f} < threshold {PRODUCTION_QUALITY_THRESHOLD:.2f}",
+        )
 
     _profile_specific_checks(result, output)
     return result
