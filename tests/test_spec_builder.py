@@ -49,6 +49,9 @@ class SpecBuilderTests(unittest.TestCase):
 
         self.assertEqual(len({spec.slug for spec in specs}), 3)
         for spec in specs:
+            self.assertRegex(spec.name, r"^Francis AI Capability \d{6} - AI ")
+            self.assertRegex(spec.extra["display_number"], r"^\d{6}$")
+            self.assertIn("canonical_name", spec.extra)
             self.assertIn("ai", spec.tags)
             self.assertGreaterEqual(len(spec.use_cases), 6)
             self.assertEqual(spec.extra["factory_focus"], "ai_functionality_and_progress")

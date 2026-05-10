@@ -1871,7 +1871,9 @@ def _build_huge_ai_spec(
     Build a rich AI-focused PluginSpec with enough structure for Station B to
     create a useful AI capability instead of a generic/random utility.
     """
-    name = blueprint.name
+    display_number = f"{global_index:06d}"
+    canonical_name = blueprint.name
+    name = f"Francis AI Capability {display_number} - {canonical_name}"
     slug = blueprint.slug
     goal = blueprint.goal
 
@@ -1939,7 +1941,7 @@ def _build_huge_ai_spec(
     )
 
     example_payload = {
-        "task": f"Improve an AI workflow using {name}.",
+        "task": f"Improve an AI workflow using {canonical_name}.",
         "objective": blueprint.goal,
         "user_level": "mixed",
         "current_plan": [
@@ -1974,6 +1976,8 @@ def _build_huge_ai_spec(
         "factory_focus": "ai_functionality_and_progress",
         "roadmap_number": roadmap_number,
         "roadmap_size": len(AI_CAPABILITY_ROADMAP),
+        "display_number": display_number,
+        "canonical_name": canonical_name,
         "generation_round": generation_round,
         "progress_focus": progress_focus,
         "global_index": global_index,
