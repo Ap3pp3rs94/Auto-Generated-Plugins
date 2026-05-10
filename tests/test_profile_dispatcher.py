@@ -116,10 +116,17 @@ class ProfileDispatcherTests(unittest.TestCase):
 
     def test_generated_dispatch_sources_do_not_embed_unrelated_profile_branches(self) -> None:
         for slug, profile_id in [
+            ("ai_plugin_spec_architect", "plugin_spec_architect_profile"),
             ("ai_plugin_quality_gate_designer", "plugin_quality_gate_designer_profile"),
             ("ai_plugin_logic_blueprint_designer", "plugin_logic_blueprint_designer_profile"),
             ("ai_plugin_test_payload_generator", "plugin_test_payload_generator_profile"),
             ("ai_plugin_duplicate_detector", "capability_overlap_checker_profile"),
+            ("ai_plugin_repair_strategy_planner", "plugin_repair_strategy_planner_profile"),
+            ("ai_plugin_release_packager", "plugin_release_packager_profile"),
+            ("ai_plugin_factory_backlog_planner", "plugin_factory_backlog_planner_profile"),
+            ("ai_plugin_profile_gap_detector", "plugin_profile_gap_detector_profile"),
+            ("ai_semantic_probe_result_analyzer", "semantic_probe_result_analyzer_profile"),
+            ("ai_release_readiness_scorecard", "release_readiness_scorecard_profile"),
         ]:
             with self.subTest(slug=slug):
                 spec = PluginSpec(

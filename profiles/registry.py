@@ -1562,164 +1562,7 @@ result = run_profile_logic(logic_profile_id, context, payload, config, manifest)
 
 
 def _plugin_factory_builder(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
-    return f"""
-{_common_header(spec, capability_type, profile_id, reason)}
-factory_surface = ' '.join([
-    def_text,
-    objective_text,
-    str(payload_data.get('prompt') or ''),
-    ' '.join(str(item) for item in constraints),
-    ' '.join(str(item) for item in source_notes),
-    ' '.join(str(item) for item in candidate_outputs),
-]).lower()
-existing_plugins = payload_data.get('existing_plugins') if isinstance(payload_data.get('existing_plugins'), list) else []
-quality_failures = payload_data.get('quality_failures') if isinstance(payload_data.get('quality_failures'), list) else []
-desired_plugin = str(payload_data.get('plugin_name') or payload_data.get('slug') or def_text[:80]).strip()
-factory_signals = []
-for label, terms in [
-    ('spec_design', ['spec', 'blueprint', 'requirements', 'inputs', 'outputs', 'acceptance']),
-    ('logic_design', ['logic', 'algorithm', 'deterministic', 'scoring', 'payload', 'implementation']),
-    ('quality_gate', ['quality', 'semantic', 'validation', 'reject', 'pass', 'fail']),
-    ('testing', ['test', 'probe', 'edge', 'regression', 'payload']),
-    ('duplicate_control', ['duplicate', 'overlap', 'unique', 'random', 'merge']),
-    ('repair', ['repair', 'weak', 'shallow', 'missing', 'failed']),
-    ('release', ['github', 'commit', 'push', 'release', 'rollback']),
-    ('backlog', ['roadmap', 'backlog', 'next', 'priority', 'dependency']),
-]:
-    hits = [term for term in terms if term in factory_surface]
-    if hits:
-        factory_signals.append({{'category': label, 'signals': hits}})
-primary_signal = factory_signals[0]['category'] if factory_signals else 'capability_creation'
-plugin_keywords = sorted(set(
-    word.strip('.,:;!?').lower()
-    for word in factory_surface.split()
-    if len(word.strip('.,:;!?')) > 6
-))[:14]
-domain_signals = []
-for label, terms in [
-    ('release_auth_capability', ['auth', 'login', 'database', 'migration', 'rollback', 'production']),
-    ('grounded_medical_capability', ['medical', 'clinical', 'citation', 'source', 'unsupported', 'claim']),
-    ('tool_trace_capability', ['tool', 'trace', 'retrieval', 'mismatch', 'consistency']),
-]:
-    hits = [term for term in terms if term in factory_surface]
-    if hits:
-        domain_signals.append({{'category': label, 'signals': hits}})
-domain_signal_count = sum(len(item['signals']) for item in domain_signals)
-
-if logic_profile_id == 'plugin_spec_architect_profile':
-    spec_blueprint = {{
-        'name': desired_plugin,
-        'category': 'ai_plugin_factory',
-        'goal': 'Create a focused AI capability for ' + desired_plugin,
-        'required_inputs': ['task', 'objective', 'constraints', 'existing_plugins'],
-        'required_outputs': ['summary', 'primary_insights', 'recommended_actions', 'scores', 'details'],
-        'acceptance_criteria': ['unique capability boundary', 'capability-specific details', 'semantic probe passes'],
-    }}
-    uniqueness_checks = ['Compare slug and family_key with existing_plugins', 'Reject broad names that duplicate current roadmap', 'Require one unique output detail key']
-    capability_boundaries = ['State what this capability owns', 'State adjacent capabilities it must not duplicate', 'Define handoff fields for downstream capabilities']
-    prompt_requirements = ['Goal must name the concrete capability', 'Use cases must be observable', 'Outputs must include machine-readable details']
-    details_payload = {{'spec_blueprint': spec_blueprint, 'uniqueness_checks': uniqueness_checks, 'capability_boundaries': capability_boundaries, 'prompt_requirements': prompt_requirements}}
-    next_step = 'Draft PluginSpec blueprint for ' + desired_plugin
-elif logic_profile_id == 'plugin_logic_blueprint_designer_profile':
-    logic_blueprint = [
-        {{'stage': 'extract', 'rule': 'Read payload values for ' + desired_plugin}},
-        {{'stage': 'analyze', 'rule': 'Compute capability-specific signals from ' + ', '.join(plugin_keywords[:5])}},
-        {{'stage': 'construct', 'rule': 'Populate output fields from analysis, not constants'}},
-    ]
-    deterministic_rules = ['No external calls', 'No file mutation', 'Scores derive from observed signals', 'Actions include payload-specific targets']
-    data_flow = {{'inputs': ['payload', 'config', 'context'], 'analysis': plugin_keywords[:8], 'outputs': ['insights', 'actions', 'scores', 'details']}}
-    failure_modes = ['constant recommendations', 'metadata-only relabeling', 'same scores for divergent payloads']
-    details_payload = {{'logic_blueprint': logic_blueprint, 'deterministic_rules': deterministic_rules, 'data_flow': data_flow, 'failure_modes': failure_modes}}
-    next_step = 'Implement deterministic logic blueprint for ' + desired_plugin
-elif logic_profile_id == 'plugin_quality_gate_designer_profile':
-    quality_gates = ['structural import and invoke', 'required detail keys', 'semantic depth divergence', 'profile-specific probe']
-    rejection_rules = ['Reject missing required outputs', 'Reject profile mismatch', 'Reject high similarity across probe payloads', 'Reject legacy semantic repair bodies']
-    semantic_probes = [
-        {{'name': 'release_sensitive_payload', 'signals': ['auth', 'rollback', 'database']}},
-        {{'name': 'grounding_sensitive_payload', 'signals': ['citation', 'medical', 'unsupported']}},
-    ]
-    pass_criteria = ['decision fields reflect payload tokens', 'scores differ across probes', 'details include capability-specific keys']
-    details_payload = {{'quality_gates': quality_gates, 'rejection_rules': rejection_rules, 'semantic_probes': semantic_probes, 'pass_criteria': pass_criteria}}
-    next_step = 'Add quality gates before accepting ' + desired_plugin
-elif logic_profile_id == 'plugin_test_payload_generator_profile':
-    test_payloads = [
-        {{'name': 'happy_path', 'payload': {{'task': desired_plugin, 'constraints': constraints[:3], 'existing_plugins': existing_plugins[:5]}}}},
-        {{'name': 'semantic_contrast', 'payload': {{'task': 'release-sensitive auth capability', 'objective': 'rollback-safe generation'}}}},
-        {{'name': 'adversarial_shallow', 'payload': {{'task': 'make it better', 'objective': '', 'constraints': []}}}},
-    ]
-    edge_cases = ['missing objective', 'duplicate existing plugin', 'empty candidate output', 'high-risk release wording']
-    expected_differences = ['summary names different risk domain', 'actions target different payload values', 'scores change when evidence changes']
-    regression_watchlist = ['constant fun_mode only', 'details-only echoing', 'same action labels for every payload']
-    details_payload = {{'test_payloads': test_payloads, 'edge_cases': edge_cases, 'expected_differences': expected_differences, 'regression_watchlist': regression_watchlist}}
-    next_step = 'Run generated semantic probe payloads'
-elif logic_profile_id == 'plugin_duplicate_detector_profile':
-    duplicate_risks = []
-    for existing in existing_plugins[:12]:
-        existing_text = str(existing).lower()
-        overlap = [word for word in plugin_keywords[:10] if word in existing_text]
-        if overlap:
-            duplicate_risks.append({{'existing_plugin': str(existing)[:160], 'overlap_terms': overlap}})
-    uniqueness_fingerprint = sorted(set(plugin_keywords + [primary_signal, logic_profile_id]))[:16]
-    comparison_targets = existing_plugins[:8]
-    merge_or_reject_decision = 'redesign' if duplicate_risks else 'unique_enough_to_build'
-    details_payload = {{'duplicate_risks': duplicate_risks, 'uniqueness_fingerprint': uniqueness_fingerprint, 'comparison_targets': comparison_targets, 'merge_or_reject_decision': merge_or_reject_decision}}
-    next_step = 'Apply duplicate decision: ' + merge_or_reject_decision
-elif logic_profile_id == 'plugin_repair_strategy_planner_profile':
-    weak_signals = []
-    for item in quality_failures + candidate_outputs:
-        text = str(item).lower()
-        hits = [term for term in ['missing', 'semantic', 'shallow', 'similar', 'profile', 'runtime', 'failed'] if term in text]
-        if hits:
-            weak_signals.append({{'signals': hits, 'evidence': str(item)[:180]}})
-    capability_specific_targets = ['replace generic output keys', 'add profile-specific analyzer', 'make scores vary with payload values', 'add repair acceptance checks']
-    repair_plan = [
-        {{'step': 1, 'action': 'Classify weak signals', 'signals': weak_signals[:5]}},
-        {{'step': 2, 'action': 'Patch capability profile for ' + desired_plugin, 'targets': capability_specific_targets}},
-        {{'step': 3, 'action': 'Repair only if validation and semantic depth pass'}},
-    ]
-    acceptance_checks = ['required keys present', 'semantic probes pass', 'full quality audit clean', 'GitHub push only after repair']
-    details_payload = {{'repair_plan': repair_plan, 'weak_signals': weak_signals, 'capability_specific_targets': capability_specific_targets, 'acceptance_checks': acceptance_checks}}
-    next_step = 'Patch capability profile for ' + desired_plugin
-elif logic_profile_id == 'plugin_release_packager_profile':
-    validation_summary = {{'quality_failures': len(quality_failures), 'candidate_count': len(candidate_outputs), 'signals': factory_signals}}
-    release_package = {{'title': desired_plugin, 'summary': 'Package generated capability module with validation evidence', 'files': payload_data.get('files', []), 'notes': source_notes[:5]}}
-    github_publish_plan = ['stage capability module and profile files', 'commit with validation summary', 'push origin main after gates pass']
-    rollback_notes = ['keep backup in quality_backups', 'do not publish failed candidates', 're-run quality runner before restart']
-    details_payload = {{'release_package': release_package, 'validation_summary': validation_summary, 'github_publish_plan': github_publish_plan, 'rollback_notes': rollback_notes}}
-    next_step = 'Prepare GitHub release package for ' + desired_plugin
-else:
-    backlog_items = [
-        {{'slug_hint': 'ai_plugin_spec_architect', 'priority': 1, 'why': 'improves future specs'}},
-        {{'slug_hint': 'ai_plugin_quality_gate_designer', 'priority': 2, 'why': 'prevents shallow acceptance'}},
-        {{'slug_hint': 'ai_plugin_repair_strategy_planner', 'priority': 3, 'why': 'recovers weak generated capabilities'}},
-    ]
-    priority_rationale = ['Factory leverage first', 'Quality before speed', 'No duplicate or random capability ideas']
-    dependency_order = ['spec', 'logic_blueprint', 'quality_gate', 'test_payloads', 'duplicate_check', 'repair', 'release']
-    next_plugin_specs = [item['slug_hint'] for item in backlog_items]
-    details_payload = {{'backlog_items': backlog_items, 'priority_rationale': priority_rationale, 'dependency_order': dependency_order, 'next_plugin_specs': next_plugin_specs}}
-    next_step = 'Build the highest-leverage capability factory backlog item'
-
-result['summary'] = plugin_name + ': created capability-factory guidance for ' + desired_plugin + ' using focus ' + primary_signal + '.'
-result['primary_insights'] = [
-    {{'title': 'Factory signals', 'detail': factory_signals or primary_signal}},
-    {{'title': 'Domain signals', 'detail': domain_signals or 'No domain-specific capability risk signal detected.'}},
-    {{'title': 'Capability keywords', 'detail': plugin_keywords}},
-    {{'title': 'Profile output', 'detail': details_payload}},
-]
-result['recommended_actions'] = [
-    {{'action': next_step, 'profile_id': logic_profile_id, 'signals': factory_signals}},
-    {{'action': 'Reject random or duplicate capability work', 'existing_plugins_checked': len(existing_plugins)}},
-    {{'action': 'Verify with quality runner before publish', 'quality_failures_seen': len(quality_failures)}},
-]
-signal_count = sum(len(item['signals']) for item in factory_signals)
-result['scores'] = {{'confidence': round(min(0.92, 0.44 + 0.03 * len(plugin_keywords) + 0.025 * signal_count + 0.013 * domain_signal_count), 2), 'factory_leverage': round(min(0.95, 0.5 + 0.06 * len(details_payload) + 0.02 * signal_count + 0.01 * domain_signal_count), 2), 'duplicate_risk': round(min(0.9, 0.08 * len(existing_plugins) + 0.06 * len(details_payload.get('duplicate_risks', []))), 2), 'domain_signal_count': domain_signal_count, 'risk': round(min(0.9, 0.16 + 0.04 * len(quality_failures) + 0.04 * len(details_payload.get('duplicate_risks', [])) + 0.025 * domain_signal_count), 2)}}
-details_payload['factory_signals'] = factory_signals
-details_payload['domain_signals'] = domain_signals
-details_payload['capability_keywords'] = plugin_keywords
-details_payload['missing_inputs'] = ['capability name or task'] if not desired_plugin else []
-result['details'] = details_payload
-{_common_result_footer("next_step")}
-""".strip()
+    return _dispatcher_profile(spec, capability_type, profile_id, reason)
 
 
 PROFILE_BUILDERS: Dict[str, tuple[str, Callable[[PluginSpec, Optional[str], str, str], str]]] = {
@@ -1763,14 +1606,14 @@ PROFILE_BUILDERS: Dict[str, tuple[str, Callable[[PluginSpec, Optional[str], str,
     "ai_artifact_release_note_generator": ("artifact_release_note_generator_profile", _artifact_release_notes),
     "ai_data_contract_mapper": ("data_contract_mapper_profile", _data_contract_mapper),
     "ai_autonomous_run_governor": ("autonomous_run_governor_profile", _autonomous_run_governor),
-    "ai_plugin_spec_architect": ("plugin_spec_architect_profile", _plugin_factory_builder),
+    "ai_plugin_spec_architect": ("plugin_spec_architect_profile", _dispatcher_profile),
     "ai_plugin_logic_blueprint_designer": ("plugin_logic_blueprint_designer_profile", _dispatcher_profile),
     "ai_plugin_quality_gate_designer": ("plugin_quality_gate_designer_profile", _dispatcher_profile),
     "ai_plugin_test_payload_generator": ("plugin_test_payload_generator_profile", _dispatcher_profile),
     "ai_plugin_duplicate_detector": ("capability_overlap_checker_profile", _dispatcher_profile),
-    "ai_plugin_repair_strategy_planner": ("plugin_repair_strategy_planner_profile", _plugin_factory_builder),
-    "ai_plugin_release_packager": ("plugin_release_packager_profile", _plugin_factory_builder),
-    "ai_plugin_factory_backlog_planner": ("plugin_factory_backlog_planner_profile", _plugin_factory_builder),
+    "ai_plugin_repair_strategy_planner": ("plugin_repair_strategy_planner_profile", _dispatcher_profile),
+    "ai_plugin_release_packager": ("plugin_release_packager_profile", _dispatcher_profile),
+    "ai_plugin_factory_backlog_planner": ("plugin_factory_backlog_planner_profile", _dispatcher_profile),
     "ai_prompt_persona_adapter": ("prompt_persona_adapter_profile", _prompt_refinement),
     "ai_prompt_output_schema_designer": ("prompt_output_schema_designer_profile", _structured_prompt_builder),
     "ai_model_failure_mode_classifier": ("model_failure_mode_classifier_profile", _workflow_debugger),
@@ -1792,9 +1635,9 @@ PROFILE_BUILDERS: Dict[str, tuple[str, Callable[[PluginSpec, Optional[str], str,
     "ai_rollback_readiness_checker": ("rollback_readiness_checker_profile", _automation_safety),
     "ai_live_run_anomaly_detector": ("live_run_anomaly_detector_profile", _autonomous_run_governor),
     "ai_capability_dependency_mapper": ("capability_dependency_mapper_profile", _data_contract_mapper),
-    "ai_plugin_profile_gap_detector": ("plugin_profile_gap_detector_profile", _plugin_factory_builder),
-    "ai_semantic_probe_result_analyzer": ("semantic_probe_result_analyzer_profile", _plugin_factory_builder),
-    "ai_release_readiness_scorecard": ("release_readiness_scorecard_profile", _plugin_factory_builder),
+    "ai_plugin_profile_gap_detector": ("plugin_profile_gap_detector_profile", _dispatcher_profile),
+    "ai_semantic_probe_result_analyzer": ("semantic_probe_result_analyzer_profile", _dispatcher_profile),
+    "ai_release_readiness_scorecard": ("release_readiness_scorecard_profile", _dispatcher_profile),
 }
 
 

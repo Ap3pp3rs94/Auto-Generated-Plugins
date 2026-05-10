@@ -10,7 +10,19 @@ except Exception:  # pragma: no cover
     except Exception:  # pragma: no cover
         _normalize_os_profile_id = None  # type: ignore[assignment]
 
-from . import logic_blueprint_designer, overlap_checker, quality_gate_designer, test_payload_generator
+from . import (
+    logic_blueprint_designer,
+    overlap_checker,
+    plugin_factory_backlog_planner,
+    plugin_profile_gap_detector,
+    plugin_release_packager,
+    plugin_repair_strategy_planner,
+    plugin_spec_architect,
+    quality_gate_designer,
+    release_readiness_scorecard,
+    semantic_probe_result_analyzer,
+    test_payload_generator,
+)
 from .profile_utils import finalize_profile_result, normalize_payload
 
 
@@ -27,6 +39,24 @@ _PROFILE_ALIASES: dict[str, str] = {
     "plugin_test_payload_generator_profile": test_payload_generator.PROFILE_ID,
     "test_payload_generator_profile": test_payload_generator.PROFILE_ID,
     "ai_plugin_test_payload_generator": test_payload_generator.PROFILE_ID,
+    "plugin_spec_architect_profile": plugin_spec_architect.PROFILE_ID,
+    "ai_plugin_spec_architect": plugin_spec_architect.PROFILE_ID,
+    "plugin_repair_strategy_planner_profile": plugin_repair_strategy_planner.PROFILE_ID,
+    "repair_strategy_planner_profile": plugin_repair_strategy_planner.PROFILE_ID,
+    "ai_plugin_repair_strategy_planner": plugin_repair_strategy_planner.PROFILE_ID,
+    "plugin_release_packager_profile": plugin_release_packager.PROFILE_ID,
+    "release_packager_profile": plugin_release_packager.PROFILE_ID,
+    "ai_plugin_release_packager": plugin_release_packager.PROFILE_ID,
+    "plugin_factory_backlog_planner_profile": plugin_factory_backlog_planner.PROFILE_ID,
+    "factory_backlog_planner_profile": plugin_factory_backlog_planner.PROFILE_ID,
+    "ai_plugin_factory_backlog_planner": plugin_factory_backlog_planner.PROFILE_ID,
+    "plugin_profile_gap_detector_profile": plugin_profile_gap_detector.PROFILE_ID,
+    "profile_gap_detector_profile": plugin_profile_gap_detector.PROFILE_ID,
+    "ai_plugin_profile_gap_detector": plugin_profile_gap_detector.PROFILE_ID,
+    "semantic_probe_result_analyzer_profile": semantic_probe_result_analyzer.PROFILE_ID,
+    "ai_semantic_probe_result_analyzer": semantic_probe_result_analyzer.PROFILE_ID,
+    "release_readiness_scorecard_profile": release_readiness_scorecard.PROFILE_ID,
+    "ai_release_readiness_scorecard": release_readiness_scorecard.PROFILE_ID,
     "capability_overlap_checker_profile": overlap_checker.PROFILE_ID,
     "continuous_capability_overlap_checker_profile": overlap_checker.PROFILE_ID,
     "plugin_duplicate_detector_profile": overlap_checker.PROFILE_ID,
@@ -40,6 +70,13 @@ _PROFILE_RUNNERS: dict[str, ProfileRunner] = {
     quality_gate_designer.PROFILE_ID: quality_gate_designer.run,
     logic_blueprint_designer.PROFILE_ID: logic_blueprint_designer.run,
     test_payload_generator.PROFILE_ID: test_payload_generator.run,
+    plugin_spec_architect.PROFILE_ID: plugin_spec_architect.run,
+    plugin_repair_strategy_planner.PROFILE_ID: plugin_repair_strategy_planner.run,
+    plugin_release_packager.PROFILE_ID: plugin_release_packager.run,
+    plugin_factory_backlog_planner.PROFILE_ID: plugin_factory_backlog_planner.run,
+    plugin_profile_gap_detector.PROFILE_ID: plugin_profile_gap_detector.run,
+    semantic_probe_result_analyzer.PROFILE_ID: semantic_probe_result_analyzer.run,
+    release_readiness_scorecard.PROFILE_ID: release_readiness_scorecard.run,
     overlap_checker.PROFILE_ID: overlap_checker.run,
 }
 

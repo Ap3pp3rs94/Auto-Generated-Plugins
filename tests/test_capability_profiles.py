@@ -66,11 +66,42 @@ PROFILE_PAYLOADS = {
         "quality_failures": ["semantic_depth: outputs too similar", "missing_detail_keys"],
         "constraints": ["repair only after validation", "push only passing capabilities"],
     },
+    "ai_plugin_repair_strategy_planner": {
+        "plugin_name": "AI Capability Overlap Checker",
+        "quality_failures": ["generic backlog behavior appeared under overlap checker profile"],
+        "validation_findings": ["missing required detail key duplicate_risks"],
+        "source_excerpt": "logic_profile_id fell through to default branch",
+    },
+    "ai_plugin_release_packager": {
+        "plugin_name": "AI Capability Overlap Checker",
+        "files": ["plugins/ai_capability_overlap_checker.py", "profiles/overlap_checker.py"],
+        "validation_summary": {"ok": True, "semantic_ok": True},
+        "test_results": ["overlap tests passed"],
+    },
     "ai_plugin_factory_backlog_planner": {
         "task": "Plan next capability factory backlog",
         "objective": "make capabilities that create better capabilities intentionally",
         "existing_plugins": ["ai_plugin_spec_architect"],
         "constraints": ["no duplicates", "no random filler"],
+    },
+    "ai_plugin_profile_gap_detector": {
+        "task": "Find generated modules without reusable profile runners",
+        "existing_plugins": [
+            {"slug": "ai_plugin_spec_architect", "logic_profile_id": "plugin_spec_architect_profile"},
+            {"slug": "ai_unknown_capability", "logic_profile_id": ""},
+        ],
+        "registered_profiles": ["ai_plugin_spec_architect"],
+    },
+    "ai_semantic_probe_result_analyzer": {
+        "plugin_name": "AI Capability Overlap Checker",
+        "probe_results": ["duplicate probe passed", "unique probe failed decision mismatch"],
+        "validation_findings": ["forbidden backlog_items found"],
+    },
+    "ai_release_readiness_scorecard": {
+        "plugin_name": "AI Capability Overlap Checker",
+        "files": ["plugins/ai_capability_overlap_checker.py"],
+        "validation_summary": {"ok": True, "semantic_ok": True},
+        "test_results": ["unittest overlap tests passed"],
     },
 }
 
