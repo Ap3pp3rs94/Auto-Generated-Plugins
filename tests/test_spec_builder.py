@@ -16,17 +16,29 @@ for path in (REPO_ROOT, FRANCIS_ROOT):
 try:
     from factory import factory_runner as runner
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+    from factory.spec_builder import CONTINUOUS_EXPANSION_CONTEXTS
+    from factory.spec_builder import CONTINUOUS_EXPANSION_FAMILIES
+    from factory.spec_builder import CONTINUOUS_EXPANSION_MODES
+    from factory.spec_builder import CONTINUOUS_EXPANSION_SURFACES
+    from factory.spec_builder import CONTINUOUS_EXPANSION_TARGETS
     from factory.factory_runner import _anticipated_capability_candidates
     from factory.factory_runner import _refresh_anticipation_state
     from factory.factory_runner import _canonical_retention_spec
+    from factory.factory_runner import _roadmap_slug_index
     from factory.factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
     from factory.factory_runner import _upgrade_backlog_exhausted
 except ModuleNotFoundError:
     import factory_runner as runner
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+    from spec_builder import CONTINUOUS_EXPANSION_CONTEXTS
+    from spec_builder import CONTINUOUS_EXPANSION_FAMILIES
+    from spec_builder import CONTINUOUS_EXPANSION_MODES
+    from spec_builder import CONTINUOUS_EXPANSION_SURFACES
+    from spec_builder import CONTINUOUS_EXPANSION_TARGETS
     from factory_runner import _anticipated_capability_candidates
     from factory_runner import _refresh_anticipation_state
     from factory_runner import _canonical_retention_spec
+    from factory_runner import _roadmap_slug_index
     from factory_runner import _upgrade_attempt_record, _upgrade_attempt_skip_reason
     from factory_runner import _upgrade_backlog_exhausted
 
@@ -63,6 +75,29 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertEqual(expansion_spec.extra["generation_round"], 1)
         self.assertTrue(expansion_spec.extra["continuous_expansion"])
         self.assertEqual(expansion_spec.slug, "ai_coding_agent_prompt_contract_designer")
+
+    def test_continuous_expansion_capacity_supports_large_unique_goal(self) -> None:
+        capacity = (
+            len(CONTINUOUS_EXPANSION_TARGETS)
+            * len(CONTINUOUS_EXPANSION_FAMILIES)
+            * len(CONTINUOUS_EXPANSION_CONTEXTS)
+            * len(CONTINUOUS_EXPANSION_MODES)
+            * len(CONTINUOUS_EXPANSION_SURFACES)
+        )
+
+        self.assertGreaterEqual(capacity, 500_000)
+
+    def test_second_continuous_wave_uses_descriptive_dimensions_not_set_suffix(self) -> None:
+        first_wave_size = len(CONTINUOUS_EXPANSION_TARGETS) * len(CONTINUOUS_EXPANSION_FAMILIES)
+        next_wave_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + first_wave_size + 1)[0]
+
+        self.assertTrue(next_wave_spec.extra["continuous_expansion"])
+        self.assertIn("agentic_planning", next_wave_spec.slug)
+        self.assertNotIn("_set_", next_wave_spec.slug)
+        self.assertIn("agentic planning", next_wave_spec.intended_domain.lower())
+
+    def test_legacy_set_slugs_do_not_advance_forward_cursor(self) -> None:
+        self.assertIsNone(_roadmap_slug_index("ai_coding_agent_prompt_contract_designer_set_2"))
 
     def test_anticipation_candidates_skip_existing_and_describe_next_work(self) -> None:
         existing = {build_next_spec(i)[0].slug for i in range(1, len(AI_CAPABILITY_ROADMAP) + 1)}

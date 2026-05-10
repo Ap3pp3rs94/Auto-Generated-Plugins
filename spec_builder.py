@@ -1064,6 +1064,14 @@ class ContinuousExpansionTarget:
     tags: List[str]
 
 
+@dataclass(frozen=True)
+class ContinuousExpansionDimension:
+    slug: str
+    name: str
+    domain_phrase: str
+    tags: List[str]
+
+
 CONTINUOUS_EXPANSION_TARGETS: Tuple[ContinuousExpansionTarget, ...] = (
     ContinuousExpansionTarget("coding_agent", "Coding Agent", "AI coding agents and repository work", ["coding", "agents"]),
     ContinuousExpansionTarget("research_agent", "Research Agent", "AI research, retrieval, and synthesis work", ["research", "retrieval"]),
@@ -1081,6 +1089,56 @@ CONTINUOUS_EXPANSION_TARGETS: Tuple[ContinuousExpansionTarget, ...] = (
     ContinuousExpansionTarget("personal_assistant", "Personal Assistant", "AI personal productivity and scheduling workflows", ["productivity", "assistant"]),
     ContinuousExpansionTarget("operations_monitor", "Operations Monitor", "AI operations monitoring and incident response", ["operations", "monitoring"]),
     ContinuousExpansionTarget("plugin_factory", "Capability Factory", "AI capability factory and generated module operations", ["capabilities", "factory"]),
+)
+
+
+CONTINUOUS_EXPANSION_CONTEXTS: Tuple[ContinuousExpansionDimension, ...] = (
+    ContinuousExpansionDimension("", "", "", []),
+    ContinuousExpansionDimension("agentic_planning", "Agentic Planning", "agentic planning", ["agentic", "planning"]),
+    ContinuousExpansionDimension("tool_use", "Tool Use", "AI tool use", ["tools", "tool-use"]),
+    ContinuousExpansionDimension("retrieval_grounding", "Retrieval Grounding", "retrieval grounding", ["retrieval", "grounding"]),
+    ContinuousExpansionDimension("memory_management", "Memory Management", "memory management", ["memory"]),
+    ContinuousExpansionDimension("evaluation_feedback", "Evaluation Feedback", "evaluation feedback", ["evaluation", "feedback"]),
+    ContinuousExpansionDimension("safety_controls", "Safety Controls", "safety controls", ["safety", "controls"]),
+    ContinuousExpansionDimension("workflow_orchestration", "Workflow Orchestration", "workflow orchestration", ["workflow", "orchestration"]),
+    ContinuousExpansionDimension("release_ops", "Release Ops", "release operations", ["release", "operations"]),
+    ContinuousExpansionDimension("customer_interaction", "Customer Interaction", "customer-facing interaction", ["customer", "interaction"]),
+    ContinuousExpansionDimension("data_pipeline", "Data Pipeline", "data pipeline work", ["data", "pipeline"]),
+    ContinuousExpansionDimension("documentation", "Documentation", "documentation and knowledge capture", ["docs", "documentation"]),
+    ContinuousExpansionDimension("compliance_review", "Compliance Review", "compliance review", ["compliance"]),
+    ContinuousExpansionDimension("personalization", "Personalization", "personalization", ["personalization"]),
+    ContinuousExpansionDimension("multimodal_inputs", "Multimodal Inputs", "multimodal inputs", ["multimodal"]),
+    ContinuousExpansionDimension("plugin_ops", "Capability Operations", "capability operations", ["capabilities", "operations"]),
+    ContinuousExpansionDimension("task_decomposition", "Task Decomposition", "task decomposition", ["tasks", "decomposition"]),
+    ContinuousExpansionDimension("prompt_ops", "Prompt Operations", "prompt operations", ["prompting", "operations"]),
+    ContinuousExpansionDimension("knowledge_graph", "Knowledge Graph", "knowledge graph work", ["knowledge", "graph"]),
+    ContinuousExpansionDimension("live_monitoring", "Live Monitoring", "live monitoring", ["monitoring", "live"]),
+)
+
+
+CONTINUOUS_EXPANSION_MODES: Tuple[ContinuousExpansionDimension, ...] = (
+    ContinuousExpansionDimension("", "", "", []),
+    ContinuousExpansionDimension("detect", "Detection", "detecting signals", ["detect"]),
+    ContinuousExpansionDimension("score", "Scoring", "scoring decisions", ["scoring"]),
+    ContinuousExpansionDimension("plan", "Planning", "planning next actions", ["planning"]),
+    ContinuousExpansionDimension("compose", "Composition", "composing capability outputs", ["composition"]),
+    ContinuousExpansionDimension("verify", "Verification", "verifying outcomes", ["verification"]),
+    ContinuousExpansionDimension("route", "Routing", "routing work", ["routing"]),
+    ContinuousExpansionDimension("summarize", "Summarization", "summarizing evidence", ["summary"]),
+    ContinuousExpansionDimension("refactor", "Refactoring", "refactoring workflows", ["refactor"]),
+    ContinuousExpansionDimension("simulate", "Simulation", "simulating outcomes", ["simulation"]),
+    ContinuousExpansionDimension("recover", "Recovery", "recovering from failures", ["recovery"]),
+    ContinuousExpansionDimension("optimize", "Optimization", "optimizing decisions", ["optimization"]),
+)
+
+
+CONTINUOUS_EXPANSION_SURFACES: Tuple[ContinuousExpansionDimension, ...] = (
+    ContinuousExpansionDimension("", "", "", []),
+    ContinuousExpansionDimension("payloads", "Payload", "payload fields", ["payloads"]),
+    ContinuousExpansionDimension("traces", "Trace", "tool traces and execution logs", ["traces"]),
+    ContinuousExpansionDimension("conversations", "Conversation", "conversation history", ["conversation"]),
+    ContinuousExpansionDimension("artifacts", "Artifact", "generated artifacts", ["artifacts"]),
+    ContinuousExpansionDimension("scorecards", "Scorecard", "scorecards and rubrics", ["scorecards"]),
 )
 
 
@@ -1637,37 +1695,87 @@ def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
     """
     Build a deterministic canonical capability after the curated roadmap ends.
 
-    These are not stage upgrades. They are fresh, named capabilities generated
-    from a controlled matrix of AI workflow targets and capability families.
+    These are not stage upgrades or numbered clone batches. They are fresh,
+    named capabilities generated from a controlled matrix of AI workflow
+    targets, use contexts, operating modes, surfaces, and capability families.
     """
     offset = max(int(index), len(AI_CAPABILITY_ROADMAP) + 1) - len(AI_CAPABILITY_ROADMAP) - 1
-    family = CONTINUOUS_EXPANSION_FAMILIES[offset % len(CONTINUOUS_EXPANSION_FAMILIES)]
-    target_index = (offset // len(CONTINUOUS_EXPANSION_FAMILIES)) % len(CONTINUOUS_EXPANSION_TARGETS)
-    cycle = offset // (len(CONTINUOUS_EXPANSION_FAMILIES) * len(CONTINUOUS_EXPANSION_TARGETS))
+    family_count = len(CONTINUOUS_EXPANSION_FAMILIES)
+    target_count = len(CONTINUOUS_EXPANSION_TARGETS)
+    context_count = len(CONTINUOUS_EXPANSION_CONTEXTS)
+    mode_count = len(CONTINUOUS_EXPANSION_MODES)
+    surface_count = len(CONTINUOUS_EXPANSION_SURFACES)
+
+    family = CONTINUOUS_EXPANSION_FAMILIES[offset % family_count]
+    target_index = (offset // family_count) % target_count
+    variant_index = offset // (family_count * target_count)
+    context = CONTINUOUS_EXPANSION_CONTEXTS[variant_index % context_count]
+    mode = CONTINUOUS_EXPANSION_MODES[(variant_index // context_count) % mode_count]
+    surface = CONTINUOUS_EXPANSION_SURFACES[(variant_index // (context_count * mode_count)) % surface_count]
+    cycle = variant_index // (context_count * mode_count * surface_count)
     target = CONTINUOUS_EXPANSION_TARGETS[target_index]
 
-    slug = f"ai_{target.slug}_{family.slug}"
-    name = f"AI {target.name} {family.name}"
+    slug_parts = [
+        "ai",
+        target.slug,
+        context.slug,
+        mode.slug,
+        surface.slug,
+        family.slug,
+    ]
+    name_parts = [
+        "AI",
+        target.name,
+        context.name,
+        mode.name,
+        surface.name,
+        family.name,
+    ]
+    slug = "_".join(part for part in slug_parts if part)
+    name = " ".join(part for part in name_parts if part)
     if cycle:
-        slug = f"{slug}_set_{cycle + 1}"
-        name = f"{name} Set {cycle + 1}"
+        slug = f"{slug}_cycle_{cycle + 1}"
+        name = f"{name} Cycle {cycle + 1}"
+
+    domain_parts = [
+        target.domain_phrase,
+        context.domain_phrase,
+        mode.domain_phrase,
+        surface.domain_phrase,
+    ]
+    target_domain = " for ".join(part for part in domain_parts if part)
+    target_name = " ".join(
+        part for part in [target.name, context.name, mode.name, surface.name] if part
+    )
+    tags = list(
+        dict.fromkeys(
+            [
+                *target.tags,
+                *context.tags,
+                *mode.tags,
+                *surface.tags,
+                *family.tags,
+                "continuous_backlog",
+            ]
+        )
+    )
 
     return AICapabilityBlueprint(
         slug=slug,
         name=name,
         category=family.category,
         goal=family.goal_template.format(
-            target_name=target.name,
-            target_domain=target.domain_phrase,
+            target_name=target_name,
+            target_domain=target_domain,
         ),
         capability_type=family.capability_type,
         intended_domain=family.intended_domain_template.format(
-            target_name=target.name,
-            target_domain=target.domain_phrase,
+            target_name=target_name,
+            target_domain=target_domain,
         ),
-        tags=list(dict.fromkeys([*target.tags, *family.tags, "continuous_backlog"])),
+        tags=tags,
         use_cases=[
-            item.format(target_name=target.name, target_domain=target.domain_phrase)
+            item.format(target_name=target_name, target_domain=target_domain)
             for item in family.use_case_templates
         ],
     )

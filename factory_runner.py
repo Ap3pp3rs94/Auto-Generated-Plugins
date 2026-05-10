@@ -507,6 +507,11 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
     """
     Convert an existing AI roadmap slug into its deterministic global index.
     """
+    # Legacy numbered batches are intentionally not part of the forward cursor.
+    # New expansion uses descriptive dimensions instead of `_set_N` clones.
+    if "_set_" in str(slug or ""):
+        return None
+
     roadmap_size = len(AI_CAPABILITY_ROADMAP)
     for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
         if slug == blueprint.slug:
