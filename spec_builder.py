@@ -18,7 +18,10 @@ toward AI functionality rather than broad/random utility generation.
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-from plugin_spec import PluginSpec
+try:
+    from .plugin_spec import PluginSpec
+except ImportError:  # pragma: no cover - direct local execution
+    from plugin_spec import PluginSpec
 
 
 @dataclass(frozen=True)

@@ -25,8 +25,12 @@ from typing import Any, Dict, List, Optional
 
 import importlib.util as _importlib_util
 
-from plugin_spec import PluginSpec
-from station_c_validator import validate_plugin_module
+try:
+    from .plugin_spec import PluginSpec
+    from .station_c_validator import validate_plugin_module
+except ImportError:  # pragma: no cover - direct local execution
+    from plugin_spec import PluginSpec
+    from station_c_validator import validate_plugin_module
 
 __all__ = ["PluginRecord", "PluginRegistry"]
 

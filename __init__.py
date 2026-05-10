@@ -20,18 +20,45 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from plugin_spec import PluginSpec
-from station_b import (
-    StationBConfig,
-    StationBResult,
-    generate_plugin_source,
-)
-from station_c import run_station_c
-from station_c_validator import ValidationError
-from plugin_registry import (
-    FRANCIS_ROOT,
-    register_plugin,
-)
+try:
+    from .plugin_spec import PluginSpec
+except ImportError:  # pragma: no cover - direct local execution
+    from plugin_spec import PluginSpec
+
+try:
+    from .plugin_registry import FRANCIS_ROOT, register_plugin
+except ImportError:  # pragma: no cover - direct local execution
+    from plugin_registry import FRANCIS_ROOT, register_plugin
+
+try:
+    from .station_c_validator import ValidationError
+except ImportError:  # pragma: no cover - direct local execution
+    from station_c_validator import ValidationError
+
+try:
+    from .station_b import (
+        StationBConfig,
+        StationBResult,
+        generate_plugin_source,
+    )
+    from .station_c import run_station_c
+except ImportError:  # pragma: no cover - sidecar repo without parent stations
+    try:
+        from station_b import (  # type: ignore
+            StationBConfig,
+            StationBResult,
+            generate_plugin_source,
+        )
+        from station_c import run_station_c  # type: ignore
+    except ImportError:
+        StationBConfig = None  # type: ignore[assignment]
+        StationBResult = Any  # type: ignore[assignment]
+
+        def generate_plugin_source(*args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("Station B is not available in this checkout.")
+
+        def run_station_c(*args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("Station C is not available in this checkout.")
 
 
 # =====================================================================

@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+from typing import Any
+
+from .profile_utils import capability_spec_payload, finalize_profile_result, normalize_payload, user_candidate_text
+
+
+PROFILE_ID = "plugin_test_payload_generator_profile"
+__test__ = False
+
+
+def run(context: Any, payload: Any, config: dict[str, Any] | None, manifest: dict[str, Any]) -> dict[str, Any]:
+    payload_data, warnings = normalize_payload(payload)
+    spec = capability_spec_payload(payload_data)
+    missing = [] if spec else ["capability_spec or candidate capability fields"]
+    name = str(spec.get("name") or user_candidate_text(payload_data) or "unnamed capability")
+    required_behavior = str(spec.get("required_behavior") or payload_data.get("required_behavior") or "perform the named capability")
+    forbidden_behavior = spec.get("forbidden_behavior")
+    if not isinstance(forbidden_behavior, list):
+        forbidden_behavior = spec.get("does_not_own") if isinstance(spec.get("does_not_own"), list) else []
+    required_detail_keys = spec.get("required_detail_keys") if isinstance(spec.get("required_detail_keys"), list) else []
+    forbidden_detail_keys = spec.get("forbidden_detail_keys") if isinstance(spec.get("forbidden_detail_keys"), list) else []
+    test_payloads = [
+        {"name": "empty_payload_missing_input", "payload": {}, "expect": {"missing_inputs": True, "blockers": True}},
+        {"name": "required_behavior_happy_path", "payload": {"task": name, "required_behavior": required_behavior, "capability_spec": spec}, "expect": {"detail_keys": required_detail_keys}},
+        {"name": "forbidden_behavior_guard", "payload": {"task": name, "forbidden_behavior": forbidden_behavior, "capability_spec": spec}, "expect": {"forbidden_detail_keys_absent": forbidden_detail_keys}},
+        {"name": "semantic_contrast", "payload": {"task": "different domain contrast", "capability_spec": spec}, "expect": {"decision_surface_differs": True}},
+    ]
+    edge_cases = ["non-dict payload", "missing candidate capability", "forbidden behavior appears", "required details absent"]
+    result = {
+        "summary": f"Semantic test payloads generated for {name}.",
+        "primary_insights": [
+            {"title": "Generated probes", "detail": test_payloads},
+            {"title": "Edge cases", "detail": edge_cases},
+        ],
+        "recommended_actions": [
+            {"action": "Run generated payloads before promotion", "payload_count": len(test_payloads)},
+            {"action": "Fail on forbidden behavior", "forbidden_behavior": forbidden_behavior},
+        ],
+        "scores": {"confidence": 0.87 if spec else 0.4, "usefulness": 0.91 if spec else 0.5, "probe_count": len(test_payloads)},
+        "details": {
+            "test_payloads": test_payloads,
+            "edge_cases": edge_cases,
+            "expected_differences": ["required_behavior_happy_path differs from semantic_contrast", "empty payload exposes blockers"],
+            "regression_watchlist": ["metadata-only relabeling", "generic backlog output", "constant scores"],
+            "missing_inputs": missing,
+        },
+    }
+    return finalize_profile_result(result, profile_id=PROFILE_ID, payload_warnings=warnings, manifest=manifest)

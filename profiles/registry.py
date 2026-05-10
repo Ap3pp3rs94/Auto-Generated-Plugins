@@ -1513,6 +1513,54 @@ if isinstance(result.get('diagnostics'), dict):
 """.strip()
 
 
+def _manifest_for_dispatch(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> dict[str, Any]:
+    try:
+        manifest = dict(spec.to_manifest()) if hasattr(spec, "to_manifest") else {}
+    except Exception:
+        manifest = {}
+    manifest.update(
+        {
+            "name": getattr(spec, "name", ""),
+            "slug": getattr(spec, "slug", ""),
+            "goal": getattr(spec, "goal", ""),
+            "category": getattr(spec, "category", ""),
+            "tags": list(getattr(spec, "tags", []) or []),
+            "version": str(getattr(spec, "version", "") or "0.1.0"),
+            "capability_type": capability_type or getattr(spec, "capability_type", None),
+            "intended_domain": getattr(spec, "intended_domain", None),
+            "owner_id": getattr(spec, "owner_id", None),
+            "use_cases": list(getattr(spec, "use_cases", []) or []),
+            "logic_profile_id": profile_id,
+            "generation_note": reason or "profile dispatcher registry",
+        }
+    )
+    try:
+        manifest.setdefault("family_key", spec.family_key)
+        manifest.setdefault("is_generic_name", spec.is_generic_name())
+    except Exception:
+        pass
+    return manifest
+
+
+def _dispatcher_profile(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
+    manifest = _manifest_for_dispatch(spec, capability_type, profile_id, reason)
+    return f"""
+try:
+    from factory.profiles.dispatcher import resolve_logic_profile, run_profile_logic
+except Exception:
+    from profiles.dispatcher import resolve_logic_profile, run_profile_logic
+requested_profile_id = None
+if isinstance(config, dict):
+    requested_profile_id = config.get('logic_profile_id') or config.get('profile_id')
+if requested_profile_id is None and isinstance(payload, dict):
+    requested_profile_id = payload.get('logic_profile_id') or payload.get('profile_id')
+logic_profile_id = resolve_logic_profile(requested_profile_id or {_quote(profile_id)}) or {_quote(profile_id)}
+manifest = {manifest!r}
+manifest['logic_profile_id'] = logic_profile_id
+result = run_profile_logic(logic_profile_id, context, payload, config, manifest)
+""".strip()
+
+
 def _plugin_factory_builder(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
@@ -1716,10 +1764,10 @@ PROFILE_BUILDERS: Dict[str, tuple[str, Callable[[PluginSpec, Optional[str], str,
     "ai_data_contract_mapper": ("data_contract_mapper_profile", _data_contract_mapper),
     "ai_autonomous_run_governor": ("autonomous_run_governor_profile", _autonomous_run_governor),
     "ai_plugin_spec_architect": ("plugin_spec_architect_profile", _plugin_factory_builder),
-    "ai_plugin_logic_blueprint_designer": ("plugin_logic_blueprint_designer_profile", _plugin_factory_builder),
-    "ai_plugin_quality_gate_designer": ("plugin_quality_gate_designer_profile", _plugin_factory_builder),
-    "ai_plugin_test_payload_generator": ("plugin_test_payload_generator_profile", _plugin_factory_builder),
-    "ai_plugin_duplicate_detector": ("capability_overlap_checker_profile", _capability_overlap_checker),
+    "ai_plugin_logic_blueprint_designer": ("plugin_logic_blueprint_designer_profile", _dispatcher_profile),
+    "ai_plugin_quality_gate_designer": ("plugin_quality_gate_designer_profile", _dispatcher_profile),
+    "ai_plugin_test_payload_generator": ("plugin_test_payload_generator_profile", _dispatcher_profile),
+    "ai_plugin_duplicate_detector": ("capability_overlap_checker_profile", _dispatcher_profile),
     "ai_plugin_repair_strategy_planner": ("plugin_repair_strategy_planner_profile", _plugin_factory_builder),
     "ai_plugin_release_packager": ("plugin_release_packager_profile", _plugin_factory_builder),
     "ai_plugin_factory_backlog_planner": ("plugin_factory_backlog_planner_profile", _plugin_factory_builder),
@@ -1767,7 +1815,7 @@ CONTINUOUS_PROFILE_PATTERNS: tuple[tuple[str, str, Callable[[PluginSpec, Optiona
     ("verification_checklist_builder", "continuous_verification_checklist_builder_profile", _prompt_test_cases),
     ("rollback_guard_builder", "continuous_rollback_guard_builder_profile", _automation_safety),
     ("anomaly_watch_builder", "continuous_anomaly_watch_builder_profile", _autonomous_run_governor),
-    ("capability_overlap_checker", "capability_overlap_checker_profile", _capability_overlap_checker),
+    ("capability_overlap_checker", "capability_overlap_checker_profile", _dispatcher_profile),
     ("release_evidence_summarizer", "continuous_release_evidence_summarizer_profile", _artifact_release_notes),
     ("trace_failure_router", "continuous_trace_failure_router_profile", _workflow_debugger),
     ("retrieval_query_planner", "continuous_retrieval_query_planner_profile", _retrieval_query),
@@ -1850,6 +1898,22 @@ result.setdefault('primary_insights', [])
 result.setdefault('recommended_actions', [])
 result.setdefault('scores', {{'confidence': 0.0}})
 result.setdefault('details', {{}})
+if isinstance(result.get('scores'), dict):
+    result['scores'].setdefault('confidence', 0.0)
+    result['scores'].setdefault('usefulness', 0.0)
+if isinstance(result.get('fun_mode'), dict):
+    result['fun_mode'].setdefault('microcopy', result.get('summary', 'Capability profile completed.'))
+    result['fun_mode'].setdefault('celebratory_microcopy', result['fun_mode'].get('microcopy', result.get('summary', 'Capability profile completed.')))
+else:
+    result['fun_mode'] = {{
+        'challenge_label': result.get('details', {{}}).get('logic_profile_id', 'Capability Run') if isinstance(result.get('details'), dict) else 'Capability Run',
+        'score_badge': 'Ready',
+        'microcopy': result.get('summary', 'Capability profile completed.'),
+        'celebratory_microcopy': result.get('summary', 'Capability profile completed.'),
+    }}
+if not isinstance(result.get('diagnostics'), dict):
+    result['diagnostics'] = {{}}
+result['diagnostics'].setdefault('logic_profile_id', result.get('details', {{}}).get('logic_profile_id', 'capability_profile') if isinstance(result.get('details'), dict) else 'capability_profile')
 return result
 """.strip()
 

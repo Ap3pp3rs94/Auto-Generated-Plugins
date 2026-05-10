@@ -51,8 +51,12 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Set, Tuple
 
-from plugin_spec import PluginSpec
-from station_c_validator import validate_plugin_module
+try:
+    from .plugin_spec import PluginSpec
+    from .station_c_validator import validate_plugin_module
+except ImportError:  # pragma: no cover - direct local execution
+    from plugin_spec import PluginSpec
+    from station_c_validator import validate_plugin_module
 try:
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec, legacy_continuous_expansion_slug
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
@@ -794,6 +798,67 @@ def _normalize_ai_roadmap_state(state: Dict[str, Any]) -> None:
     state["rejected_capability_order"] = [
         str(item) for item in rejected_order if str(item) in normalized_rejected
     ][-2000:]
+
+
+def _prune_ai_roadmap_state_to_existing_plugins(
+    state: Dict[str, Any],
+    existing_slugs: Set[str],
+) -> Dict[str, Any]:
+    """
+    Keep roadmap memory aligned with the actual plugin directory.
+
+    If generated artifacts are purged, stale completion/rejection/upgrade memory
+    must not make the factory believe the capability is still present or already
+    exhausted. This avoids losing a capability just because a deleted module's
+    slug still existed in local handoff state.
+    """
+    _normalize_ai_roadmap_state(state)
+
+    completed = state.get("completed") if isinstance(state.get("completed"), list) else []
+    kept_completed = [
+        item for item in completed
+        if isinstance(item, dict) and str(item.get("slug") or "") in existing_slugs
+    ]
+    if len(kept_completed) != len(completed):
+        LOG.info(
+            "Pruned %d stale AI roadmap completion record(s) for deleted plugin artifact(s).",
+            len(completed) - len(kept_completed),
+        )
+    state["completed"] = kept_completed
+    state["last_completed"] = kept_completed[-1] if kept_completed else None
+
+    attempts = state.get("upgrade_attempts") if isinstance(state.get("upgrade_attempts"), dict) else {}
+    kept_attempts = {
+        key: value for key, value in attempts.items()
+        if str(key) in existing_slugs
+    }
+    if len(kept_attempts) != len(attempts):
+        LOG.info(
+            "Pruned %d stale upgrade attempt record(s) for deleted canonical plugin artifact(s).",
+            len(attempts) - len(kept_attempts),
+        )
+    state["upgrade_attempts"] = kept_attempts
+    state["upgrade_attempt_order"] = [
+        str(item) for item in state.get("upgrade_attempt_order", [])
+        if str(item) in kept_attempts
+    ]
+
+    rejected = state.get("rejected_capabilities") if isinstance(state.get("rejected_capabilities"), dict) else {}
+    kept_rejected = {
+        key: value for key, value in rejected.items()
+        if str(key) in existing_slugs
+    }
+    if len(kept_rejected) != len(rejected):
+        LOG.info(
+            "Pruned %d stale rejection record(s) for deleted canonical plugin artifact(s).",
+            len(rejected) - len(kept_rejected),
+        )
+    state["rejected_capabilities"] = kept_rejected
+    state["rejected_capability_order"] = [
+        str(item) for item in state.get("rejected_capability_order", [])
+        if str(item) in kept_rejected
+    ]
+    return state
 
 
 def _upgrade_knowledge_fingerprint() -> str:
@@ -2191,7 +2256,10 @@ async def invoke(
     **kwargs: Any,
 ) -> Dict[str, Any]:
     if not isinstance(payload, dict):
-        payload = {{"_value": payload}}
+        payload = {{
+            "_value": payload,
+            "_payload_warnings": ["payload was not a dict; invoke wrapped it in _value"],
+        }}
     context = SkillContext(
         user_id=user_id,
         run_id=run_id,
@@ -2450,6 +2518,7 @@ async def run_factory(config: RunnerConfig) -> None:
     existing_slugs = _load_existing_plugin_slugs()
     existing_signatures = _load_existing_capability_signatures()
     ai_roadmap_state = _load_ai_roadmap_state()
+    ai_roadmap_state = _prune_ai_roadmap_state_to_existing_plugins(ai_roadmap_state, existing_slugs)
     ai_roadmap_state = _seed_ai_roadmap_state_from_existing(ai_roadmap_state, existing_slugs)
     _save_ai_roadmap_state(ai_roadmap_state)
     LOG.info("Loaded %d existing plugin(s) from plugins/", len(existing_slugs))

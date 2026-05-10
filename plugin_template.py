@@ -88,6 +88,12 @@ async def _run_logic(ctx: SkillContext, payload: Dict[str, Any]) -> Dict[str, An
 
 async def invoke(user_id: str, payload: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
     \"\"\"Entry point for all Francis plugins.\"\"\"
+    if not isinstance(payload, dict):
+        payload = {
+            "_value": payload,
+            "_payload_warnings": ["payload was not a dict; invoke wrapped it in _value"],
+        }
+
     ctx = SkillContext(
         user_id=user_id,
         run_id=kwargs.get("run_id"),
