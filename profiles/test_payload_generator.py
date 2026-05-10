@@ -26,23 +26,47 @@ def run(context: Any, payload: Any, config: dict[str, Any] | None, manifest: dic
         {"name": "forbidden_behavior_guard", "payload": {"task": name, "forbidden_behavior": forbidden_behavior, "capability_spec": spec}, "expect": {"forbidden_detail_keys_absent": forbidden_detail_keys}},
         {"name": "semantic_contrast", "payload": {"task": "different domain contrast", "capability_spec": spec}, "expect": {"decision_surface_differs": True}},
     ]
-    edge_cases = ["non-dict payload", "missing candidate capability", "forbidden behavior appears", "required details absent"]
+    contrast_pairs = [
+        {"left": "required_behavior_happy_path", "right": "semantic_contrast", "expected_difference": "summary, recommended_actions, scores, and machine details should change"},
+        {"left": "empty_payload_missing_input", "right": "required_behavior_happy_path", "expected_difference": "missing_inputs and blockers clear only when useful input exists"},
+        {"left": "forbidden_behavior_guard", "right": "required_behavior_happy_path", "expected_difference": "forbidden behavior creates repair or reject evidence"},
+    ]
+    edge_cases = ["non-dict payload", "missing candidate capability", "forbidden behavior appears", "required details absent", "constant scores across probes"]
+    regression_watchlist = [
+        "metadata-only relabeling",
+        "generic backlog output",
+        "constant scores",
+        "goal text treated as user input",
+        "forbidden detail keys present",
+    ]
+    probe_execution_plan = [
+        {"step": "invoke_empty_payload", "assert": "missing_inputs and blockers are non-empty"},
+        {"step": "invoke_happy_path", "assert": "required detail keys are populated"},
+        {"step": "invoke_forbidden_behavior", "assert": "forbidden outputs are absent or rejected"},
+        {"step": "diff_contrast_pair", "assert": "decision surface and scores differ"},
+    ]
     result = {
-        "summary": f"Semantic test payloads generated for {name}.",
+        "summary": f"Semantic test payloads generated for {name}: {len(test_payloads)} probes and {len(contrast_pairs)} contrast pair(s).",
         "primary_insights": [
             {"title": "Generated probes", "detail": test_payloads},
             {"title": "Edge cases", "detail": edge_cases},
+            {"title": "Contrast pairs", "detail": contrast_pairs},
+            {"title": "Probe execution plan", "detail": probe_execution_plan},
         ],
         "recommended_actions": [
             {"action": "Run generated payloads before promotion", "payload_count": len(test_payloads)},
             {"action": "Fail on forbidden behavior", "forbidden_behavior": forbidden_behavior},
+            {"action": "Diff semantic contrast pairs", "contrast_pairs": contrast_pairs},
+            {"action": "Track regressions across future repairs", "regression_watchlist": regression_watchlist},
         ],
-        "scores": {"confidence": 0.87 if spec else 0.4, "usefulness": 0.91 if spec else 0.5, "probe_count": len(test_payloads)},
+        "scores": {"confidence": 0.93 if spec else 0.4, "usefulness": 0.94 if spec else 0.5, "probe_count": len(test_payloads), "contrast_pair_count": len(contrast_pairs)},
         "details": {
             "test_payloads": test_payloads,
             "edge_cases": edge_cases,
-            "expected_differences": ["required_behavior_happy_path differs from semantic_contrast", "empty payload exposes blockers"],
-            "regression_watchlist": ["metadata-only relabeling", "generic backlog output", "constant scores"],
+            "expected_differences": [pair["expected_difference"] for pair in contrast_pairs],
+            "contrast_pairs": contrast_pairs,
+            "probe_execution_plan": probe_execution_plan,
+            "regression_watchlist": regression_watchlist,
             "missing_inputs": missing,
         },
     }

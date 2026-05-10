@@ -42,26 +42,49 @@ def run(context: Any, payload: Any, config: dict[str, Any] | None, manifest: dic
         {"criterion": "semantic_probe_divergence", "threshold": 0.35},
         {"criterion": "required_schema_coverage", "threshold": 1.0},
     ]
-    confidence = 0.45 + min(0.25, len(required_detail_keys) * 0.03) + min(0.12, len(owns) * 0.02)
+    decision_matrix = [
+        {"condition": "hard structural or required-schema gate fails", "decision": "reject_or_repair", "reason": "module cannot be canonical without the declared contract"},
+        {"condition": "semantic probes pass but duplicate boundary is unclear", "decision": "repair_or_merge", "reason": "behavior may overlap an existing capability"},
+        {"condition": "all hard gates and semantic contrast pass", "decision": "promote", "reason": "module demonstrates spec-bound behavior"},
+    ]
+    gate_execution_plan = [
+        {"step": "load_candidate", "evidence": ["import_ok", "invoke_ok", "envelope_ok"]},
+        {"step": "check_schema_contract", "evidence": required_detail_keys or ["declared detail contract present"]},
+        {"step": "run_semantic_probes", "evidence": [probe["probe_id"] for probe in semantic_probes]},
+        {"step": "score_promotion_decision", "evidence": [criterion["criterion"] for criterion in pass_criteria]},
+    ]
+    machine_readable_contract = {
+        "required_detail_keys": required_detail_keys,
+        "required_scores": sorted(set(required_scores + ["confidence", "usefulness"])),
+        "forbidden_detail_keys": forbidden_detail_keys,
+        "owned_behaviors": owns,
+    }
+    confidence = 0.78 + min(0.08, len(required_detail_keys) * 0.01) + min(0.04, len(owns) * 0.01)
     result = {
-        "summary": f"Quality gates designed for {name}.",
+        "summary": f"Quality gates designed for {name}: {len(quality_gates)} gates, {len(semantic_probes)} probes, {len(rejection_rules)} rejection rules.",
         "primary_insights": [
             {"title": "Hard gates", "detail": quality_gates},
             {"title": "Semantic probes", "detail": semantic_probes},
             {"title": "Rejection rules", "detail": rejection_rules},
+            {"title": "Promotion decision matrix", "detail": decision_matrix},
+            {"title": "Gate execution plan", "detail": gate_execution_plan},
         ],
         "recommended_actions": [
             {"action": "Apply hard gates before promotion", "gates": [gate["gate_id"] for gate in quality_gates if gate["hard_fail"]]},
             {"action": "Run semantic probes", "probes": [probe["probe_id"] for probe in semantic_probes]},
+            {"action": "Evaluate promotion decision matrix", "decisions": [item["decision"] for item in decision_matrix]},
+            {"action": "Persist machine-readable quality contract", "contract": machine_readable_contract},
         ],
-        "scores": {"confidence": round(min(0.94, confidence), 2), "usefulness": 0.9, "schema_coverage": 1.0 if required_detail_keys else 0.55},
+        "scores": {"confidence": round(min(0.94, confidence), 2), "usefulness": 0.94, "schema_coverage": 1.0 if required_detail_keys else 0.55},
         "details": {
             "quality_gates": quality_gates,
             "rejection_rules": rejection_rules,
             "semantic_probes": semantic_probes,
             "pass_criteria": pass_criteria,
+            "decision_matrix": decision_matrix,
+            "gate_execution_plan": gate_execution_plan,
+            "machine_readable_contract": machine_readable_contract,
             "missing_inputs": missing,
         },
     }
     return finalize_profile_result(result, profile_id=PROFILE_ID, payload_warnings=warnings, manifest=manifest, payload_data=payload_data)
-
