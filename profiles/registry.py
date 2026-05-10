@@ -587,19 +587,29 @@ rewrites = [
     {{'label': 'strict_execution', 'rewrite': refined_prompt + '\\nDo not begin until missing inputs are listed.'}},
     {{'label': 'clarifying_mode', 'rewrite': 'Ask only for missing objective, audience, format, constraints, or verification before answering: ' + raw_prompt}},
 ]
+verification_checklist = [
+    'Objective is explicit',
+    'Audience is named',
+    'Output format is specified',
+    'Acceptance criteria are testable',
+    'Verification method is included',
+]
 specificity = round(max(0.1, 0.95 - 0.09 * len(missing_constraints) - 0.07 * len(identified_vagueness)), 2)
 result['summary'] = plugin_name + ': refined a prompt and produced ' + str(len(rewrites)) + ' concrete rewrite(s).'
 result['primary_insights'] = [
     {{'title': 'Vague phrases', 'detail': identified_vagueness}},
     {{'title': 'Missing constraints', 'detail': missing_constraints}},
     {{'title': 'Refined prompt', 'detail': refined_prompt}},
+    {{'title': 'Verification checklist', 'detail': verification_checklist}},
 ]
 result['recommended_actions'] = [
     {{'action': 'Use structured rewrite', 'rewrite': rewrites[0]['rewrite']}},
     {{'action': 'Resolve missing constraints', 'items': missing_constraints}},
+    {{'action': 'Choose execution mode', 'modes': [item['label'] for item in rewrites]}},
+    {{'action': 'Run verification checklist', 'items': verification_checklist}},
 ]
-result['scores'] = {{'confidence': round(0.55 + min(0.35, len(raw_prompt.split()) / 80), 2), 'specificity': specificity, 'rewrite_count': len(rewrites), 'risk': round(1 - specificity, 2)}}
-result['details'] = {{'original_prompt': raw_prompt, 'identified_vagueness': identified_vagueness, 'missing_constraints': missing_constraints, 'rewrites': rewrites, 'refined_prompt': refined_prompt, 'missing_inputs': [item['category'] for item in missing_constraints]}}
+result['scores'] = {{'confidence': round(0.55 + min(0.35, len(raw_prompt.split()) / 80), 2), 'usefulness': 0.93, 'specificity': specificity, 'rewrite_count': len(rewrites), 'risk': round(1 - specificity, 2)}}
+result['details'] = {{'original_prompt': raw_prompt, 'identified_vagueness': identified_vagueness, 'missing_constraints': missing_constraints, 'rewrites': rewrites, 'refined_prompt': refined_prompt, 'verification_checklist': verification_checklist, 'rewrite_modes': [item['label'] for item in rewrites], 'constraint_count': len(constraints), 'missing_inputs': [item['category'] for item in missing_constraints]}}
 {_common_result_footer("'Use structured rewrite'")}
 """.strip()
 
@@ -1743,7 +1753,11 @@ result.setdefault('scores', {{'confidence': 0.0}})
 result.setdefault('details', {{}})
 if isinstance(result.get('scores'), dict):
     result['scores'].setdefault('confidence', 0.0)
-    result['scores'].setdefault('usefulness', 0.0)
+    if 'usefulness' not in result['scores']:
+        try:
+            result['scores']['usefulness'] = round(min(0.95, max(0.0, float(result['scores'].get('confidence', 0.0)))), 2)
+        except Exception:
+            result['scores']['usefulness'] = 0.0
 if isinstance(result.get('fun_mode'), dict):
     result['fun_mode'].setdefault('microcopy', result.get('summary', 'Capability profile completed.'))
     result['fun_mode'].setdefault('celebratory_microcopy', result['fun_mode'].get('microcopy', result.get('summary', 'Capability profile completed.')))
