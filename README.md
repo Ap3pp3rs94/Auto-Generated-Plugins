@@ -1,170 +1,109 @@
 # Auto-Generated AI Capabilities
 
-An autonomous AI capability factory that designs, generates, validates, repairs,
-and publishes Python capability modules.
+Auto-Generated AI Capabilities is a continuously running Python factory for
+building, validating, publishing, and auditing autonomous AI capability modules.
 
-The stable part of this project is the production loop: deterministic capability
-specs, Ollama-assisted generation, semantic validation, repair passes, and
-GitHub publishing. The generated modules in `plugins/` are intentionally
-dynamic and will change as the factory learns, expands, and tightens its quality
-bar.
+The repository has two surfaces:
 
-## Current Output
+- `plugins/` is the public library of generated AI capabilities.
+- the factory code is the production system that decides what is allowed into
+  that library.
 
-Generated capability modules land in `plugins/` after validation. This folder is
-an output surface, not the permanent definition of the project. Each retained
-module must import, invoke, return the expected envelope, expose a registered
-capability profile, produce non-empty actions, and pass semantic-depth checks.
+The library is intentionally dynamic. New capabilities are generated and pushed
+as the factory expands, while weak or duplicate candidates are rejected before
+they become installable.
 
-## Download
+## What This Produces
 
-The current plugin is packaged as a GitHub-downloadable zip:
+Each retained plugin is a standalone Python module with a stable async entrypoint:
 
-```text
-dist/ai_prompt_refinement_engine-0.1.2.zip
+```python
+result = await invoke(user_id="demo", payload={...})
 ```
 
-Direct GitHub download URL after this repository is pushed:
-
-```text
-https://github.com/Ap3pp3rs94/Auto-Generated-Plugins/raw/main/dist/ai_prompt_refinement_engine-0.1.2.zip
-```
-
-The package contains:
-
-- `ai_prompt_refinement_engine.py`
-- `plugin.json`
-- `README.md`
-- `LICENSE`
-
-Checksum:
-
-```text
-5f36085a373b6aeb68b8e06ffa18569af5ab078dd3989e91b8be080437ff039e  ai_prompt_refinement_engine-0.1.2.zip
-```
-
-Legacy modules created before the current AI capability roadmap guide were
-removed. The tracked library should contain only capability modules generated
-under the current rules:
-
-- AI functionality first
-- deterministic Python logic
-- structured output for other agents/tools
-- validation before retention
-- no duplicate capabilities
-- no duplicate upgrade artifacts; improvement attempts overwrite the canonical module only when they are better
-- rejected improvement attempts are remembered and skipped until the factory/profile logic changes
-- no random sales/data/demo modules
-- useful user-facing progress and optional fun-mode fields
-
-## Example
-
-The first retained plugin is the `AI Prompt Refinement Engine`.
-
-Spec summary:
-
-```text
-Name: AI Prompt Refinement Engine
-Slug: ai_prompt_refinement_engine
-Category: ai_prompting
-Capability: enrichment
-Goal: Analyze task instructions and produce clearer, safer, more testable prompts.
-```
-
-Generated output shape:
+The response envelope is consistent across the library:
 
 ```json
 {
-  "summary": "AI Prompt Refinement Engine: Analyzing task instructions and producing clearer, safer, more testable prompts.",
-  "primary_insights": ["No conversation history found."],
-  "recommended_actions": [
-    {
-      "action": "Rewrite prompt",
-      "description": "Use the task and objective to create a specific, testable instruction."
-    }
-  ],
-  "scores": {
-    "confidence": 0.8,
-    "usefulness": 0.9
+  "status": "succeeded",
+  "output": {
+    "summary": "...",
+    "primary_insights": [],
+    "recommended_actions": [],
+    "scores": {},
+    "details": {},
+    "progress_state": {},
+    "user_experience": {},
+    "fun_mode": {}
   },
-  "progress_state": {
-    "current_stage": "Analysis",
-    "next_step": "Rewrite prompt",
-    "blockers": [],
-    "done_signals": []
-  },
-  "fun_mode": {
-    "challenge_label": "Clear Path",
-    "score_badge": "Ready to Run"
-  }
+  "error": "",
+  "meta": {}
 }
 ```
 
-The factory also runs a semantic-depth gate. A plugin must produce different
-decision fields for different payload values; echoing the right schema with
-stock advice is not enough.
-Prompt-refinement plugins have an additional contract: they must identify vague
-phrases, name missing constraints, and emit concrete rewritten prompts.
+The capabilities focus on agentic AI work: planning, prompt quality, retrieval,
+tool use, handoffs, memory, evaluation, safety, debugging, verification, and
+release readiness.
 
-Full walkthrough:
+## Production Standard
 
-```text
-docs/GENERATED_PLUGIN_WALKTHROUGH.md
-```
+A plugin is kept only if it passes the current production gate:
+
+- imports cleanly and compiles as Python
+- exposes the expected async `invoke` interface
+- returns the normalized result envelope
+- uses deterministic logic with no hidden network, file, or tool side effects
+- reacts to payload values instead of returning stock advice
+- passes semantic-depth checks across contrasting payloads
+- scores at least `0.95` on the production quality gate
+- does not duplicate an existing canonical capability
+- replaces a canonical plugin only when the candidate is measurably better
+- is committed and pushed to GitHub only after validation
+
+Sub-threshold candidates are discarded. Rejected capabilities are remembered so
+the factory does not keep retrying the same weak idea under the same factory
+knowledge.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Station A: deterministic AI roadmap spec] --> B[Station B: Ollama code generation]
-    B --> C[Plugin template injection]
-    C --> D[Station C: syntax, contract, runtime validation]
-    D --> E{Passes quality gates?}
-    E -- yes --> F[Curated plugins/ library]
-    E -- no --> G[Reject, repair, or retry]
-    F --> H[Roadmap handoff state]
-    H --> A
-    D --> I[Learning and telemetry hooks]
-    I --> A
+    A[Capability roadmap] --> B[Spec builder]
+    B --> C[Station B generation or registered profile]
+    C --> D[Candidate plugin]
+    D --> E[Syntax and runtime validation]
+    E --> F[Semantic-depth gate]
+    F --> G[0.95 production quality gate]
+    G --> H{Keep?}
+    H -- yes --> I[plugins/]
+    H -- no --> J[junk_plugins/semantic_rejections]
+    I --> K[Commit and push to GitHub]
+    K --> L[Roadmap handoff state]
+    L --> B
 ```
 
-The factory is intentionally conservative. It would rather retry a plugin than
-keep fallback logic after a timeout.
+Capability-specific profiles are used when the model output is shallow,
+duplicative, or timed out. The goal is not to produce code quickly; the goal is
+to produce capability modules that actually do what their names claim.
 
 ## Repository Layout
 
 | Path | Purpose |
 | --- | --- |
-| `plugins/` | Curated generated plugin artifacts. |
-| `spec_builder.py` | Canonical deterministic AI capability roadmap. |
-| `factory_runner.py` | Production runner and station orchestration. |
-| `station_b_generator.py` | Lightweight Station B fallback for this sidecar repo. |
+| `plugins/` | Curated generated AI capability modules. |
+| `factory_runner.py` | Main production runner, validation flow, publishing, and quality gates. |
+| `spec_builder.py` | Deterministic capability roadmap and expansion logic. |
+| `profiles/` | Registered deterministic capability profiles for high-signal plugin bodies. |
+| `quality_runner.py` | Audits existing plugins and repairs or flags weak modules. |
+| `station_b_generator.py` | Station B generation path for model-assisted plugin bodies. |
 | `station_c_validator.py` | Structural and runtime validation helpers. |
-| `plugin_template.py` | Plugin source template. |
+| `plugin_template.py` | Shared plugin source template. |
 | `plugin_spec.py` | Serializable plugin specification model. |
-| `profiles/` | Capability-specific deterministic profiles used to repair or override shallow generated bodies. |
-| `learning/` | Dataset and learning hooks. |
-| `ops/` | Side-project operations templates. |
-| `archive/legacy/` | Older station experiments kept out of the main path. |
-| `docs/` | Walkthroughs and portfolio-facing explanations. |
-
-Canonical current path:
-
-```text
-spec_builder.py -> factory_runner.py -> Station B -> plugin_template.py -> station_c_validator.py -> plugins/
-```
-
-When this repository lives at `/home/peppera091/francis/factory`, generated
-plugins land in:
-
-```text
-/home/peppera091/francis/factory/plugins
-\\wsl$\Ubuntu\home\peppera091\francis\factory\plugins
-```
+| `docs/` | Walkthroughs and deeper notes. |
+| `dist/` | Downloadable packaged plugin artifacts. |
+| `archive/legacy/` | Older experiments kept out of the active production path. |
 
 ## Quick Start
-
-Clone and set up a local environment:
 
 ```bash
 git clone https://github.com/Ap3pp3rs94/Auto-Generated-Plugins.git
@@ -174,19 +113,27 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Run the tests:
+Run the test suite:
 
 ```bash
 python -m unittest discover -s tests
 ```
 
-Inspect the resolved factory config without generating a plugin:
+Audit the current library without modifying files:
 
 ```bash
-python -m factory_runner --print-config --once
+python -m quality_runner --once --no-repair --no-github-publish
 ```
 
-Run one factory pass with Ollama:
+Count the currently retained plugins:
+
+```bash
+find plugins -maxdepth 1 -type f -name '*.py' | wc -l
+```
+
+## Running the Factory
+
+The factory uses local Ollama for model-assisted generation when needed.
 
 ```bash
 ollama serve
@@ -194,49 +141,12 @@ ollama pull llama3.1:8b
 python -m factory_runner --once
 ```
 
-The runner defaults are tuned for local Ollama:
-
-```text
-model: llama3.1:8b
-temperature: 0.25
-max tokens: 4096
-context length: 8192
-timeout: 900 seconds
-sleep: 15 seconds
-```
-
-## Running Inside Francis
-
-This repository can also live as the `factory/` sidecar inside the larger
-Francis project. In that mode the full Francis Station B runtime, registry,
-Station D evaluation hooks, and Station E learning hooks can be used.
-
-From the parent Francis project:
-
-```bash
-python -m factory.factory_runner --once
-```
-
-Generated plugins still land in the sidecar repository's own `factory/plugins/`
-directory, not the parent Francis `plugins/` directory.
-
-The same runner also supports batch or continuous side-project operation:
-
-```bash
-python -m factory.factory_runner --max-plugins 3
-python -m factory.factory_runner --loop --sleep-seconds 15
-```
-
-## Configuration
-
-The runner accepts CLI flags and `FRANCIS_FACTORY_*` environment variables.
-
-Useful flags:
+Useful runner flags:
 
 ```text
 --once
---max-plugins 3
 --loop
+--max-plugins 3
 --model llama3.1:8b
 --max-tokens 4096
 --context-length 8192
@@ -248,21 +158,106 @@ Useful flags:
 --print-config
 ```
 
-By default, every validated plugin is committed and pushed to `origin/main`.
-The autonomous commit is limited to that plugin file, so runtime state and
-unrelated local edits are not swept into the publish.
+Default local generation settings are intentionally patient:
 
-See `production.env.example` for service-friendly environment settings.
+```text
+model: llama3.1:8b
+temperature: 0.25
+max tokens: 4096
+context length: 8192
+timeout: 900 seconds
+```
+
+## Running Inside Francis
+
+This repository can run as the `factory/` sidecar inside the larger Francis
+project. In that mode, run from the Francis parent:
+
+```bash
+python -m factory.factory_runner --loop
+```
+
+Generated modules land in this repository's own `factory/plugins/` directory.
+They are not written into the parent Francis application plugin folder.
+
+## GitHub Publishing
+
+When GitHub publishing is enabled, the runner commits and pushes each validated
+plugin to `origin/main`. The publish step is intentionally narrow: it commits the
+generated plugin file for that unit of work, not unrelated local changes.
+
+The factory also supports quality cleanup commits, such as removing plugins that
+fall below the current production threshold.
+
+## Downloadable Package
+
+The packaged prompt-refinement example is available in `dist/`:
+
+```text
+dist/ai_prompt_refinement_engine-0.1.2.zip
+```
+
+After the repository is pushed, it can be downloaded from:
+
+```text
+https://github.com/Ap3pp3rs94/Auto-Generated-Plugins/raw/main/dist/ai_prompt_refinement_engine-0.1.2.zip
+```
+
+The archive includes:
+
+- `ai_prompt_refinement_engine.py`
+- `plugin.json`
+- `README.md`
+- `LICENSE`
+
+Checksums are tracked in:
+
+```text
+dist/SHA256SUMS
+```
+
+## Example Capability
+
+`ai_prompt_refinement_engine` is a retained capability for turning vague prompts
+into testable model instructions. Its current expected behavior includes:
+
+- identifying vague phrases
+- naming missing constraints
+- producing concrete rewritten prompts
+- scoring specificity and risk
+- returning structured next actions for another agent or UI
+
+That is the standard for the rest of the library: a capability name must map to
+real behavior, not metadata relabeling.
+
+## Quality Workflow
+
+Use the quality runner for periodic review:
+
+```bash
+python -m quality_runner --once --no-repair --no-github-publish
+```
+
+Use repair mode only when you want the runner to replace weak plugins with
+registered profile output:
+
+```bash
+python -m quality_runner --once
+```
+
+The active bar is strict by design. Passing means the module is structurally
+valid, invokes successfully, has meaningful output fields, passes semantic depth,
+and clears the `0.95` production quality threshold.
 
 ## Service Template
 
-A systemd user-service template is included for side-project operation:
+A systemd user-service template is included:
 
 ```text
 ops/francis-factory.service
 ```
 
-Example install:
+Install example:
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -278,48 +273,7 @@ View logs:
 journalctl --user -u francis-factory.service -f
 ```
 
-## Quality Gates
-
-Generated capability modules are kept only when they satisfy the current guide:
-
-- produced from the deterministic AI roadmap
-- unique slug and distinct capability
-- backed by a capability-specific profile when the roadmap has one
-- real Station B output, or a registered deterministic profile replacing timeout fallback output
-- Python syntax compiles
-- capability module contract validates
-- runtime smoke check passes
-- semantic-depth check passes across contrasting payloads
-- output includes structured AI-agent-friendly fields
-- user-facing extras remain secondary to the core recommendation
-
-## Roadmap
-
-The factory is designed to grow into complementary AI capability areas:
-
-- prompt refinement
-- agent task planning
-- tool selection
-- memory compression
-- context-window optimization
-- output quality scoring
-- hallucination risk auditing
-- retrieval query expansion
-- multi-agent handoff planning
-- prompt test generation
-- workflow debugging
-- response comparison
-- instruction conflict detection
-- structured prompt building
-- capability routing
-- evaluation rubric generation
-
-Each plugin should advance the roadmap instead of renaming or recreating a
-previous plugin.
-
-## Topics
-
-Suggested GitHub topics:
+## Suggested GitHub Topics
 
 ```text
 autonomous-agents
