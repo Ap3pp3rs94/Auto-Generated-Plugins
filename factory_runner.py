@@ -877,6 +877,7 @@ def _upgrade_knowledge_fingerprint() -> str:
     for rel in [
         "spec_builder.py",
         "profiles/registry.py",
+        "profiles/dispatcher.py",
         "plugin_template.py",
         "station_b_generator.py",
     ]:
@@ -886,6 +887,22 @@ def _upgrade_knowledge_fingerprint() -> str:
             digest.update(path.read_bytes())
         except FileNotFoundError:
             digest.update(b"<missing>")
+    profiles_dir = FACTORY_DIR / "profiles"
+    try:
+        profile_paths = sorted(
+            path
+            for path in profiles_dir.glob("*.py")
+            if path.name not in {"__init__.py", "registry.py", "dispatcher.py"}
+        )
+    except OSError:
+        profile_paths = []
+    for path in profile_paths:
+        rel = path.relative_to(FACTORY_DIR).as_posix()
+        digest.update(rel.encode("utf-8"))
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            digest.update(b"<unreadable>")
     return digest.hexdigest()[:16]
 
 

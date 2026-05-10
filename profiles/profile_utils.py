@@ -140,7 +140,7 @@ def finalize_profile_result(
     payload_data = payload_data if isinstance(payload_data, dict) else {}
     signals = input_signal_keys(payload_data)
     has_user_input = bool(signals)
-    used_goal_fallback = not bool(user_target_text(payload_data))
+    used_goal_fallback = not has_user_input
 
     result.setdefault("summary", "Capability profile completed.")
     result.setdefault("primary_insights", [])
