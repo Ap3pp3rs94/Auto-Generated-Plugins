@@ -21,6 +21,7 @@ try:
     from factory.spec_builder import CONTINUOUS_EXPANSION_MODES
     from factory.spec_builder import CONTINUOUS_EXPANSION_SURFACES
     from factory.spec_builder import CONTINUOUS_EXPANSION_TARGETS
+    from factory.spec_builder import CONTINUOUS_SHORT_SLUG_START_INDEX
     from factory.factory_runner import _anticipated_capability_candidates
     from factory.factory_runner import _capability_rejection_record, _capability_rejection_skip_reason
     from factory.factory_runner import _refresh_anticipation_state
@@ -36,6 +37,7 @@ except ModuleNotFoundError:
     from spec_builder import CONTINUOUS_EXPANSION_MODES
     from spec_builder import CONTINUOUS_EXPANSION_SURFACES
     from spec_builder import CONTINUOUS_EXPANSION_TARGETS
+    from spec_builder import CONTINUOUS_SHORT_SLUG_START_INDEX
     from factory_runner import _anticipated_capability_candidates
     from factory_runner import _capability_rejection_record, _capability_rejection_skip_reason
     from factory_runner import _refresh_anticipation_state
@@ -100,6 +102,17 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertIn("agentic_planning", next_wave_spec.slug)
         self.assertNotIn("_set_", next_wave_spec.slug)
         self.assertIn("agentic planning", next_wave_spec.intended_domain.lower())
+
+    def test_future_continuous_expansion_uses_short_numbered_use_case_names(self) -> None:
+        spec = build_next_spec(CONTINUOUS_SHORT_SLUG_START_INDEX)[0]
+
+        self.assertTrue(spec.extra["continuous_expansion"])
+        self.assertEqual(spec.extra["continuous_expansion_source"], "short_numbered_use_case_matrix")
+        self.assertRegex(spec.slug, r"^ai_[a-z_]+_[0-9]{6}$")
+        self.assertLessEqual(len(spec.slug.split("_")), 6)
+        self.assertNotIn("agentic_planning", spec.slug)
+        self.assertIn("distinct use case", spec.use_cases[0].lower())
+        self.assertEqual(spec.extra["use_case_seed"], CONTINUOUS_SHORT_SLUG_START_INDEX)
 
     def test_legacy_set_slugs_do_not_advance_forward_cursor(self) -> None:
         self.assertIsNone(_roadmap_slug_index("ai_coding_agent_prompt_contract_designer_set_2"))

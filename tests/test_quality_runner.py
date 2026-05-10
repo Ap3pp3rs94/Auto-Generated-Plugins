@@ -117,6 +117,16 @@ class QualityRunnerTests(unittest.TestCase):
         self.assertTrue(spec.extra["continuous_expansion"])
         self.assertEqual(registered_profile_id(slug), "continuous_prompt_contract_designer_profile")
 
+    def test_legacy_verbose_continuous_slug_still_resolves_to_spec(self) -> None:
+        slug = "ai_plugin_factory_agentic_planning_capability_overlap_checker"
+
+        spec = _roadmap_spec_from_slug(slug)
+
+        self.assertIsNotNone(spec)
+        self.assertEqual(spec.slug, slug)
+        self.assertTrue(spec.extra["continuous_expansion"])
+        self.assertEqual(registered_profile_id(slug), "continuous_capability_overlap_checker_profile")
+
     def test_continuous_profiles_inherit_required_detail_keys(self) -> None:
         self.assertEqual(
             _required_detail_keys("continuous_prompt_contract_designer_profile"),

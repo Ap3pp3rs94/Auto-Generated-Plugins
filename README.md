@@ -45,6 +45,28 @@ The capabilities focus on agentic AI work: planning, prompt quality, retrieval,
 tool use, handoffs, memory, evaluation, safety, debugging, verification, and
 release readiness.
 
+## Naming And Expansion
+
+Continuous expansion uses short numbered capability names. Category and profile
+families may repeat, but each new module must carry a distinct use-case scenario
+instead of packing every domain, mode, and surface into the slug.
+
+Current naming standard:
+
+```text
+ai_<capability_family>_<number>
+```
+
+Example:
+
+```text
+ai_capability_overlap_checker_000833
+```
+
+Older verbose names remain supported for already-published modules, but new
+generation should keep the slug readable and put target/context variation in the
+spec, use cases, tags, and output behavior.
+
 ## Production Standard
 
 A plugin is kept only if it passes the current production gate:
@@ -57,6 +79,7 @@ A plugin is kept only if it passes the current production gate:
 - passes semantic-depth checks across contrasting payloads
 - scores at least `0.95` on the production quality gate
 - does not duplicate an existing canonical capability
+- has a distinct use-case seed when it reuses an existing category or profile family
 - replaces a canonical plugin only when the candidate is measurably better
 - is committed and pushed to GitHub only after validation
 

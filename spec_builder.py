@@ -6,7 +6,8 @@ Spec builder for the Francis plugin factory.
 This generates PluginSpecs for the autonomous AI capability roadmap.
 
 Upgrades:
-- Deterministic AI-focused plugin specs; no random domain/category rotation.
+- Deterministic AI-focused plugin specs; no broad/random utility rotation.
+- Continuous expansion uses short numbered names plus varied concrete use cases.
 - Each spec includes a small set of concrete `use_cases`.
 - capability_type and intended_domain are set on PluginSpec directly.
 
@@ -1482,6 +1483,13 @@ CONTINUOUS_EXPANSION_FAMILIES: Tuple[ContinuousExpansionFamily, ...] = (
 )
 
 
+# The first live continuous-expansion waves were already published with verbose
+# slugs such as ai_content_strategy_agentic_planning_capability_overlap_checker.
+# Keep those indexes stable for existing modules, then switch future generation
+# to short numbered names whose distinctness lives in the use-case scenario.
+CONTINUOUS_SHORT_SLUG_START_INDEX = 833
+
+
 @dataclass(frozen=True)
 class CategoryProfile:
     name: str
@@ -1691,14 +1699,14 @@ _USE_CASE_TEMPLATES: Dict[str, List[str]] = {
 # Internal helpers
 # ---------------------------------------------------------------------
 
-def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
-    """
-    Build a deterministic canonical capability after the curated roadmap ends.
-
-    These are not stage upgrades or numbered clone batches. They are fresh,
-    named capabilities generated from a controlled matrix of AI workflow
-    targets, use contexts, operating modes, surfaces, and capability families.
-    """
+def _continuous_expansion_parts(index: int) -> tuple[
+    ContinuousExpansionFamily,
+    ContinuousExpansionTarget,
+    ContinuousExpansionDimension,
+    ContinuousExpansionDimension,
+    ContinuousExpansionDimension,
+    int,
+]:
     offset = max(int(index), len(AI_CAPABILITY_ROADMAP) + 1) - len(AI_CAPABILITY_ROADMAP) - 1
     family_count = len(CONTINUOUS_EXPANSION_FAMILIES)
     target_count = len(CONTINUOUS_EXPANSION_TARGETS)
@@ -1714,7 +1722,13 @@ def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
     surface = CONTINUOUS_EXPANSION_SURFACES[(variant_index // (context_count * mode_count)) % surface_count]
     cycle = variant_index // (context_count * mode_count * surface_count)
     target = CONTINUOUS_EXPANSION_TARGETS[target_index]
+    return family, target, context, mode, surface, cycle
 
+
+def legacy_continuous_expansion_slug(index: int) -> str | None:
+    if int(index) <= len(AI_CAPABILITY_ROADMAP):
+        return None
+    family, target, context, mode, surface, cycle = _continuous_expansion_parts(index)
     slug_parts = [
         "ai",
         target.slug,
@@ -1723,19 +1737,38 @@ def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
         surface.slug,
         family.slug,
     ]
-    name_parts = [
-        "AI",
-        target.name,
-        context.name,
-        mode.name,
-        surface.name,
-        family.name,
-    ]
     slug = "_".join(part for part in slug_parts if part)
-    name = " ".join(part for part in name_parts if part)
     if cycle:
         slug = f"{slug}_cycle_{cycle + 1}"
-        name = f"{name} Cycle {cycle + 1}"
+    return slug
+
+
+def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
+    """
+    Build a deterministic canonical capability after the curated roadmap ends.
+
+    These are not stage upgrades or numbered clone batches. They are fresh,
+    named capabilities generated from a controlled matrix of AI workflow
+    targets, use contexts, operating modes, surfaces, and capability families.
+    """
+    family, target, context, mode, surface, cycle = _continuous_expansion_parts(index)
+
+    if int(index) < CONTINUOUS_SHORT_SLUG_START_INDEX:
+        slug = legacy_continuous_expansion_slug(index) or f"ai_{family.slug}_{int(index):06d}"
+        name_parts = [
+            "AI",
+            target.name,
+            context.name,
+            mode.name,
+            surface.name,
+            family.name,
+        ]
+        name = " ".join(part for part in name_parts if part)
+        if cycle:
+            name = f"{name} Cycle {cycle + 1}"
+    else:
+        slug = f"ai_{family.slug}_{int(index):06d}"
+        name = f"AI {family.name}"
 
     domain_parts = [
         target.domain_phrase,
@@ -1747,6 +1780,7 @@ def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
     target_name = " ".join(
         part for part in [target.name, context.name, mode.name, surface.name] if part
     )
+    scenario_label = target_name or target.name
     tags = list(
         dict.fromkeys(
             [
@@ -1756,6 +1790,7 @@ def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
                 *surface.tags,
                 *family.tags,
                 "continuous_backlog",
+                "use_case_seeded",
             ]
         )
     )
@@ -1775,8 +1810,11 @@ def _continuous_expansion_blueprint(index: int) -> AICapabilityBlueprint:
         ),
         tags=tags,
         use_cases=[
-            item.format(target_name=target_name, target_domain=target_domain)
-            for item in family.use_case_templates
+            f"Apply this capability to the distinct use case: {scenario_label}.",
+            *[
+                item.format(target_name=target_name, target_domain=target_domain)
+                for item in family.use_case_templates
+            ],
         ],
     )
 
@@ -2034,7 +2072,17 @@ def _build_huge_ai_spec(
     }
     if global_index > len(AI_CAPABILITY_ROADMAP):
         extra["continuous_expansion"] = True
-        extra["continuous_expansion_source"] = "target_family_matrix"
+        extra["continuous_expansion_source"] = (
+            "short_numbered_use_case_matrix"
+            if global_index >= CONTINUOUS_SHORT_SLUG_START_INDEX
+            else "target_family_matrix"
+        )
+        extra["use_case_seed"] = global_index
+        extra["naming_policy"] = (
+            "short numbered slug; use-case scenario carries target/context variation"
+            if global_index >= CONTINUOUS_SHORT_SLUG_START_INDEX
+            else "legacy descriptive slug retained for already-published compatibility"
+        )
     extra.update(_capability_semantics(blueprint))
 
     return PluginSpec(

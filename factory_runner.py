@@ -54,9 +54,9 @@ from typing import Any, Dict, Optional, Sequence, Set, Tuple
 from plugin_spec import PluginSpec
 from station_c_validator import validate_plugin_module
 try:
-    from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+    from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec, legacy_continuous_expansion_slug
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
-    from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+    from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec, legacy_continuous_expansion_slug
 
 try:
     from factory.profiles import (
@@ -546,8 +546,9 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
         if slug == blueprint.slug:
             return position
     # Continuous expansion specs are generated deterministically after the
-    # curated roadmap. They are canonical modules, so scan a
-    # generous forward window to keep _next_ai_roadmap_index advancing.
+    # curated roadmap. During the transition to shorter numbered slugs, keep
+    # recognizing already-published legacy descriptive slugs so the forward
+    # cursor does not loop back and regenerate old use cases.
     for idx in range(roadmap_size + 1, roadmap_size + 10000):
         try:
             spec, _, _ = build_next_spec(idx)
@@ -555,6 +556,11 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
             return None
         if getattr(spec, "slug", None) == slug:
             return idx
+        try:
+            if legacy_continuous_expansion_slug(idx) == slug:
+                return idx
+        except Exception:
+            continue
     return None
 
 

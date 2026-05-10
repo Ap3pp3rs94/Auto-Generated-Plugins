@@ -34,7 +34,7 @@ try:
         _validate_plugin_file,
     )
     from factory.profiles import build_profile_source, registered_profile_id
-    from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec
+    from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec, legacy_continuous_expansion_slug
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - direct sidecar execution
     from factory_runner import (  # type: ignore
         FACTORY_DIR,
@@ -48,7 +48,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - direct sidecar 
         _validate_plugin_file,
     )
     from profiles import build_profile_source, registered_profile_id  # type: ignore
-    from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec  # type: ignore
+    from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec, legacy_continuous_expansion_slug  # type: ignore
 
 
 LOG = logging.getLogger(__name__)
@@ -267,6 +267,11 @@ def _roadmap_spec_from_slug(slug: str) -> Optional[Any]:
     for index in range(roadmap_size + 1, roadmap_size + 10000):
         spec, capability_type, intended_domain = build_next_spec(index)
         if spec.slug == slug:
+            spec.capability_type = capability_type
+            spec.intended_domain = intended_domain
+            return spec
+        if legacy_continuous_expansion_slug(index) == slug:
+            spec.slug = slug
             spec.capability_type = capability_type
             spec.intended_domain = intended_domain
             return spec
