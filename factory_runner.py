@@ -74,6 +74,33 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
         _registered_profile_id = None  # type: ignore[assignment]
 
 try:
+    from factory.factory_os.capability_specs import get_capability_spec as _get_capability_spec
+    from factory.factory_os.logic_profiles import (
+        get_logic_profile as _get_logic_profile,
+        normalize_logic_profile_id as _normalize_logic_profile_id,
+    )
+    from factory.factory_os.promotion_gate import evaluate_for_promotion as _evaluate_for_promotion
+    from factory.factory_os.semantic_contracts import get_semantic_contract as _get_semantic_contract
+    from factory.factory_os.semantic_validator import run_semantic_contract_async as _run_semantic_contract_async
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
+    try:
+        from factory_os.capability_specs import get_capability_spec as _get_capability_spec  # type: ignore
+        from factory_os.logic_profiles import (  # type: ignore
+            get_logic_profile as _get_logic_profile,
+            normalize_logic_profile_id as _normalize_logic_profile_id,
+        )
+        from factory_os.promotion_gate import evaluate_for_promotion as _evaluate_for_promotion  # type: ignore
+        from factory_os.semantic_contracts import get_semantic_contract as _get_semantic_contract  # type: ignore
+        from factory_os.semantic_validator import run_semantic_contract_async as _run_semantic_contract_async  # type: ignore
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover
+        _get_capability_spec = None  # type: ignore[assignment]
+        _get_logic_profile = None  # type: ignore[assignment]
+        _normalize_logic_profile_id = None  # type: ignore[assignment]
+        _evaluate_for_promotion = None  # type: ignore[assignment]
+        _get_semantic_contract = None  # type: ignore[assignment]
+        _run_semantic_contract_async = None  # type: ignore[assignment]
+
+try:
     from plugin_template import render_plugin_source as _render_plugin_source
 except (ImportError, ModuleNotFoundError):  # pragma: no cover
     try:
@@ -1657,6 +1684,44 @@ async def _production_quality_gate(
     )
 
 
+async def _capability_promotion_gate(
+    plugin_path: Path,
+    spec: PluginSpec,
+) -> Tuple[bool, str]:
+    if not (
+        callable(_get_capability_spec)
+        and callable(_get_logic_profile)
+        and callable(_get_semantic_contract)
+        and callable(_run_semantic_contract_async)
+        and callable(_evaluate_for_promotion)
+    ):
+        return True, "capability_promotion: operating layer unavailable"
+
+    cap_spec = _get_capability_spec(str(getattr(spec, "slug", "") or ""))
+    if cap_spec is None:
+        return True, "capability_promotion: no specialized capability spec"
+
+    profile_id = _registered_profile_id(spec.slug) if callable(_registered_profile_id) else None
+    if callable(_normalize_logic_profile_id):
+        profile_id = _normalize_logic_profile_id(profile_id or "") or profile_id
+    profile = _get_logic_profile(profile_id or "")
+    contract = _get_semantic_contract(cap_spec.slug)
+    if profile is None or contract is None:
+        return False, f"capability_promotion: missing profile or semantic contract for {cap_spec.slug}"
+
+    module = _module_from_plugin_path(plugin_path, slug=spec.slug, purpose="capability_promotion")
+    semantic_result = await _run_semantic_contract_async(module.invoke, cap_spec, profile, contract)
+    first_payload = contract.probes[0].payload if contract.probes else {}
+    first_output = await _invoke_plugin_for_semantic_check(module, first_payload, f"{spec.slug}-promotion")
+    decision = _evaluate_for_promotion(first_output, cap_spec, profile, semantic_result)
+    if decision.decision == "promote":
+        return True, "capability_promotion: semantic contract passed and promotion approved"
+    finding_text = "; ".join(
+        f"{finding.code}: {finding.message}" for finding in semantic_result.findings[:8]
+    )
+    return False, f"capability_promotion: {decision.decision}: {decision.reason}; {finding_text}"
+
+
 async def _upgrade_candidate_improves_existing(
     *,
     candidate_path: Path,
@@ -2978,6 +3043,71 @@ async def run_factory(config: RunnerConfig) -> None:
         # PRODUCTION QUALITY SCORE GATE (AI roadmap only)
         # -----------------------------------------------------
         if ok and _is_ai_roadmap_spec(spec):
+            try:
+                promotion_ok, promotion_reason = await _capability_promotion_gate(candidate_path, spec)
+            except Exception as exc:
+                promotion_ok = False
+                promotion_reason = f"capability_promotion: check crashed: {exc}"
+
+            if promotion_ok:
+                LOG.info("Plugin capability promotion OK: %s", promotion_reason)
+            else:
+                LOG.error(
+                    "Capability promotion FAILED for AI roadmap plugin %r → %s",
+                    spec.slug,
+                    promotion_reason,
+                )
+                repair_source = _build_semantic_repair_source(
+                    source=result.source,
+                    spec=spec,
+                    capability_type=capability_type,
+                    logic_profile_id=getattr(result, "logic_profile_id", None),
+                    reason=promotion_reason,
+                )
+                if repair_source:
+                    candidate_path = _write_candidate_plugin_file(spec.slug, repair_source)
+                    plugin_path = candidate_path
+                    try:
+                        promotion_ok, promotion_reason = await _capability_promotion_gate(candidate_path, spec)
+                    except Exception as exc:
+                        promotion_ok = False
+                        promotion_reason = f"capability_promotion: repaired check crashed: {exc}"
+                    if promotion_ok:
+                        LOG.info("Capability promotion repair accepted for %r: %s", spec.slug, promotion_reason)
+                        result.source = repair_source
+
+                if not promotion_ok:
+                    try:
+                        rejected_path = _discard_candidate_plugin(candidate_path, reason=promotion_reason)
+                        LOG.info("Rejected non-promotable candidate moved to %s", rejected_path)
+                    except Exception:
+                        LOG.warning("Unable to discard non-promotable candidate %r", spec.slug, exc_info=True)
+                    if is_upgrade_attempt and source_spec is not None:
+                        _upgrade_attempt_record(
+                            state=ai_roadmap_state,
+                            source_spec=source_spec,
+                            canonical_spec=spec,
+                            status="rejected",
+                            reason=promotion_reason,
+                        )
+                    elif source_spec is not None:
+                        _capability_rejection_record(
+                            state=ai_roadmap_state,
+                            spec=source_spec,
+                            reason=promotion_reason,
+                        )
+                        existing_slugs.add(spec.slug)
+                        existing_signatures.add(_spec_signature(spec))
+                        index_counter = selected_index + 1
+                    if not config.loop_forever:
+                        break
+                    LOG.info(
+                        "AI roadmap plugin failed capability promotion; retrying same spec in %.1f seconds.",
+                        config.sleep_seconds,
+                    )
+                    await asyncio.sleep(config.sleep_seconds)
+                    continue
+
             try:
                 production_ok, production_reason = await _production_quality_gate(candidate_path, spec)
             except Exception as exc:

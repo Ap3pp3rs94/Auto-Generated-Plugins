@@ -35,6 +35,11 @@ try:
     )
     from factory.profiles import build_profile_source, registered_profile_id
     from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec, legacy_continuous_expansion_slug
+    from factory.factory_os.capability_specs import get_capability_spec
+    from factory.factory_os.logic_profiles import get_logic_profile, normalize_logic_profile_id
+    from factory.factory_os.promotion_gate import evaluate_for_promotion
+    from factory.factory_os.semantic_contracts import get_semantic_contract
+    from factory.factory_os.semantic_validator import run_semantic_contract_async
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - direct sidecar execution
     from factory_runner import (  # type: ignore
         FACTORY_DIR,
@@ -49,6 +54,11 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - direct sidecar 
     )
     from profiles import build_profile_source, registered_profile_id  # type: ignore
     from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec, legacy_continuous_expansion_slug  # type: ignore
+    from factory_os.capability_specs import get_capability_spec  # type: ignore
+    from factory_os.logic_profiles import get_logic_profile, normalize_logic_profile_id  # type: ignore
+    from factory_os.promotion_gate import evaluate_for_promotion  # type: ignore
+    from factory_os.semantic_contracts import get_semantic_contract  # type: ignore
+    from factory_os.semantic_validator import run_semantic_contract_async  # type: ignore
 
 
 LOG = logging.getLogger(__name__)
@@ -132,7 +142,8 @@ PROFILE_REQUIRED_DETAIL_KEYS: Dict[str, set[str]] = {
     "plugin_logic_blueprint_designer_profile": {"logic_blueprint", "deterministic_rules", "data_flow", "failure_modes"},
     "plugin_quality_gate_designer_profile": {"quality_gates", "rejection_rules", "semantic_probes", "pass_criteria"},
     "plugin_test_payload_generator_profile": {"test_payloads", "edge_cases", "expected_differences", "regression_watchlist"},
-    "plugin_duplicate_detector_profile": {"duplicate_risks", "uniqueness_fingerprint", "comparison_targets", "merge_or_reject_decision"},
+    "capability_overlap_checker_profile": {"duplicate_risks", "uniqueness_fingerprint", "comparison_targets", "merge_or_reject_decision", "max_similarity", "missing_inputs"},
+    "plugin_duplicate_detector_profile": {"duplicate_risks", "uniqueness_fingerprint", "comparison_targets", "merge_or_reject_decision", "max_similarity", "missing_inputs"},
     "plugin_repair_strategy_planner_profile": {"repair_plan", "weak_signals", "capability_specific_targets", "acceptance_checks"},
     "plugin_release_packager_profile": {"release_package", "validation_summary", "github_publish_plan", "rollback_notes"},
     "plugin_factory_backlog_planner_profile": {"backlog_items", "priority_rationale", "dependency_order", "next_plugin_specs"},
@@ -156,7 +167,7 @@ CONTINUOUS_PROFILE_REQUIRED_KEY_FALLBACKS: tuple[tuple[str, str], ...] = (
     ("continuous_verification_checklist_builder_profile", "prompt_test_case_generator_profile"),
     ("continuous_rollback_guard_builder_profile", "automation_safety_gate_profile"),
     ("continuous_anomaly_watch_builder_profile", "autonomous_run_governor_profile"),
-    ("continuous_capability_overlap_checker_profile", "plugin_factory_backlog_planner_profile"),
+    ("continuous_capability_overlap_checker_profile", "capability_overlap_checker_profile"),
     ("continuous_release_evidence_summarizer_profile", "artifact_release_note_generator_profile"),
     ("continuous_trace_failure_router_profile", "workflow_debugger_profile"),
     ("continuous_retrieval_query_planner_profile", "retrieval_query_expander_profile"),
@@ -168,6 +179,8 @@ CONTINUOUS_PROFILE_REQUIRED_KEY_FALLBACKS: tuple[tuple[str, str], ...] = (
 
 
 def _required_detail_keys(profile_id: str) -> set[str]:
+    normalized = normalize_logic_profile_id(profile_id) or profile_id
+    profile_id = normalized
     required = PROFILE_REQUIRED_DETAIL_KEYS.get(profile_id)
     if required is not None:
         return required
@@ -317,13 +330,14 @@ def _json_text(value: Any) -> str:
 
 
 def _profile_specific_checks(result: AuditResult, output: Dict[str, Any]) -> None:
-    profile_id = result.profile_id or ""
+    profile_id = normalize_logic_profile_id(result.profile_id or "") or (result.profile_id or "")
     details = output.get("details") if isinstance(output.get("details"), dict) else {}
     scores = output.get("scores") if isinstance(output.get("scores"), dict) else {}
 
     actual_profile = details.get("logic_profile_id")
-    if result.profile_id and actual_profile != result.profile_id:
-        result.add("profile_mismatch", f"expected {result.profile_id!r}, got {actual_profile!r}")
+    normalized_actual = normalize_logic_profile_id(str(actual_profile or "")) or actual_profile
+    if profile_id and normalized_actual != profile_id:
+        result.add("profile_mismatch", f"expected {profile_id!r}, got {actual_profile!r}")
 
     required = _required_detail_keys(profile_id)
     missing = sorted(key for key in required if key not in details)
@@ -351,6 +365,31 @@ def _profile_specific_checks(result: AuditResult, output: Dict[str, Any]) -> Non
         selected = str(details.get("selected_route") or "")
         if selected != "github_publish_agent":
             result.add("weak_intent_routing", f"GitHub factory payload selected {selected!r}")
+
+
+async def _semantic_contract_checks(result: AuditResult, path: Path, spec: Any) -> None:
+    cap_spec = get_capability_spec(str(getattr(spec, "slug", "") or ""))
+    if cap_spec is None:
+        return
+    profile_id = normalize_logic_profile_id(result.profile_id or "") or result.profile_id
+    profile = get_logic_profile(profile_id or "")
+    contract = get_semantic_contract(cap_spec.slug)
+    if profile is None or contract is None:
+        result.add("semantic_contract_missing", f"missing profile/contract for {cap_spec.slug}")
+        return
+    try:
+        module = _load_module_from_path(path, result.slug)
+        semantic_result = await run_semantic_contract_async(module.invoke, cap_spec, profile, contract)
+        first_output = await _invoke(path, result.slug, contract.probes[0].payload if contract.probes else {})
+        decision = evaluate_for_promotion(first_output, cap_spec, profile, semantic_result)
+    except Exception as exc:
+        result.add("semantic_contract_crash", str(exc))
+        return
+    if not semantic_result.passed:
+        finding_text = "; ".join(f"{finding.code}: {finding.message}" for finding in semantic_result.findings[:8])
+        result.add("semantic_contract", finding_text or "semantic contract failed")
+    if decision.decision != "promote":
+        result.add("promotion_gate", f"{decision.decision}: {decision.reason}")
 
 
 async def audit_plugin_path(path: Path, spec: Any) -> AuditResult:
@@ -391,6 +430,7 @@ async def audit_plugin_path(path: Path, spec: Any) -> AuditResult:
         )
 
     _profile_specific_checks(result, output)
+    await _semantic_contract_checks(result, path, spec)
     return result
 
 

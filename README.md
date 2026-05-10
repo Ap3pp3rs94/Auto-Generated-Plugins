@@ -77,6 +77,8 @@ A plugin is kept only if it passes the current production gate:
 - uses deterministic logic with no hidden network, file, or tool side effects
 - reacts to payload values instead of returning stock advice
 - passes semantic-depth checks across contrasting payloads
+- satisfies any declared `CapabilitySpec`, `LogicProfile`, and semantic contract
+- passes capability-specific promotion gates before canonical registration
 - scores at least `0.95` on the production quality gate
 - does not duplicate an existing canonical capability
 - has a distinct use-case seed when it reuses an existing category or profile family
@@ -92,22 +94,40 @@ knowledge.
 ```mermaid
 flowchart LR
     A[Capability roadmap] --> B[Spec builder]
-    B --> C[Station B generation or registered profile]
-    C --> D[Candidate plugin]
-    D --> E[Syntax and runtime validation]
-    E --> F[Semantic-depth gate]
-    F --> G[0.95 production quality gate]
-    G --> H{Keep?}
-    H -- yes --> I[plugins/]
-    H -- no --> J[junk_plugins/semantic_rejections]
-    I --> K[Commit and push to GitHub]
-    K --> L[Roadmap handoff state]
-    L --> B
+    B --> C[CapabilitySpec + LogicProfile]
+    C --> D[Station B generation or registered profile]
+    D --> E[Candidate plugin]
+    E --> F[Syntax and runtime validation]
+    F --> G[Semantic-depth gate]
+    G --> H[Semantic contract probes]
+    H --> I[Promotion gate]
+    I --> J[0.95 production quality gate]
+    J --> K{Keep?}
+    K -- yes --> L[plugins/]
+    K -- no --> M[junk_plugins/semantic_rejections]
+    L --> N[Commit and push to GitHub]
+    N --> O[Roadmap handoff state]
+    O --> B
 ```
 
 Capability-specific profiles are used when the model output is shallow,
 duplicative, or timed out. The goal is not to produce code quickly; the goal is
 to produce capability modules that actually do what their names claim.
+
+## Capability Operating Layer
+
+The `factory_os/` package is the governance layer for capabilities. It defines
+typed capability specs, logic profile aliases, semantic probes, promotion
+decisions, and canonical capability records. This prevents a polished shell from
+being promoted when the behavior is routed to the wrong profile or only returns
+generic guidance.
+
+Example: overlap checkers normalize historical aliases such as
+`continuous_capability_overlap_checker_profile` and
+`plugin_duplicate_detector_profile` to the canonical
+`capability_overlap_checker_profile`. A candidate that returns backlog fields
+instead of `duplicate_risks`, `comparison_targets`, `max_similarity`, and
+`merge_or_reject_decision` is sent to repair or rejected before publishing.
 
 ## Repository Layout
 
@@ -117,6 +137,7 @@ to produce capability modules that actually do what their names claim.
 | `factory_runner.py` | Main production runner, validation flow, publishing, and quality gates. |
 | `spec_builder.py` | Deterministic capability roadmap and expansion logic. |
 | `profiles/` | Registered deterministic capability profiles for high-signal plugin bodies. |
+| `factory_os/` | Capability specs, logic profile registry, semantic contracts, promotion gate, and canonical registry. |
 | `quality_runner.py` | Audits existing plugins and repairs or flags weak modules. |
 | `station_b_generator.py` | Station B generation path for model-assisted plugin bodies. |
 | `station_c_validator.py` | Structural and runtime validation helpers. |

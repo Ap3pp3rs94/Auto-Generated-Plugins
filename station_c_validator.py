@@ -18,6 +18,32 @@ from registry import (
     RegistryEntry,
 )
 
+try:
+    from factory.factory_os.capability_specs import get_capability_spec
+    from factory.factory_os.logic_profiles import get_logic_profile, normalize_logic_profile_id
+    from factory.factory_os.semantic_contracts import get_semantic_contract
+    from factory.factory_os.semantic_validator import run_semantic_contract_async
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - direct sidecar execution
+    try:
+        from factory_os.capability_specs import get_capability_spec  # type: ignore
+        from factory_os.logic_profiles import get_logic_profile, normalize_logic_profile_id  # type: ignore
+        from factory_os.semantic_contracts import get_semantic_contract  # type: ignore
+        from factory_os.semantic_validator import run_semantic_contract_async  # type: ignore
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover
+        get_capability_spec = None  # type: ignore[assignment]
+        get_logic_profile = None  # type: ignore[assignment]
+        normalize_logic_profile_id = None  # type: ignore[assignment]
+        get_semantic_contract = None  # type: ignore[assignment]
+        run_semantic_contract_async = None  # type: ignore[assignment]
+
+try:
+    from factory.profiles import registered_profile_id as _registered_profile_id
+except (ImportError, ModuleNotFoundError):  # pragma: no cover
+    try:
+        from profiles import registered_profile_id as _registered_profile_id  # type: ignore
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover
+        _registered_profile_id = None  # type: ignore[assignment]
+
 # Optional learning logger – safe no-op if not present yet
 try:
     from learning.collector import log_plugin_event  # type: ignore
@@ -572,6 +598,38 @@ async def validate_runtime(
         result.add_info(f"Runtime check passed for payload '{label}'.")
 
 
+async def validate_semantic_contract(module: Any, spec: PluginSpec, result: ValidationResult) -> None:
+    if result.has_errors:
+        return
+    if not (
+        callable(get_capability_spec)
+        and callable(get_logic_profile)
+        and callable(get_semantic_contract)
+        and callable(run_semantic_contract_async)
+    ):
+        return
+    cap_spec = get_capability_spec(str(getattr(spec, "slug", "") or ""))
+    if cap_spec is None:
+        return
+    profile_id = _registered_profile_id(spec.slug) if callable(_registered_profile_id) else None
+    if callable(normalize_logic_profile_id):
+        profile_id = normalize_logic_profile_id(profile_id or "") or profile_id
+    profile = get_logic_profile(profile_id or "")
+    contract = get_semantic_contract(cap_spec.slug)
+    if profile is None or contract is None:
+        result.add_error(f"Missing semantic capability profile/contract for {cap_spec.slug}.")
+        return
+    invoke = getattr(module, "invoke", None)
+    if not callable(invoke):
+        return
+    semantic_result = await run_semantic_contract_async(invoke, cap_spec, profile, contract)
+    if not semantic_result.passed:
+        report = "; ".join(
+            f"{finding.code}: {finding.message}" for finding in semantic_result.findings[:8]
+        )
+        result.add_error(f"Semantic contract failed for {cap_spec.slug}: {report}")
+
+
 # ======================================================================
 # Duplicate checks
 # ======================================================================
@@ -611,6 +669,7 @@ async def validate_plugin_module(
 
     validate_contract_on_module(module, spec, result)
     await validate_runtime(module, spec, result)
+    await validate_semantic_contract(module, spec, result)
     validate_duplicates_soft(spec, result)
 
     result.ok = not result.errors
@@ -667,6 +726,7 @@ async def validate_plugin(
 
     if module is not None and not skip_runtime_check:
         await validate_runtime(module, spec, result)
+        await validate_semantic_contract(module, spec, result)
 
     if not skip_duplicate_check:
         validate_duplicates_hard(spec, result)

@@ -96,7 +96,7 @@ class QualityRunnerTests(unittest.TestCase):
             "ai_plugin_logic_blueprint_designer": ("plugin_logic_blueprint_designer_profile", "logic_blueprint"),
             "ai_plugin_quality_gate_designer": ("plugin_quality_gate_designer_profile", "quality_gates"),
             "ai_plugin_test_payload_generator": ("plugin_test_payload_generator_profile", "test_payloads"),
-            "ai_plugin_duplicate_detector": ("plugin_duplicate_detector_profile", "duplicate_risks"),
+            "ai_plugin_duplicate_detector": ("capability_overlap_checker_profile", "duplicate_risks"),
             "ai_plugin_repair_strategy_planner": ("plugin_repair_strategy_planner_profile", "repair_plan"),
             "ai_plugin_release_packager": ("plugin_release_packager_profile", "release_package"),
             "ai_plugin_factory_backlog_planner": ("plugin_factory_backlog_planner_profile", "backlog_items"),
@@ -125,7 +125,7 @@ class QualityRunnerTests(unittest.TestCase):
         self.assertIsNotNone(spec)
         self.assertEqual(spec.slug, slug)
         self.assertTrue(spec.extra["continuous_expansion"])
-        self.assertEqual(registered_profile_id(slug), "continuous_capability_overlap_checker_profile")
+        self.assertEqual(registered_profile_id(slug), "capability_overlap_checker_profile")
 
     def test_continuous_profiles_inherit_required_detail_keys(self) -> None:
         self.assertEqual(

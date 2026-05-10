@@ -1488,6 +1488,31 @@ result['details'] = {{'governance_decision': governance_decision, 'run_signals':
 """.strip()
 
 
+def _capability_overlap_checker(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
+    return f"""
+payload_data = payload if isinstance(payload, dict) else {{}}
+try:
+    from factory.factory_os.logic_profiles import normalize_logic_profile_id
+    from factory.factory_os.profiles.overlap_checker import run_capability_overlap_checker
+except Exception:
+    from factory_os.logic_profiles import normalize_logic_profile_id
+    from factory_os.profiles.overlap_checker import run_capability_overlap_checker
+requested_profile_id = None
+if isinstance(config, dict):
+    requested_profile_id = config.get('logic_profile_id') or config.get('profile_id')
+if requested_profile_id is None and isinstance(payload_data, dict):
+    requested_profile_id = payload_data.get('logic_profile_id') or payload_data.get('profile_id')
+logic_profile_id = normalize_logic_profile_id(requested_profile_id or {_quote(profile_id)} or 'capability_overlap_checker_profile') or 'capability_overlap_checker_profile'
+result = run_capability_overlap_checker(payload, config)
+if isinstance(result.get('details'), dict):
+    result['details']['logic_profile_id'] = logic_profile_id
+    result['details']['generation_note'] = {_quote(reason or "capability overlap checker profile")}
+    result['details']['capability_type'] = {_quote(capability_type or getattr(spec, "capability_type", None) or "scoring")}
+if isinstance(result.get('diagnostics'), dict):
+    result['diagnostics']['logic_profile_id'] = logic_profile_id
+""".strip()
+
+
 def _plugin_factory_builder(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
@@ -1694,7 +1719,7 @@ PROFILE_BUILDERS: Dict[str, tuple[str, Callable[[PluginSpec, Optional[str], str,
     "ai_plugin_logic_blueprint_designer": ("plugin_logic_blueprint_designer_profile", _plugin_factory_builder),
     "ai_plugin_quality_gate_designer": ("plugin_quality_gate_designer_profile", _plugin_factory_builder),
     "ai_plugin_test_payload_generator": ("plugin_test_payload_generator_profile", _plugin_factory_builder),
-    "ai_plugin_duplicate_detector": ("plugin_duplicate_detector_profile", _plugin_factory_builder),
+    "ai_plugin_duplicate_detector": ("capability_overlap_checker_profile", _capability_overlap_checker),
     "ai_plugin_repair_strategy_planner": ("plugin_repair_strategy_planner_profile", _plugin_factory_builder),
     "ai_plugin_release_packager": ("plugin_release_packager_profile", _plugin_factory_builder),
     "ai_plugin_factory_backlog_planner": ("plugin_factory_backlog_planner_profile", _plugin_factory_builder),
@@ -1742,7 +1767,7 @@ CONTINUOUS_PROFILE_PATTERNS: tuple[tuple[str, str, Callable[[PluginSpec, Optiona
     ("verification_checklist_builder", "continuous_verification_checklist_builder_profile", _prompt_test_cases),
     ("rollback_guard_builder", "continuous_rollback_guard_builder_profile", _automation_safety),
     ("anomaly_watch_builder", "continuous_anomaly_watch_builder_profile", _autonomous_run_governor),
-    ("capability_overlap_checker", "continuous_capability_overlap_checker_profile", _plugin_factory_builder),
+    ("capability_overlap_checker", "capability_overlap_checker_profile", _capability_overlap_checker),
     ("release_evidence_summarizer", "continuous_release_evidence_summarizer_profile", _artifact_release_notes),
     ("trace_failure_router", "continuous_trace_failure_router_profile", _workflow_debugger),
     ("retrieval_query_planner", "continuous_retrieval_query_planner_profile", _retrieval_query),
