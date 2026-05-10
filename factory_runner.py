@@ -579,6 +579,22 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
     for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
         if slug == blueprint.slug:
             return position
+
+    # Short continuous slugs end with their deterministic global index, e.g.
+    # ai_verification_checklist_builder_000734. Resolve those directly so
+    # library-wide audits and sibling checks do not walk thousands of legacy
+    # candidates for every plugin.
+    try:
+        suffix = str(slug or "").rsplit("_", 1)[-1]
+        if len(suffix) == 6 and suffix.isdigit():
+            idx = int(suffix)
+            if idx > roadmap_size:
+                spec, _capability_type, _intended_domain = build_next_spec(idx)
+                if getattr(spec, "slug", None) == slug:
+                    return idx
+    except Exception:
+        pass
+
     # Continuous expansion specs are generated deterministically after the
     # curated roadmap. During the transition to shorter numbered slugs, keep
     # recognizing already-published legacy descriptive slugs so the forward
@@ -1850,6 +1866,45 @@ def _capability_family_prefix(slug: str) -> str:
     return str(slug or "").split(marker, 1)[0].strip("_-")
 
 
+_CONTINUOUS_SCENARIO_KEY_CACHE: Dict[str, Optional[str]] = {}
+
+
+def _continuous_scenario_key(slug: str) -> Optional[str]:
+    """
+    Return the deterministic use-case scenario for continuous-expansion slugs.
+
+    Short numbered slugs intentionally remove target/context/mode from the
+    filename. Sibling comparison still needs that context so it can compare
+    handoff vs parallelization inside the same scenario without treating every
+    verification checklist across the whole library as the same sibling.
+    """
+    slug = str(slug or "")
+    if slug in _CONTINUOUS_SCENARIO_KEY_CACHE:
+        return _CONTINUOUS_SCENARIO_KEY_CACHE[slug]
+
+    try:
+        idx = _roadmap_slug_index(slug)
+    except Exception:
+        idx = None
+    if idx is None or idx <= len(AI_CAPABILITY_ROADMAP):
+        _CONTINUOUS_SCENARIO_KEY_CACHE[slug] = None
+        return None
+    try:
+        spec, _capability_type, intended_domain = build_next_spec(idx)
+    except Exception:
+        _CONTINUOUS_SCENARIO_KEY_CACHE[slug] = None
+        return None
+    use_case = ""
+    try:
+        if spec.use_cases:
+            use_case = str(spec.use_cases[0] or "")
+    except Exception:
+        use_case = ""
+    scenario_key = use_case or str(intended_domain or "")
+    _CONTINUOUS_SCENARIO_KEY_CACHE[slug] = scenario_key
+    return scenario_key
+
+
 def _normalized_gate_profile_id(profile_id: Any) -> str:
     raw = str(profile_id or "").strip()
     if not raw:
@@ -1932,6 +1987,15 @@ async def _capability_identity_gate(plugin_path: Path, spec: PluginSpec) -> Tupl
 
 def _sibling_candidate_paths(spec: PluginSpec, *, max_paths: int = 24) -> list[Path]:
     slug = str(getattr(spec, "slug", "") or "")
+    scenario_key = _continuous_scenario_key(slug)
+    if scenario_key:
+        siblings = [
+            path
+            for path in sorted(PLUGINS_DIR.glob("*.py"))
+            if path.stem != slug and _continuous_scenario_key(path.stem) == scenario_key
+        ]
+        return siblings[-max_paths:]
+
     prefix = _capability_family_prefix(slug)
     if not prefix or prefix == slug:
         return []

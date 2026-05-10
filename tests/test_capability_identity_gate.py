@@ -18,6 +18,7 @@ try:
     from factory.factory_runner import (
         _build_registered_profile_result,
         _capability_identity_gate,
+        _continuous_scenario_key,
         _sibling_uniqueness_gate,
     )
     from factory.plugin_spec import PluginSpec
@@ -26,6 +27,7 @@ except ModuleNotFoundError:
     from factory_runner import (  # type: ignore
         _build_registered_profile_result,
         _capability_identity_gate,
+        _continuous_scenario_key,
         _sibling_uniqueness_gate,
     )
     from plugin_spec import PluginSpec  # type: ignore
@@ -125,6 +127,17 @@ async def invoke(user_id, payload, **kwargs):
 
         self.assertFalse(ok)
         self.assertIn("too close to retained sibling", reason)
+
+    def test_short_numbered_slugs_keep_scenario_for_sibling_grouping(self) -> None:
+        product_manager = build_next_spec(734)[0]
+        security_review = build_next_spec(326)[0]
+
+        self.assertEqual(product_manager.slug, "ai_verification_checklist_builder_000734")
+        self.assertEqual(security_review.slug, "ai_verification_checklist_builder_000326")
+        self.assertNotEqual(
+            _continuous_scenario_key(product_manager.slug),
+            _continuous_scenario_key(security_review.slug),
+        )
 
     def _run_identity(self, source: str, spec: PluginSpec) -> tuple[bool, str]:
         with tempfile.TemporaryDirectory() as tmp:
