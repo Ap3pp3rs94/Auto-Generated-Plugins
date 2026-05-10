@@ -997,7 +997,12 @@ result['details'] = {{'structured_prompt': structured_prompt, 'role': role, 'inp
 def _capability_router(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
-text = ' '.join([def_text, objective_text]).lower()
+route_context_parts = [def_text, objective_text, str(payload_data.get('prompt') or '')]
+for key in ['constraints', 'current_plan', 'completed_steps', 'blocked_steps', 'candidate_outputs', 'source_notes', 'trace', 'agents', 'workstreams', 'ownership_scopes']:
+    value = payload_data.get(key)
+    if value:
+        route_context_parts.append(str(value))
+text = ' '.join(route_context_parts).lower()
 routes = [
     ('coding_agent', ['code', 'bug', 'repo', 'repository', 'test', 'file', 'plugin', 'factory']),
     ('github_publish_agent', ['git', 'github', 'commit', 'push', 'branch', 'remote', 'origin', 'pr', 'pull request']),
@@ -1012,18 +1017,41 @@ for route, terms in routes:
     if hits:
         matches.append({{'route': route, 'signals': hits, 'priority': len(hits)}})
 matches = sorted(matches, key=lambda item: item['priority'], reverse=True) or [{{'route': 'clarifier', 'signals': [], 'priority': 0}}]
-split_needed = len(matches) > 1 and matches[0]['priority'] == matches[1]['priority']
+route_handoff_plan = []
+for idx, match in enumerate(matches[:4], start=1):
+    route_handoff_plan.append({{
+        'order': idx,
+        'route': match['route'],
+        'why': 'matched ' + ', '.join(match['signals'][:6]) if match['signals'] else 'no strong signals; clarify first',
+        'handoff_payload_keys': ['task', 'objective', 'constraints', 'current_plan', 'candidate_outputs'],
+    }})
+split_needed = len(matches) > 1 and (matches[0]['priority'] == matches[1]['priority'] or matches[1]['priority'] >= max(1, matches[0]['priority'] - 1))
+routing_decision = {{
+    'selected_route': matches[0]['route'],
+    'secondary_routes': [item['route'] for item in matches[1:4]],
+    'split_needed': split_needed,
+    'signal_count': sum(len(item['signals']) for item in matches),
+}}
+route_conflicts = []
+if split_needed:
+    route_conflicts.append({{'conflict': 'multiple high-priority routes', 'routes': [item['route'] for item in matches[:3]]}})
+if matches[0]['route'] == 'clarifier':
+    route_conflicts.append({{'conflict': 'insufficient routing signal', 'routes': []}})
 result['summary'] = plugin_name + ': routed task to ' + matches[0]['route'] + '.'
 result['primary_insights'] = [
     {{'title': 'Route matches', 'detail': matches}},
     {{'title': 'Split needed', 'detail': split_needed}},
+    {{'title': 'Routing decision', 'detail': routing_decision}},
+    {{'title': 'Route handoff plan', 'detail': route_handoff_plan}},
 ]
 result['recommended_actions'] = [
     {{'action': 'Route to ' + matches[0]['route'], 'signals': matches[0]['signals']}},
     {{'action': 'Split task across top routes' if split_needed else 'Keep task with primary route', 'routes': matches[:3]}},
+    {{'action': 'Attach route handoff payload', 'handoff_plan': route_handoff_plan}},
+    {{'action': 'Resolve route conflicts before execution', 'conflicts': route_conflicts}},
 ]
-result['scores'] = {{'confidence': round(0.5 + min(0.4, 0.12 * matches[0]['priority']), 2), 'routing_specificity': round(min(1.0, 0.3 + 0.1 * sum(len(item['signals']) for item in matches)), 2), 'risk': 0.22 if not split_needed else 0.38}}
-result['details'] = {{'routes': matches, 'selected_route': matches[0]['route'], 'split_needed': split_needed, 'missing_inputs': ['task'] if not def_text else []}}
+result['scores'] = {{'confidence': round(0.5 + min(0.4, 0.11 * matches[0]['priority']) + min(0.08, 0.015 * len(route_handoff_plan)), 2), 'routing_specificity': round(min(1.0, 0.3 + 0.1 * sum(len(item['signals']) for item in matches)), 2), 'risk': 0.22 if not split_needed else 0.38, 'route_count': len(matches), 'split_pressure': round(min(1.0, len(route_conflicts) * 0.35 + (0.2 if len(matches) > 2 else 0)), 2)}}
+result['details'] = {{'routes': matches, 'selected_route': matches[0]['route'], 'split_needed': split_needed, 'routing_decision': routing_decision, 'route_handoff_plan': route_handoff_plan, 'route_conflicts': route_conflicts, 'route_context_preview': text[:1000], 'missing_inputs': ['task'] if not def_text else []}}
 {_common_result_footer("'Route to ' + matches[0]['route']")}
 """.strip()
 
