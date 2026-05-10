@@ -116,27 +116,106 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         'details': {},
     }
     schema = infer_tabular_schema(payload.get('data') if isinstance(payload, dict) else None)
+    payload_data = payload if isinstance(payload, dict) else {}
+    payload_warnings = list(payload_data.get('_payload_warnings', [])) if isinstance(payload_data.get('_payload_warnings'), list) else []
+    if not isinstance(payload, dict):
+        payload_warnings.append('payload was not a dict; using empty payload')
+    elif '_value' in payload_data and not (set(payload_data.keys()) - {'_value', '_payload_warnings'}):
+        payload_warnings.append('payload was not a dict; invoke wrapped it in _value')
+    _signal_keys = [
+        'task', 'objective', 'prompt', 'instruction', 'query', 'question',
+        'response', 'answer', 'messages', 'source_notes', 'candidate_outputs',
+        'previous_results', 'trace', 'completed_steps', 'current_plan',
+        'expected_behavior', 'agents', 'workstreams', 'ownership_scopes',
+    ]
+    def _has_input_value(_key):
+        _value = payload_data.get(_key)
+        if isinstance(_value, str):
+            return bool(_value.strip())
+        if isinstance(_value, (list, tuple, set, dict)):
+            return bool(_value)
+        return _value is not None
+    input_signals = [_key for _key in _signal_keys if _has_input_value(_key)]
+    has_user_input = bool(input_signals)
+    input_signal_count = len(input_signals)
+    _target_text = ' '.join(str(payload_data.get(_key))[:300] for _key in _signal_keys if _has_input_value(_key))
+    used_goal_fallback = not bool(_target_text.strip())
+    input_signal_fingerprint = round((sum(ord(_ch) for _ch in _target_text[:1000]) % 997) / 997, 3) if _target_text else 0.0
+    profile_missing_inputs = [] if has_user_input else ['user-provided payload values']
     try:
         plugin_name = 'AI Multi-Agent Handoff Planner 000009'
         goal = 'Design clear handoffs between specialized AI agents without duplicated ownership.'
         domain = 'multi-agent AI coordination and delegation'
         capability_type = 'system_automation'
         logic_profile_id = 'multi_agent_handoff_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'regenerated after semantic audit'
         use_cases = ['Define bounded responsibilities for multiple agents.', 'Detect overlapping write scopes or duplicated investigation.', 'Create integration checkpoints after delegated work completes.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.']
         payload_data = payload if isinstance(payload, dict) else {}
-        payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
+        payload_warnings = list(payload_data.get('_payload_warnings', [])) if isinstance(payload_data.get('_payload_warnings'), list) else []
+        if not isinstance(payload, dict):
+            payload_warnings.append('payload was not a dict; using empty payload')
+        elif '_value' in payload_data and not (set(payload_data.keys()) - {'_value', '_payload_warnings'}):
+            payload_warnings.append('payload was not a dict; invoke wrapped it in _value')
         task_text = str(payload_data.get('task') or '').strip()
         explicit_objective_text = str(payload_data.get('objective') or '').strip()
-        def_text = str(task_text or explicit_objective_text or payload_data.get('prompt') or goal).strip()
-        objective_text = str(explicit_objective_text or goal).strip()
         constraints = payload_data.get('constraints') if isinstance(payload_data.get('constraints'), list) else []
         messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
         candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
         source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
+        def _input_present(key):
+            value = payload_data.get(key)
+            if isinstance(value, str):
+                return bool(value.strip())
+            if isinstance(value, (list, tuple, set, dict)):
+                return bool(value)
+            return value is not None
+        _user_input_keys = [
+            'task', 'objective', 'prompt', 'instruction', 'query', 'question',
+            'response', 'answer', 'messages', 'source_notes', 'candidate_outputs',
+            'previous_results', 'trace', 'completed_steps', 'current_plan',
+            'expected_behavior', 'agents', 'workstreams', 'ownership_scopes',
+        ]
+        input_signals = [key for key in _user_input_keys if _input_present(key)]
+        has_user_input = bool(input_signals)
+        input_signal_count = len(input_signals)
+        _target_parts = []
+        for key in ['task', 'objective', 'prompt', 'instruction', 'query', 'question', 'response', 'answer']:
+            if _input_present(key):
+                _target_parts.append(str(payload_data.get(key))[:300])
+        for key in ['messages', 'source_notes', 'candidate_outputs']:
+            value = payload_data.get(key)
+            if isinstance(value, list):
+                _target_parts.extend(str(item)[:180] for item in value[:3])
+        user_target_text = ' '.join(part for part in _target_parts if part).strip()
+        used_goal_fallback = not bool(user_target_text)
+        display_target = user_target_text or goal
+        def_text = str(task_text or explicit_objective_text or payload_data.get('prompt') or payload_data.get('instruction') or display_target).strip()
+        objective_text = str(explicit_objective_text or display_target).strip()
+        profile_missing_inputs = []
+        if not has_user_input:
+            profile_missing_inputs.append('user-provided payload values')
+        if not _input_present('objective'):
+            profile_missing_inputs.append('objective')
+        if not any(_input_present(key) for key in ['agents', 'workstreams', 'ownership_scopes']):
+            profile_missing_inputs.append('agents, workstreams, or ownership_scopes')
+        input_signal_fingerprint = round((sum(ord(ch) for ch in user_target_text[:1000]) % 997) / 997, 3) if user_target_text else 0.0
         current_plan = payload_data.get('current_plan') if isinstance(payload_data.get('current_plan'), list) else []
         completed_steps = payload_data.get('completed_steps') if isinstance(payload_data.get('completed_steps'), list) else []
         blocked_steps = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []
+        agents = payload_data.get('agents') if isinstance(payload_data.get('agents'), list) else []
+        workstreams = payload_data.get('workstreams') if isinstance(payload_data.get('workstreams'), list) else []
+        ownership_scopes = payload_data.get('ownership_scopes') if isinstance(payload_data.get('ownership_scopes'), list) else []
+        ownership_boundaries = []
+        if agents or workstreams or ownership_scopes:
+            max_items = max(len(agents), len(workstreams), len(ownership_scopes), 1)
+            for idx in range(max_items):
+                ownership_boundaries.append({
+                    'agent': str(agents[idx]) if idx < len(agents) else 'agent_' + str(idx + 1),
+                    'workstream': str(workstreams[idx]) if idx < len(workstreams) else 'unassigned workstream',
+                    'owns': str(ownership_scopes[idx]) if idx < len(ownership_scopes) else 'scope requires owner',
+                    'handoff_required': True,
+                })
+        handoff_overlap_decision = 'handoff_ready' if ownership_boundaries else 'repair_or_merge'
         parallel_hints = []
         planning_text = ' '.join([
             def_text,
@@ -231,12 +310,39 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         ]
         risk_score = round(min(0.92, max(0.12, 0.42 + risk_signal_score + 0.04 * len(blocked_steps) - min(0.18, len(completed_steps) * 0.04))), 2)
         result['scores'] = {'confidence': round(min(0.92, coverage), 2), 'plan_coverage': round(min(1.0, coverage + 0.08 + complexity_score), 2), 'handoff_readiness': round(0.48 + min(0.4, len(handoff_packet['parallelizable_work']) * 0.06 + len(sequenced_plan) * 0.018 + len(capability_actions) * 0.025), 2), 'risk': risk_score, 'complexity': round(complexity_score + risk_signal_score, 2)}
-        result['details'] = {'sequenced_plan': sequenced_plan, 'handoff_packet': handoff_packet, 'ownership_boundaries': [{'agent': 'implementer', 'owns': 'code changes'}, {'agent': 'reviewer', 'owns': 'risk review'}, {'agent': 'verifier', 'owns': 'test evidence'}], 'risk_signals': risk_signals, 'complexity_terms': complexity_terms, 'specialized_action_count': len(capability_actions), 'missing_inputs': [key for key in ['objective', 'current_plan', 'blocked_steps'] if not payload_data.get(key)]}
+        result['details'] = {'sequenced_plan': sequenced_plan, 'handoff_packet': handoff_packet, 'ownership_boundaries': ownership_boundaries, 'handoff_overlap_decision': handoff_overlap_decision, 'handoff_inputs': {'agents': agents, 'workstreams': workstreams, 'ownership_scopes': ownership_scopes}, 'risk_signals': risk_signals, 'complexity_terms': complexity_terms, 'specialized_action_count': len(capability_actions), 'missing_inputs': [key for key in ['objective', 'current_plan', 'blocked_steps'] if not payload_data.get(key)]}
+        _existing_missing = result.get('details', {}).get('missing_inputs', []) if isinstance(result.get('details'), dict) else []
+        if isinstance(_existing_missing, str):
+            _existing_missing = [_existing_missing]
+        elif not isinstance(_existing_missing, list):
+            _existing_missing = []
+        _merged_missing = []
+        for _item in list(_existing_missing) + list(profile_missing_inputs):
+            if _item and _item not in _merged_missing:
+                _merged_missing.append(_item)
+        if isinstance(result.get('details'), dict):
+            result['details']['missing_inputs'] = _merged_missing
+        if isinstance(result.get('scores'), dict):
+            result['scores'].setdefault('usefulness', round(min(0.95, max(0.0, float(result['scores'].get('confidence', 0.0)))), 2))
+            result['scores'].setdefault('input_signal_variance', input_signal_fingerprint)
         result['details']['use_cases'] = use_cases
         result['details']['generation_note'] = generation_note
         result['details']['capability_type'] = capability_type
         result['details']['logic_profile_id'] = logic_profile_id
-        result['details']['payload_warnings'] = payload_warnings
+        _existing_warnings = result['details'].get('payload_warnings', [])
+        if isinstance(_existing_warnings, str):
+            _existing_warnings = [_existing_warnings]
+        elif not isinstance(_existing_warnings, list):
+            _existing_warnings = []
+        _merged_warnings = []
+        for _warning in list(_existing_warnings) + list(payload_warnings):
+            if _warning and _warning not in _merged_warnings:
+                _merged_warnings.append(_warning)
+        result['details']['payload_warnings'] = _merged_warnings
+        result['details']['has_user_input'] = has_user_input
+        result['details']['used_goal_fallback'] = used_goal_fallback
+        result['details']['input_signals'] = input_signals
+        result['details']['input_signal_fingerprint'] = input_signal_fingerprint
         result['progress_state'] = {
             'current_stage': logic_profile_id,
             'next_step': sequenced_plan[0]['task'] if sequenced_plan else 'Define the next planning step.',
@@ -255,6 +361,18 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'microcopy': result['summary'],
             'optional_next_challenge': sequenced_plan[0]['task'] if sequenced_plan else 'Define the next planning step.',
         }
+        result['fun_mode'].setdefault('celebratory_microcopy', result['fun_mode'].get('microcopy', result['summary']))
+        result['diagnostics'] = {
+            'logic_profile_id': logic_profile_id,
+            'used_goal_fallback': used_goal_fallback,
+            'has_user_input': has_user_input,
+            'input_signal_count': input_signal_count,
+            'missing_inputs_count': len(result['details'].get('missing_inputs', [])),
+            'payload_warning_count': len(result['details'].get('payload_warnings', [])),
+            'profile_output_keys': sorted(result.keys()),
+            'semantic_probe_ready': bool(has_user_input and not result['details'].get('missing_inputs')),
+        }
+        result['diagnostics']['profile_output_keys'] = sorted(result.keys())
     except Exception as _exc:
         result = {
             'summary': 'Capability profile failed; fallback applied.',
@@ -277,6 +395,31 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
                 result['scores']['usefulness'] = round(min(0.95, max(0.0, float(result['scores'].get('confidence', 0.0)))), 2)
             except Exception:
                 result['scores']['usefulness'] = 0.0
+        try:
+            result['scores'].setdefault('input_signal_variance', input_signal_fingerprint)
+        except Exception:
+            pass
+    if isinstance(result.get('details'), dict):
+        _existing_warnings = result['details'].get('payload_warnings', [])
+        if isinstance(_existing_warnings, str):
+            _existing_warnings = [_existing_warnings]
+        elif not isinstance(_existing_warnings, list):
+            _existing_warnings = []
+        _merged_warnings = []
+        for _warning in list(_existing_warnings) + list(payload_warnings):
+            if _warning and _warning not in _merged_warnings:
+                _merged_warnings.append(_warning)
+        result['details']['payload_warnings'] = _merged_warnings
+        result['details'].setdefault('has_user_input', has_user_input)
+        result['details'].setdefault('used_goal_fallback', used_goal_fallback)
+        result['details'].setdefault('input_signals', input_signals)
+        result['details'].setdefault('input_signal_fingerprint', input_signal_fingerprint)
+        if 'missing_inputs' not in result['details'] and profile_missing_inputs:
+            result['details']['missing_inputs'] = profile_missing_inputs
+        elif isinstance(result['details'].get('missing_inputs'), list):
+            for _item in profile_missing_inputs:
+                if _item and _item not in result['details']['missing_inputs']:
+                    result['details']['missing_inputs'].append(_item)
     if isinstance(result.get('fun_mode'), dict):
         result['fun_mode'].setdefault('microcopy', result.get('summary', 'Capability profile completed.'))
         result['fun_mode'].setdefault('celebratory_microcopy', result['fun_mode'].get('microcopy', result.get('summary', 'Capability profile completed.')))
@@ -290,6 +433,13 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
     if not isinstance(result.get('diagnostics'), dict):
         result['diagnostics'] = {}
     result['diagnostics'].setdefault('logic_profile_id', result.get('details', {}).get('logic_profile_id', 'capability_profile') if isinstance(result.get('details'), dict) else 'capability_profile')
+    result['diagnostics'].setdefault('used_goal_fallback', used_goal_fallback)
+    result['diagnostics'].setdefault('has_user_input', has_user_input)
+    result['diagnostics'].setdefault('input_signal_count', input_signal_count)
+    result['diagnostics'].setdefault('missing_inputs_count', len(result.get('details', {}).get('missing_inputs', [])) if isinstance(result.get('details'), dict) and isinstance(result.get('details', {}).get('missing_inputs', []), list) else 0)
+    result['diagnostics']['payload_warning_count'] = len(result.get('details', {}).get('payload_warnings', [])) if isinstance(result.get('details'), dict) and isinstance(result.get('details', {}).get('payload_warnings', []), list) else 0
+    result['diagnostics'].setdefault('profile_output_keys', sorted(result.keys()))
+    result['diagnostics'].setdefault('semantic_probe_ready', bool(has_user_input and isinstance(result.get('details'), dict) and not result['details'].get('missing_inputs')))
     return result
 # === LOGIC END ===
 
