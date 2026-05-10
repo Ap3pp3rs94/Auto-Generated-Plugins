@@ -1164,18 +1164,45 @@ active = [item for item in plan if item not in completed and item not in blocked
 next_action = active[0] if active else ('Resolve blocker: ' + str(blocked[0]) if blocked else 'Define the next concrete task for ' + def_text[:120])
 stale_signals = [str(item) for item in plan if str(item).lower() in ' '.join(str(x).lower() for x in completed)]
 progress_ratio = round(len(completed) / max(1, len(plan)), 2)
+plan_surface = ' '.join(str(item) for item in plan + completed + blocked + constraints).lower()
+checkpoint_terms = {{
+    'validation': ['validate', 'semantic', 'test', 'quality', 'probe'],
+    'publishing': ['commit', 'push', 'github', 'publish', 'release'],
+    'safety': ['rollback', 'production', 'auth', 'database', 'risk'],
+    'evidence': ['proof', 'evidence', 'citation', 'source'],
+}}
+checkpoint_map = []
+for label, terms in checkpoint_terms.items():
+    hits = [term for term in terms if term in plan_surface]
+    checkpoint_map.append({{'checkpoint': label, 'signals': hits, 'covered': bool(hits)}})
+blocked_recovery_plan = []
+for item in blocked[:5]:
+    blocked_recovery_plan.append({{'blocker': str(item), 'recovery_action': 'assign owner, collect evidence, then rerun the blocked check'}})
+if not blocked_recovery_plan and active:
+    blocked_recovery_plan.append({{'blocker': 'none declared', 'recovery_action': 'continue with ' + str(active[0])}})
+momentum_risks = []
+if blocked:
+    momentum_risks.append({{'risk': 'blocked_work', 'count': len(blocked), 'mitigation': 'resolve blockers before starting new work'}})
+if stale_signals:
+    momentum_risks.append({{'risk': 'repeated_work', 'items': stale_signals, 'mitigation': 'remove duplicate plan steps'}})
+if progress_ratio < 0.34 and plan:
+    momentum_risks.append({{'risk': 'early_stage', 'ratio': progress_ratio, 'mitigation': 'protect the next validation checkpoint'}})
 result['summary'] = plugin_name + ': tracked progress at ' + str(progress_ratio) + ' completion.'
 result['primary_insights'] = [
     {{'title': 'Completed', 'detail': completed}},
     {{'title': 'Active', 'detail': active}},
     {{'title': 'Blocked', 'detail': blocked}},
+    {{'title': 'Checkpoint coverage', 'detail': checkpoint_map}},
+    {{'title': 'Momentum risks', 'detail': momentum_risks or 'No momentum risk detected.'}},
 ]
 result['recommended_actions'] = [
     {{'action': str(next_action)}},
     {{'action': 'Remove stale repeated work', 'items': stale_signals}},
+    {{'action': 'Resolve blockers with recovery plan', 'blocked_recovery_plan': blocked_recovery_plan}},
+    {{'action': 'Protect uncovered checkpoints', 'checkpoints': [item for item in checkpoint_map if not item['covered']]}},
 ]
-result['scores'] = {{'confidence': round(0.5 + min(0.35, 0.08 * len(plan)), 2), 'progress_ratio': progress_ratio, 'staleness': round(min(0.8, 0.1 * len(stale_signals)), 2), 'risk': round(0.2 + 0.12 * len(blocked), 2)}}
-result['details'] = {{'completed': completed, 'active': active, 'blocked': blocked, 'next_action': next_action, 'stale_signals': stale_signals, 'missing_inputs': ['current_plan'] if not plan else []}}
+result['scores'] = {{'confidence': round(0.5 + min(0.35, 0.08 * len(plan)) + min(0.06, 0.015 * len(checkpoint_map)), 2), 'progress_ratio': progress_ratio, 'staleness': round(min(0.8, 0.1 * len(stale_signals)), 2), 'risk': round(min(0.92, 0.2 + 0.12 * len(blocked) + 0.05 * len(momentum_risks)), 2), 'checkpoint_coverage': round(len([item for item in checkpoint_map if item['covered']]) / max(1, len(checkpoint_map)), 2)}}
+result['details'] = {{'completed': completed, 'active': active, 'blocked': blocked, 'next_action': next_action, 'stale_signals': stale_signals, 'checkpoint_map': checkpoint_map, 'blocked_recovery_plan': blocked_recovery_plan, 'momentum_risks': momentum_risks, 'plan_size': len(plan), 'missing_inputs': ['current_plan'] if not plan else []}}
 {_common_result_footer("str(next_action)")}
 """.strip()
 
