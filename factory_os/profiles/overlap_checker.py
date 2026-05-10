@@ -117,7 +117,11 @@ def run_capability_overlap_checker(payload: Any, config: dict[str, Any] | None =
     payload_warnings: list[str] = []
     if isinstance(payload, dict):
         payload_data = payload
-        if set(payload_data.keys()) == {"_value"} and not isinstance(payload_data.get("_value"), dict):
+        wrapped_warnings = payload_data.get("_payload_warnings")
+        if isinstance(wrapped_warnings, list):
+            payload_warnings.extend(str(item) for item in wrapped_warnings if item)
+        non_user_keys = {"_value", "_payload_warnings"}
+        if "_value" in payload_data and not (set(payload_data.keys()) - non_user_keys) and not isinstance(payload_data.get("_value"), dict):
             payload_warnings.append("payload was not a dict; invoke wrapped it in _value")
     else:
         payload_data = {}

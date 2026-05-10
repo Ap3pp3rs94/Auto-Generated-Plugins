@@ -14,7 +14,6 @@ PROFILE_ID = "capability_overlap_checker_profile"
 
 
 def run(context: Any, payload: Any, config: dict[str, Any] | None, manifest: dict[str, Any]) -> dict[str, Any]:
-    _payload, warnings = normalize_payload(payload)
+    payload_data, warnings = normalize_payload(payload)
     result = run_capability_overlap_checker(payload, config)
-    return finalize_profile_result(result, profile_id=PROFILE_ID, payload_warnings=warnings, manifest=manifest)
-
+    return finalize_profile_result(result, profile_id=PROFILE_ID, payload_warnings=warnings, manifest=manifest, payload_data=payload_data)

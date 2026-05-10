@@ -334,6 +334,9 @@ PRODUCTION_QUALITY_PROBE_PAYLOAD: Dict[str, Any] = {
     "current_plan": ["generate candidate", "validate plugin", "semantic depth check", "commit and push"],
     "completed_steps": ["candidate module generated"],
     "blocked_steps": ["need proof the capability does what it says"],
+    "agents": ["builder", "reviewer", "publisher"],
+    "workstreams": ["implementation", "semantic validation", "github publishing"],
+    "ownership_scopes": ["code changes", "quality gates", "release evidence"],
     "candidate_outputs": [
         {"summary": "Generic capability output with stock advice."},
         {"summary": "Specific capability output with measurable validation evidence."},
@@ -1603,6 +1606,9 @@ async def _semantic_depth_check(plugin_path: Path, spec: PluginSpec) -> Tuple[bo
         "current_plan": ["Inspect auth middleware", "Add login regression tests"],
         "completed_steps": ["Mapped current session flow"],
         "blocked_steps": ["Need database migration owner"],
+        "agents": ["builder", "database reviewer", "test owner"],
+        "workstreams": ["middleware refactor", "migration review", "login regression tests"],
+        "ownership_scopes": ["code changes", "schema safety", "test coverage"],
         "candidate_outputs": [
             {"id": "plan_a", "summary": "Change middleware first"},
             {"id": "plan_b", "summary": "Write login tests before code changes"},
@@ -1617,6 +1623,9 @@ async def _semantic_depth_check(plugin_path: Path, spec: PluginSpec) -> Tuple[bo
         "current_plan": ["Compare answer claims to source snippets"],
         "completed_steps": ["Collected candidate answer"],
         "blocked_steps": ["Need citation verification"],
+        "agents": ["researcher", "citation reviewer", "answer editor"],
+        "workstreams": ["retrieval review", "citation matching", "safe rewrite"],
+        "ownership_scopes": ["source grounding", "unsupported claim audit", "user-facing answer"],
         "candidate_outputs": [
             {"id": "answer_a", "summary": "States an unsupported dosage claim"},
             {"id": "answer_b", "summary": "Flags missing source support"},
@@ -1875,9 +1884,36 @@ def _capability_semantic_contract(
     slug = str(getattr(spec, "slug", "") or "").lower()
     category = str(getattr(spec, "category", "") or "").lower()
     goal = str(getattr(spec, "goal", "") or "").lower()
-    if "prompt_refinement" not in slug:
-        return True, "capability_semantic_contract: no specialized contract"
-    return _prompt_refinement_contract(result_a, result_b)
+    if "prompt_refinement" in slug:
+        return _prompt_refinement_contract(result_a, result_b)
+    if slug == "ai_multi_agent_handoff_planner":
+        return _multi_agent_handoff_contract(result_a, result_b)
+    return True, "capability_semantic_contract: no specialized contract"
+
+
+def _multi_agent_handoff_contract(result_a: Dict[str, Any], result_b: Dict[str, Any]) -> Tuple[bool, str]:
+    def _details(result: Dict[str, Any]) -> Dict[str, Any]:
+        details = result.get("details")
+        return details if isinstance(details, dict) else {}
+
+    failures = []
+    for label, result in [("a", result_a), ("b", result_b)]:
+        details = _details(result)
+        boundaries = details.get("ownership_boundaries")
+        handoff_inputs = details.get("handoff_inputs")
+        decision = details.get("handoff_overlap_decision")
+        if not isinstance(boundaries, list) or not boundaries:
+            failures.append(f"{label}: missing payload-derived ownership_boundaries")
+        if not isinstance(handoff_inputs, dict):
+            failures.append(f"{label}: missing handoff_inputs")
+        if decision == "repair_or_merge":
+            failures.append(f"{label}: handoff profile marked repair_or_merge")
+        boundary_text = _jsonish_text(boundaries, max_chars=8000)
+        if not any(token in boundary_text.lower() for token in ["builder", "reviewer", "researcher", "citation", "database"]):
+            failures.append(f"{label}: ownership_boundaries do not reflect supplied agents/workstreams")
+    if failures:
+        return False, "multi_agent_handoff_contract: " + "; ".join(failures[:8])
+    return True, "multi_agent_handoff_contract: payload-derived ownership boundaries present"
 
 
 def _prompt_refinement_contract(result_a: Dict[str, Any], result_b: Dict[str, Any]) -> Tuple[bool, str]:

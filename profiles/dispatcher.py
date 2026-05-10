@@ -131,4 +131,5 @@ def run_profile_logic(
         profile_id=requested or "unregistered_profile",
         payload_warnings=warnings,
         manifest=manifest,
+        payload_data=payload_data,
     )

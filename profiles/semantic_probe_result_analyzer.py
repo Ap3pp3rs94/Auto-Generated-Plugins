@@ -78,4 +78,4 @@ def run(context: Any, payload: Any, config: dict[str, Any] | None, manifest: dic
             "missing_inputs": missing,
         },
     }
-    return finalize_profile_result(result, profile_id=PROFILE_ID, payload_warnings=warnings, manifest=manifest)
+    return finalize_profile_result(result, profile_id=PROFILE_ID, payload_warnings=warnings, manifest=manifest, payload_data=payload_data)

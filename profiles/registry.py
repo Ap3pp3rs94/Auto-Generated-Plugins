@@ -22,6 +22,64 @@ def _quote(value: Any) -> str:
     return repr(str(value or ""))
 
 
+def _profile_required_missing_code(profile_id: str) -> str:
+    lines = [
+        "profile_missing_inputs = []",
+        "if not has_user_input:",
+        "    profile_missing_inputs.append('user-provided payload values')",
+    ]
+    if profile_id == "prompt_refinement_profile":
+        lines.extend([
+            "if not (_input_present('prompt') or _input_present('instruction')):",
+            "    profile_missing_inputs.append('prompt or instruction')",
+        ])
+    elif profile_id == "prompt_test_case_generator_profile":
+        lines.extend([
+            "if not _input_present('prompt'):",
+            "    profile_missing_inputs.append('prompt')",
+            "if not (_input_present('expected_behavior') or _input_present('objective')):",
+            "    profile_missing_inputs.append('expected_behavior or objective')",
+        ])
+    elif profile_id == "retrieval_query_expander_profile":
+        lines.extend([
+            "if not any(_input_present(key) for key in ['task', 'query', 'question', 'objective']):",
+            "    profile_missing_inputs.append('task, query, question, or objective')",
+        ])
+    elif profile_id == "output_quality_scorer_profile":
+        lines.extend([
+            "if not any(_input_present(key) for key in ['response', 'answer', 'candidate_outputs']):",
+            "    profile_missing_inputs.append('response, answer, or candidate_outputs')",
+        ])
+    elif profile_id == "context_window_optimizer_profile":
+        lines.extend([
+            "if not any(_input_present(key) for key in ['messages', 'source_notes', 'candidate_outputs', 'current_plan', 'completed_steps', 'blocked_steps', 'previous_results', 'trace', 'rubric', 'constraints']):",
+            "    profile_missing_inputs.append('context items')",
+        ])
+    elif profile_id == "memory_compression_profile":
+        lines.extend([
+            "if not any(_input_present(key) for key in ['messages', 'source_notes', 'previous_results', 'trace', 'completed_steps']):",
+            "    profile_missing_inputs.append('messages, source_notes, previous_results, trace, or completed_steps')",
+        ])
+    elif profile_id == "tool_selection_profile":
+        lines.extend([
+            "if not (_input_present('task') or _input_present('objective')):",
+            "    profile_missing_inputs.append('task or objective')",
+        ])
+    elif profile_id == "task_planner_profile":
+        lines.extend([
+            "if not (_input_present('task') or _input_present('objective')):",
+            "    profile_missing_inputs.append('task or objective')",
+        ])
+    elif profile_id == "multi_agent_handoff_profile":
+        lines.extend([
+            "if not _input_present('objective'):",
+            "    profile_missing_inputs.append('objective')",
+            "if not any(_input_present(key) for key in ['agents', 'workstreams', 'ownership_scopes']):",
+            "    profile_missing_inputs.append('agents, workstreams, or ownership_scopes')",
+        ])
+    return "\n".join(lines)
+
+
 def _common_header(
     spec: PluginSpec,
     capability_type: Optional[str],
@@ -38,25 +96,85 @@ logic_profile_id = {_quote(profile_id)}
 generation_note = {_quote(reason or "capability profile registry")}
 use_cases = {use_cases!r}
 payload_data = payload if isinstance(payload, dict) else {{}}
-payload_warnings = [] if isinstance(payload, dict) else ['payload was not a dict; using empty payload']
+payload_warnings = list(payload_data.get('_payload_warnings', [])) if isinstance(payload_data.get('_payload_warnings'), list) else []
+if not isinstance(payload, dict):
+    payload_warnings.append('payload was not a dict; using empty payload')
+elif '_value' in payload_data and not (set(payload_data.keys()) - {{'_value', '_payload_warnings'}}):
+    payload_warnings.append('payload was not a dict; invoke wrapped it in _value')
 task_text = str(payload_data.get('task') or '').strip()
 explicit_objective_text = str(payload_data.get('objective') or '').strip()
-def_text = str(task_text or explicit_objective_text or payload_data.get('prompt') or goal).strip()
-objective_text = str(explicit_objective_text or goal).strip()
 constraints = payload_data.get('constraints') if isinstance(payload_data.get('constraints'), list) else []
 messages = payload_data.get('messages') if isinstance(payload_data.get('messages'), list) else []
 candidate_outputs = payload_data.get('candidate_outputs') if isinstance(payload_data.get('candidate_outputs'), list) else []
 source_notes = payload_data.get('source_notes') if isinstance(payload_data.get('source_notes'), list) else []
+def _input_present(key):
+    value = payload_data.get(key)
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set, dict)):
+        return bool(value)
+    return value is not None
+_user_input_keys = [
+    'task', 'objective', 'prompt', 'instruction', 'query', 'question',
+    'response', 'answer', 'messages', 'source_notes', 'candidate_outputs',
+    'previous_results', 'trace', 'completed_steps', 'current_plan',
+    'expected_behavior', 'agents', 'workstreams', 'ownership_scopes',
+]
+input_signals = [key for key in _user_input_keys if _input_present(key)]
+has_user_input = bool(input_signals)
+input_signal_count = len(input_signals)
+_target_parts = []
+for key in ['task', 'objective', 'prompt', 'instruction', 'query', 'question', 'response', 'answer']:
+    if _input_present(key):
+        _target_parts.append(str(payload_data.get(key))[:300])
+for key in ['messages', 'source_notes', 'candidate_outputs']:
+    value = payload_data.get(key)
+    if isinstance(value, list):
+        _target_parts.extend(str(item)[:180] for item in value[:3])
+user_target_text = ' '.join(part for part in _target_parts if part).strip()
+used_goal_fallback = not bool(user_target_text)
+display_target = user_target_text or goal
+def_text = str(task_text or explicit_objective_text or payload_data.get('prompt') or payload_data.get('instruction') or display_target).strip()
+objective_text = str(explicit_objective_text or display_target).strip()
+{_profile_required_missing_code(profile_id)}
+input_signal_fingerprint = round((sum(ord(ch) for ch in user_target_text[:1000]) % 997) / 997, 3) if user_target_text else 0.0
 """.strip()
 
 
 def _common_result_footer(next_step_expr: str) -> str:
     return f"""
+_existing_missing = result.get('details', {{}}).get('missing_inputs', []) if isinstance(result.get('details'), dict) else []
+if isinstance(_existing_missing, str):
+    _existing_missing = [_existing_missing]
+elif not isinstance(_existing_missing, list):
+    _existing_missing = []
+_merged_missing = []
+for _item in list(_existing_missing) + list(profile_missing_inputs):
+    if _item and _item not in _merged_missing:
+        _merged_missing.append(_item)
+if isinstance(result.get('details'), dict):
+    result['details']['missing_inputs'] = _merged_missing
+if isinstance(result.get('scores'), dict):
+    result['scores'].setdefault('usefulness', round(min(0.95, max(0.0, float(result['scores'].get('confidence', 0.0)))), 2))
+    result['scores'].setdefault('input_signal_variance', input_signal_fingerprint)
 result['details']['use_cases'] = use_cases
 result['details']['generation_note'] = generation_note
 result['details']['capability_type'] = capability_type
 result['details']['logic_profile_id'] = logic_profile_id
-result['details']['payload_warnings'] = payload_warnings
+_existing_warnings = result['details'].get('payload_warnings', [])
+if isinstance(_existing_warnings, str):
+    _existing_warnings = [_existing_warnings]
+elif not isinstance(_existing_warnings, list):
+    _existing_warnings = []
+_merged_warnings = []
+for _warning in list(_existing_warnings) + list(payload_warnings):
+    if _warning and _warning not in _merged_warnings:
+        _merged_warnings.append(_warning)
+result['details']['payload_warnings'] = _merged_warnings
+result['details']['has_user_input'] = has_user_input
+result['details']['used_goal_fallback'] = used_goal_fallback
+result['details']['input_signals'] = input_signals
+result['details']['input_signal_fingerprint'] = input_signal_fingerprint
 result['progress_state'] = {{
     'current_stage': logic_profile_id,
     'next_step': {next_step_expr},
@@ -75,6 +193,18 @@ result['fun_mode'] = {{
     'microcopy': result['summary'],
     'optional_next_challenge': {next_step_expr},
 }}
+result['fun_mode'].setdefault('celebratory_microcopy', result['fun_mode'].get('microcopy', result['summary']))
+result['diagnostics'] = {{
+    'logic_profile_id': logic_profile_id,
+    'used_goal_fallback': used_goal_fallback,
+    'has_user_input': has_user_input,
+    'input_signal_count': input_signal_count,
+    'missing_inputs_count': len(result['details'].get('missing_inputs', [])),
+    'payload_warning_count': len(result['details'].get('payload_warnings', [])),
+    'profile_output_keys': sorted(result.keys()),
+    'semantic_probe_ready': bool(has_user_input and not result['details'].get('missing_inputs')),
+}}
+result['diagnostics']['profile_output_keys'] = sorted(result.keys())
 """.strip()
 
 
@@ -552,12 +682,31 @@ result['details'] = {{'core_query': core, 'expanded_queries': expanded_queries, 
 
 def _handoff(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     body = _task_planner(spec, capability_type, profile_id, reason)
+    handoff_inputs = """
+agents = payload_data.get('agents') if isinstance(payload_data.get('agents'), list) else []
+workstreams = payload_data.get('workstreams') if isinstance(payload_data.get('workstreams'), list) else []
+ownership_scopes = payload_data.get('ownership_scopes') if isinstance(payload_data.get('ownership_scopes'), list) else []
+ownership_boundaries = []
+if agents or workstreams or ownership_scopes:
+    max_items = max(len(agents), len(workstreams), len(ownership_scopes), 1)
+    for idx in range(max_items):
+        ownership_boundaries.append({
+            'agent': str(agents[idx]) if idx < len(agents) else 'agent_' + str(idx + 1),
+            'workstream': str(workstreams[idx]) if idx < len(workstreams) else 'unassigned workstream',
+            'owns': str(ownership_scopes[idx]) if idx < len(ownership_scopes) else 'scope requires owner',
+            'handoff_required': True,
+        })
+handoff_overlap_decision = 'handoff_ready' if ownership_boundaries else 'repair_or_merge'
+""".strip()
     return body.replace(
+        "blocked_steps = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []",
+        "blocked_steps = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []\n" + handoff_inputs,
+    ).replace(
         "built a sequenced AI-agent plan with checkpoints",
         "built a multi-agent handoff plan with ownership boundaries",
     ).replace(
         "'handoff_packet': handoff_packet",
-        "'handoff_packet': handoff_packet, 'ownership_boundaries': [{'agent': 'implementer', 'owns': 'code changes'}, {'agent': 'reviewer', 'owns': 'risk review'}, {'agent': 'verifier', 'owns': 'test evidence'}]",
+        "'handoff_packet': handoff_packet, 'ownership_boundaries': ownership_boundaries, 'handoff_overlap_decision': handoff_overlap_decision, 'handoff_inputs': {'agents': agents, 'workstreams': workstreams, 'ownership_scopes': ownership_scopes}",
     )
 
 
@@ -1323,7 +1472,7 @@ checks = [
     ('audience', bool(payload_data.get('audience') or payload_data.get('user_level')), 'Name who the result is for.'),
     ('output_format', bool(payload_data.get('output_format') or payload_data.get('format') or 'json' in surface or 'checklist' in surface), 'Specify output format or schema.'),
     ('acceptance_criteria', bool(constraints or 'must' in surface or 'pass' in surface), 'Define pass/fail criteria.'),
-    ('evidence_policy', bool(any(term in surface for term in ['citation', 'source', 'verify', 'evidence'])), 'Define evidence or verification policy.'),
+    ('evidence_policy', bool(payload_data.get('evidence_policy') or payload_data.get('verification_policy') or any(term in surface for term in ['citation', 'source', 'verify', 'evidence'])), 'Define evidence or verification policy.'),
     ('owner_or_next_step', bool(payload_data.get('owner') or payload_data.get('current_plan')), 'Name owner or next execution step.'),
 ]
 requirement_gaps = [{{'category': name, 'suggestion': suggestion}} for name, ok, suggestion in checks if not ok]
@@ -1734,6 +1883,32 @@ result = {{
     'details': {{}},
 }}
 schema = infer_tabular_schema(payload.get('data') if isinstance(payload, dict) else None)
+payload_data = payload if isinstance(payload, dict) else {{}}
+payload_warnings = list(payload_data.get('_payload_warnings', [])) if isinstance(payload_data.get('_payload_warnings'), list) else []
+if not isinstance(payload, dict):
+    payload_warnings.append('payload was not a dict; using empty payload')
+elif '_value' in payload_data and not (set(payload_data.keys()) - {{'_value', '_payload_warnings'}}):
+    payload_warnings.append('payload was not a dict; invoke wrapped it in _value')
+_signal_keys = [
+    'task', 'objective', 'prompt', 'instruction', 'query', 'question',
+    'response', 'answer', 'messages', 'source_notes', 'candidate_outputs',
+    'previous_results', 'trace', 'completed_steps', 'current_plan',
+    'expected_behavior', 'agents', 'workstreams', 'ownership_scopes',
+]
+def _has_input_value(_key):
+    _value = payload_data.get(_key)
+    if isinstance(_value, str):
+        return bool(_value.strip())
+    if isinstance(_value, (list, tuple, set, dict)):
+        return bool(_value)
+    return _value is not None
+input_signals = [_key for _key in _signal_keys if _has_input_value(_key)]
+has_user_input = bool(input_signals)
+input_signal_count = len(input_signals)
+_target_text = ' '.join(str(payload_data.get(_key))[:300] for _key in _signal_keys if _has_input_value(_key))
+used_goal_fallback = not bool(_target_text.strip())
+input_signal_fingerprint = round((sum(ord(_ch) for _ch in _target_text[:1000]) % 997) / 997, 3) if _target_text else 0.0
+profile_missing_inputs = [] if has_user_input else ['user-provided payload values']
 try:
 {indented_body}
 except Exception as _exc:
@@ -1758,6 +1933,31 @@ if isinstance(result.get('scores'), dict):
             result['scores']['usefulness'] = round(min(0.95, max(0.0, float(result['scores'].get('confidence', 0.0)))), 2)
         except Exception:
             result['scores']['usefulness'] = 0.0
+    try:
+        result['scores'].setdefault('input_signal_variance', input_signal_fingerprint)
+    except Exception:
+        pass
+if isinstance(result.get('details'), dict):
+    _existing_warnings = result['details'].get('payload_warnings', [])
+    if isinstance(_existing_warnings, str):
+        _existing_warnings = [_existing_warnings]
+    elif not isinstance(_existing_warnings, list):
+        _existing_warnings = []
+    _merged_warnings = []
+    for _warning in list(_existing_warnings) + list(payload_warnings):
+        if _warning and _warning not in _merged_warnings:
+            _merged_warnings.append(_warning)
+    result['details']['payload_warnings'] = _merged_warnings
+    result['details'].setdefault('has_user_input', has_user_input)
+    result['details'].setdefault('used_goal_fallback', used_goal_fallback)
+    result['details'].setdefault('input_signals', input_signals)
+    result['details'].setdefault('input_signal_fingerprint', input_signal_fingerprint)
+    if 'missing_inputs' not in result['details'] and profile_missing_inputs:
+        result['details']['missing_inputs'] = profile_missing_inputs
+    elif isinstance(result['details'].get('missing_inputs'), list):
+        for _item in profile_missing_inputs:
+            if _item and _item not in result['details']['missing_inputs']:
+                result['details']['missing_inputs'].append(_item)
 if isinstance(result.get('fun_mode'), dict):
     result['fun_mode'].setdefault('microcopy', result.get('summary', 'Capability profile completed.'))
     result['fun_mode'].setdefault('celebratory_microcopy', result['fun_mode'].get('microcopy', result.get('summary', 'Capability profile completed.')))
@@ -1771,6 +1971,13 @@ else:
 if not isinstance(result.get('diagnostics'), dict):
     result['diagnostics'] = {{}}
 result['diagnostics'].setdefault('logic_profile_id', result.get('details', {{}}).get('logic_profile_id', 'capability_profile') if isinstance(result.get('details'), dict) else 'capability_profile')
+result['diagnostics'].setdefault('used_goal_fallback', used_goal_fallback)
+result['diagnostics'].setdefault('has_user_input', has_user_input)
+result['diagnostics'].setdefault('input_signal_count', input_signal_count)
+result['diagnostics'].setdefault('missing_inputs_count', len(result.get('details', {{}}).get('missing_inputs', [])) if isinstance(result.get('details'), dict) and isinstance(result.get('details', {{}}).get('missing_inputs', []), list) else 0)
+result['diagnostics']['payload_warning_count'] = len(result.get('details', {{}}).get('payload_warnings', [])) if isinstance(result.get('details'), dict) and isinstance(result.get('details', {{}}).get('payload_warnings', []), list) else 0
+result['diagnostics'].setdefault('profile_output_keys', sorted(result.keys()))
+result['diagnostics'].setdefault('semantic_probe_ready', bool(has_user_input and isinstance(result.get('details'), dict) and not result['details'].get('missing_inputs')))
 return result
 """.strip()
 

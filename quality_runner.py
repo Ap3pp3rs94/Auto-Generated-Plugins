@@ -147,6 +147,9 @@ PROFILE_REQUIRED_DETAIL_KEYS: Dict[str, set[str]] = {
     "plugin_repair_strategy_planner_profile": {"repair_plan", "weak_signals", "capability_specific_targets", "acceptance_checks"},
     "plugin_release_packager_profile": {"release_package", "validation_summary", "github_publish_plan", "rollback_notes"},
     "plugin_factory_backlog_planner_profile": {"backlog_items", "priority_rationale", "dependency_order", "next_plugin_specs"},
+    "plugin_profile_gap_detector_profile": {"profile_gaps", "missing_profile_slugs", "alias_gaps", "coverage_summary"},
+    "semantic_probe_result_analyzer_profile": {"probe_failures", "contrast_findings", "repair_targets", "promotion_recommendation"},
+    "release_readiness_scorecard_profile": {"readiness_checks", "blocking_findings", "release_decision", "evidence_summary"},
 }
 
 
@@ -175,6 +178,27 @@ CONTINUOUS_PROFILE_REQUIRED_KEY_FALLBACKS: tuple[tuple[str, str], ...] = (
     ("continuous_model_fit_triage_profile", "model_selection_scorecard_profile"),
     ("continuous_instruction_hierarchy_checker_profile", "instruction_conflict_detector_profile"),
     ("continuous_data_contract_validator_profile", "data_contract_mapper_profile"),
+    ("prompt_persona_adapter_profile", "prompt_refinement_profile"),
+    ("prompt_output_schema_designer_profile", "structured_prompt_builder_profile"),
+    ("model_failure_mode_classifier_profile", "workflow_debugger_profile"),
+    ("evidence_gap_prioritizer_profile", "grounded_answer_planner_profile"),
+    ("source_trust_ranker_profile", "grounded_answer_planner_profile"),
+    ("context_relevance_ranker_profile", "context_window_optimizer_profile"),
+    ("memory_conflict_resolver_profile", "memory_compression_profile"),
+    ("agent_role_boundary_mapper_profile", "multi_agent_handoff_profile"),
+    ("parallel_work_detector_profile", "task_planner_profile"),
+    ("tool_permission_gate_profile", "automation_safety_gate_profile"),
+    ("tool_argument_sanitizer_profile", "prompt_injection_surface_scanner_profile"),
+    ("eval_failure_classifier_profile", "output_quality_scorer_profile"),
+    ("response_actionability_scorer_profile", "output_quality_scorer_profile"),
+    ("user_clarification_question_builder_profile", "prompt_refinement_profile"),
+    ("assumption_tracker_profile", "requirement_gap_analyzer_profile"),
+    ("change_impact_summarizer_profile", "artifact_release_note_generator_profile"),
+    ("verification_plan_builder_profile", "prompt_test_case_generator_profile"),
+    ("red_team_prompt_probe_builder_profile", "prompt_injection_surface_scanner_profile"),
+    ("rollback_readiness_checker_profile", "automation_safety_gate_profile"),
+    ("live_run_anomaly_detector_profile", "autonomous_run_governor_profile"),
+    ("capability_dependency_mapper_profile", "data_contract_mapper_profile"),
 )
 
 
