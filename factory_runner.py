@@ -659,10 +659,17 @@ def _canonical_retention_spec(spec: PluginSpec) -> PluginSpec:
 
 def _next_ai_roadmap_index(existing_slugs: Set[str]) -> int:
     """
-    Advance from existing AI-roadmap plugins only.
+    Return the first missing curated capability before expanding forward.
 
-    Old non-AI modules do not push the factory deep into later AI capability batches.
+    A later generated capability must not hide an earlier curated gap. If a
+    plugin file was deleted or a candidate was rejected, the factory backfills
+    that canonical slot before moving into continuous expansion.
     """
+    for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
+        slug = str(getattr(blueprint, "slug", "") or "")
+        if slug and slug not in existing_slugs and not (PLUGINS_DIR / f"{slug}.py").exists():
+            return position
+
     existing_indexes = [
         idx for slug in existing_slugs
         for idx in [_roadmap_slug_index(slug)]
