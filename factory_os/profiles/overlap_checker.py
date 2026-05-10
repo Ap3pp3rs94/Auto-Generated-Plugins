@@ -229,14 +229,21 @@ def run_capability_overlap_checker(payload: Any, config: dict[str, Any] | None =
         usefulness = min(usefulness, 0.55)
 
     uniqueness_fingerprint = sorted(candidate_tokens)[:24]
+    candidate_preview = candidate[:180] if candidate else "missing candidate capability"
+    candidate_focus_terms = uniqueness_fingerprint[:8]
+    candidate_specificity = round(min(0.92, 0.24 + 0.035 * len(candidate_focus_terms)), 2) if candidate else 0.0
+    if not existing_plugins and candidate_focus_terms:
+        payload_warnings.append(
+            "no comparison targets were provided; decision is based on candidate fingerprint only"
+        )
     next_step = {
         "insufficient_input": "Provide a candidate capability name, task, objective, prompt, or slug.",
-        "merge_or_reject": "Merge with or reject against the closest existing capability.",
-        "redesign_boundary": "Redesign the boundary to make the capability uniquely owned.",
-        "generate_new": "Generate a new canonical capability slot.",
+        "merge_or_reject": f"Merge or reject {candidate_preview} against the closest existing capability.",
+        "redesign_boundary": f"Redesign the boundary for {candidate_preview} around {', '.join(candidate_focus_terms[:4]) or 'owned behavior'}.",
+        "generate_new": f"Generate a new canonical slot for {candidate_preview} using fingerprint terms {', '.join(candidate_focus_terms[:4]) or 'none'}.",
     }[decision]
     summary = (
-        f"Capability overlap decision: {decision} "
+        f"Capability overlap decision for {candidate_preview}: {decision} "
         f"(max similarity {max_similarity:.2f}, checked {len(existing_plugins)} existing plugin(s))."
     )
 
@@ -244,21 +251,27 @@ def run_capability_overlap_checker(payload: Any, config: dict[str, Any] | None =
         "summary": summary,
         "primary_insights": [
             {"title": "Decision", "detail": decision},
+            {"title": "Candidate fingerprint", "detail": candidate_focus_terms},
+            {"title": "Candidate preview", "detail": candidate_preview},
             {"title": "Highest similarity", "detail": max_similarity},
             {"title": "Duplicate risks", "detail": duplicate_risks or "No meaningful overlap found."},
         ],
         "recommended_actions": [
-            {"action": next_step, "decision": decision, "duplicate_risk": round(duplicate_risk, 2)},
-            {"action": "Review closest comparison targets", "targets": comparison_targets[:5]},
+            {"action": next_step, "decision": decision, "duplicate_risk": round(duplicate_risk, 2), "candidate_terms": candidate_focus_terms},
+            {"action": f"Review closest comparison targets for {', '.join(candidate_focus_terms[:4]) or candidate_preview}", "targets": comparison_targets[:5]},
+            {"action": "Collect existing_plugins before final promotion", "needed_when": not bool(existing_plugins), "candidate": candidate_preview},
         ],
         "scores": {
             "confidence": round(min(0.94, confidence), 2),
             "usefulness": round(min(0.94, usefulness), 2),
             "duplicate_risk": round(duplicate_risk, 2),
+            "candidate_specificity": candidate_specificity,
         },
         "details": {
             "duplicate_risks": duplicate_risks,
             "uniqueness_fingerprint": uniqueness_fingerprint,
+            "candidate_preview": candidate_preview,
+            "candidate_focus_terms": candidate_focus_terms,
             "comparison_targets": comparison_targets,
             "merge_or_reject_decision": decision,
             "max_similarity": max_similarity,
