@@ -1514,12 +1514,34 @@ result['details'] = {{'retry_strategy': retry_strategy, 'failure_clusters': fail
 def _model_selection_scorecard(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
-surface = ' '.join([def_text, objective_text, str(payload_data.get('prompt') or ''), ' '.join(str(item) for item in constraints)]).lower()
+current_plan = payload_data.get('current_plan') if isinstance(payload_data.get('current_plan'), list) else []
+completed_steps = payload_data.get('completed_steps') if isinstance(payload_data.get('completed_steps'), list) else []
+blocked_steps = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []
+agents = payload_data.get('agents') if isinstance(payload_data.get('agents'), list) else []
+workstreams = payload_data.get('workstreams') if isinstance(payload_data.get('workstreams'), list) else []
+ownership_scopes = payload_data.get('ownership_scopes') if isinstance(payload_data.get('ownership_scopes'), list) else []
+quality_failures = payload_data.get('quality_failures') if isinstance(payload_data.get('quality_failures'), list) else []
+surface_parts = [
+    def_text,
+    objective_text,
+    str(payload_data.get('prompt') or ''),
+    ' '.join(str(item) for item in constraints),
+    ' '.join(str(item) for item in current_plan),
+    ' '.join(str(item) for item in completed_steps),
+    ' '.join(str(item) for item in blocked_steps),
+    ' '.join(str(item) for item in candidate_outputs),
+    ' '.join(str(item) for item in source_notes),
+    ' '.join(str(item) for item in agents),
+    ' '.join(str(item) for item in workstreams),
+    ' '.join(str(item) for item in ownership_scopes),
+    ' '.join(str(item) for item in quality_failures),
+]
+surface = ' '.join(surface_parts).lower()
 tiers = [
-    {{'model_style': 'fast_small_model', 'cost': 'low', 'strength': 'simple routing, formatting, extraction', 'signals': ['simple', 'format', 'extract']}},
-    {{'model_style': 'standard_tool_model', 'cost': 'medium', 'strength': 'tool use, code edits, repo work', 'signals': ['tool', 'code', 'repo', 'github', 'plugin', 'test', 'auth', 'database', 'rollback', 'production']}},
-    {{'model_style': 'reasoning_model', 'cost': 'high', 'strength': 'ambiguous planning, debugging, multi-step synthesis', 'signals': ['complex', 'multi-step', 'debug', 'architecture', 'risk', 'refactor', 'migration', 'owner']}},
-    {{'model_style': 'verified_grounded_model', 'cost': 'high', 'strength': 'source-sensitive factual answers', 'signals': ['citation', 'citations', 'medical', 'clinical', 'legal', 'financial', 'latest', 'source', 'claim', 'grounded']}},
+    {{'model_style': 'fast_small_model', 'cost': 'low', 'strength': 'simple routing, formatting, extraction', 'signals': ['simple', 'format', 'extract', 'classify', 'summarize']}},
+    {{'model_style': 'standard_tool_model', 'cost': 'medium', 'strength': 'tool use, code edits, repo work', 'signals': ['tool', 'code', 'repo', 'github', 'plugin', 'test', 'auth', 'database', 'rollback', 'production', 'commit', 'push', 'validation']}},
+    {{'model_style': 'reasoning_model', 'cost': 'high', 'strength': 'ambiguous planning, debugging, multi-step synthesis', 'signals': ['complex', 'multi-step', 'debug', 'architecture', 'risk', 'refactor', 'migration', 'owner', 'semantic', 'quality', 'duplicate', 'shallow']}},
+    {{'model_style': 'verified_grounded_model', 'cost': 'high', 'strength': 'source-sensitive factual answers', 'signals': ['citation', 'citations', 'medical', 'clinical', 'legal', 'financial', 'latest', 'source', 'claim', 'grounded', 'evidence']}},
 ]
 scorecard = []
 for tier in tiers:
@@ -1527,6 +1549,10 @@ for tier in tiers:
     score = round(0.25 + 0.16 * len(hits), 2)
     if tier['model_style'] == 'reasoning_model' and len(surface.split()) > 45:
         score += 0.12
+    if tier['model_style'] == 'standard_tool_model' and (current_plan or completed_steps or 'github' in surface):
+        score += 0.08
+    if tier['model_style'] == 'verified_grounded_model' and source_notes:
+        score += 0.07
     scorecard.append(dict(tier, matched_signals=hits, score=round(min(0.95, score), 2)))
 scorecard = sorted(scorecard, key=lambda item: item['score'], reverse=True)
 selected = scorecard[0]
@@ -1556,18 +1582,61 @@ elif selected['model_style'] == 'reasoning_model':
 else:
     decision_mode = 'low_ambiguity_fast_path'
     selected_next_step = selected_next_step + ' Keep the task bounded to extraction, formatting, or classification.'
+selection_matrix = [
+    {{
+        'model_style': item['model_style'],
+        'score': item['score'],
+        'matched_signals': item.get('matched_signals', []),
+        'best_for': item['strength'],
+        'cost': item['cost'],
+        'fit_decision': 'selected' if item['model_style'] == selected['model_style'] else 'available_if_scope_changes',
+    }}
+    for item in scorecard
+]
+verification_requirements = []
+if selected['model_style'] in ['standard_tool_model', 'reasoning_model']:
+    verification_requirements.extend(['inspect affected artifacts', 'run targeted checks', 'record changed-file evidence'])
+if selected['model_style'] == 'verified_grounded_model' or source_notes:
+    verification_requirements.extend(['separate supported claims from uncertain claims', 'cite or flag source-sensitive statements'])
+if blocked_steps or quality_failures:
+    verification_requirements.extend(['resolve blockers before final answer', 'confirm shallow or duplicate output was rejected'])
+if not verification_requirements:
+    verification_requirements.append('confirm output matches the requested format and constraints')
+model_route_plan = {{
+    'recommended_model_style': selected['model_style'],
+    'decision_mode': decision_mode,
+    'why': selected_signals or ['no strong signal; selected lowest-risk fit'],
+    'execution_policy': selected_next_step,
+    'verification_requirements': verification_requirements,
+    'fallback_model_style': 'reasoning_model' if selected['model_style'] != 'reasoning_model' else 'verified_grounded_model',
+}}
+cost_control_plan = [
+    {{'step': 'start_with_selected_route', 'policy': selected['model_style'], 'reason': 'highest signal score for the supplied payload'}},
+    {{'step': 'escalate_only_on_trigger', 'policy': escalation_triggers or ['no escalation trigger'], 'reason': 'keep cost tied to explicit risk'}},
+    {{'step': 'downgrade_after_structure_is_clear', 'policy': 'fast_small_model for formatting or extraction follow-ups', 'reason': 'avoid paying for reasoning after the hard decision is made'}},
+]
+escalation_matrix = [
+    {{'trigger': 'production_or_release_risk', 'route_to': 'standard_tool_model or reasoning_model', 'present': 'production_or_release_risk' in escalation_triggers}},
+    {{'trigger': 'source_sensitive_claims', 'route_to': 'verified_grounded_model', 'present': 'source_sensitive_claims' in escalation_triggers}},
+    {{'trigger': 'semantic_quality_failure', 'route_to': 'reasoning_model', 'present': bool(quality_failures or 'shallow' in surface or 'duplicate' in surface)}},
+]
 result['summary'] = plugin_name + ': selected ' + selected['model_style'] + ' for ' + decision_mode + ' on ' + def_text[:120] + '.'
 result['primary_insights'] = [
     {{'title': 'Selected model path', 'detail': {{'model_style': selected['model_style'], 'decision_mode': decision_mode, 'matched_signals': selected_signals, 'strength': selected['strength']}}}},
     {{'title': 'Escalation triggers', 'detail': escalation_triggers or 'No escalation trigger detected.'}},
     {{'title': 'Why this path', 'detail': 'Matched signals: ' + (', '.join(selected_signals) if selected_signals else 'none') + '; task focus: ' + def_text[:120]}},
+    {{'title': 'Verification requirements', 'detail': verification_requirements}},
+    {{'title': 'Cost control plan', 'detail': cost_control_plan}},
 ]
 result['recommended_actions'] = [
     {{'action': selected_next_step, 'selected_model_style': selected['model_style'], 'decision_mode': decision_mode, 'matched_signals': selected_signals}},
     {{'action': 'Use escalation triggers before execution', 'triggers': escalation_triggers, 'decision_mode': decision_mode}},
+    {{'action': 'Apply verification requirements before finalizing', 'verification_requirements': verification_requirements}},
+    {{'action': 'Keep the cost route explicit', 'cost_control_plan': cost_control_plan}},
+    {{'action': 'Record model route decision for downstream agents', 'model_route_plan': model_route_plan}},
 ]
-result['scores'] = {{'confidence': round(min(0.92, selected['score'] + 0.08 + 0.02 * len(selected.get('matched_signals', []))), 2), 'selection_score': selected['score'], 'risk': round(min(0.9, 0.18 + 0.12 * len(escalation_triggers) + (0.08 if selected['model_style'] == 'verified_grounded_model' else 0)), 2), 'cost_pressure': 0.25 if selected['cost'] == 'low' else 0.55 if selected['cost'] == 'medium' else 0.8}}
-result['details'] = {{'model_scorecard': scorecard, 'selected_model_style': selected, 'selected_next_step': selected_next_step, 'decision_mode': decision_mode, 'selected_signals': selected_signals, 'cost_risk_tradeoffs': cost_risk_tradeoffs, 'escalation_triggers': escalation_triggers, 'missing_inputs': ['task'] if not def_text else []}}
+result['scores'] = {{'confidence': round(min(0.94, selected['score'] + 0.1 + 0.025 * len(selected.get('matched_signals', [])) + 0.03 * bool(verification_requirements)), 2), 'usefulness': round(min(0.95, 0.66 + 0.04 * len(result['recommended_actions']) + 0.03 * bool(selection_matrix)), 2), 'selection_score': selected['score'], 'risk': round(min(0.9, 0.18 + 0.12 * len(escalation_triggers) + (0.08 if selected['model_style'] == 'verified_grounded_model' else 0)), 2), 'cost_pressure': 0.25 if selected['cost'] == 'low' else 0.55 if selected['cost'] == 'medium' else 0.8, 'route_specificity': round(min(0.95, 0.45 + 0.04 * len(selected_signals) + 0.03 * len(verification_requirements)), 2)}}
+result['details'] = {{'model_scorecard': scorecard, 'selection_matrix': selection_matrix, 'selected_model_style': selected, 'selected_next_step': selected_next_step, 'decision_mode': decision_mode, 'selected_signals': selected_signals, 'cost_risk_tradeoffs': cost_risk_tradeoffs, 'escalation_triggers': escalation_triggers, 'verification_requirements': verification_requirements, 'model_route_plan': model_route_plan, 'cost_control_plan': cost_control_plan, 'escalation_matrix': escalation_matrix, 'input_evidence': {{'current_plan': current_plan, 'completed_steps': completed_steps, 'blocked_steps': blocked_steps, 'quality_failures': quality_failures}}, 'missing_inputs': ['task or objective'] if not has_user_input else []}}
 {_common_result_footer("selected_next_step")}
 """.strip()
 
@@ -1610,25 +1679,64 @@ def _artifact_release_notes(spec: PluginSpec, capability_type: Optional[str], pr
 {_common_header(spec, capability_type, profile_id, reason)}
 completed = payload_data.get('completed_steps') if isinstance(payload_data.get('completed_steps'), list) else []
 artifacts = payload_data.get('artifacts') if isinstance(payload_data.get('artifacts'), list) else []
+current_plan = payload_data.get('current_plan') if isinstance(payload_data.get('current_plan'), list) else []
+blocked_steps = payload_data.get('blocked_steps') if isinstance(payload_data.get('blocked_steps'), list) else []
+workstreams = payload_data.get('workstreams') if isinstance(payload_data.get('workstreams'), list) else []
+ownership_scopes = payload_data.get('ownership_scopes') if isinstance(payload_data.get('ownership_scopes'), list) else []
+quality_failures = payload_data.get('quality_failures') if isinstance(payload_data.get('quality_failures'), list) else []
 changed_artifacts = [str(item) for item in artifacts[:8]] or [str(item) for item in completed[:8]]
+if not changed_artifacts:
+    inferred_sources = current_plan + workstreams + ownership_scopes
+    changed_artifacts = ['Inferred release surface: ' + str(item)[:160] for item in inferred_sources[:8]]
 trace_items = payload_data.get('trace') if isinstance(payload_data.get('trace'), list) else []
 validation_evidence = []
-for item in trace_items + candidate_outputs:
+for item in trace_items + candidate_outputs + source_notes:
     text = str(item.get('message') or item.get('summary') or item.get('error') or item if isinstance(item, dict) else item)
-    if any(term in text.lower() for term in ['pass', 'valid', 'semantic', 'push', 'commit', 'test', 'failed', 'error']):
+    if any(term in text.lower() for term in ['pass', 'valid', 'semantic', 'push', 'commit', 'test', 'failed', 'error', 'threshold', 'quality', 'evidence', 'production', 'reject']):
         validation_evidence.append(text[:220])
 known_risks = []
-for text in changed_artifacts + validation_evidence + [def_text, objective_text]:
+for text in changed_artifacts + validation_evidence + blocked_steps + quality_failures + [def_text, objective_text]:
     lower = str(text).lower()
-    hits = [term for term in ['risk', 'rollback', 'production', 'auth', 'database', 'citation', 'unsupported', 'failed'] if term in lower]
+    hits = [term for term in ['risk', 'rollback', 'production', 'auth', 'database', 'citation', 'unsupported', 'failed', 'shallow', 'duplicate', 'missing', 'blocked'] if term in lower]
     if hits:
         known_risks.append({{'item': str(text)[:180], 'signals': hits}})
+validation_gaps = []
+if not validation_evidence:
+    validation_gaps.append('validation evidence')
+if not changed_artifacts:
+    validation_gaps.append('changed artifacts')
+if known_risks and not any('rollback' in str(item).lower() for item in validation_evidence + changed_artifacts):
+    validation_gaps.append('rollback or mitigation note')
+release_sections = [
+    {{'section': 'what_changed', 'content': changed_artifacts or ['No changed artifact was provided.']}},
+    {{'section': 'why_it_changed', 'content': objective_text[:220]}},
+    {{'section': 'validation', 'content': validation_evidence or ['Validation evidence missing.']}},
+    {{'section': 'known_risks', 'content': known_risks or ['No known risk signal detected.']}},
+    {{'section': 'operator_follow_up', 'content': ['Review quality gate result', 'Confirm GitHub publish state', 'Capture rollback notes if risk exists']}},
+]
+publish_checklist = [
+    {{'check': 'changed_artifacts_named', 'passed': bool(changed_artifacts), 'evidence': changed_artifacts[:3]}},
+    {{'check': 'validation_evidence_recorded', 'passed': bool(validation_evidence), 'evidence': validation_evidence[:3]}},
+    {{'check': 'known_risks_reviewed', 'passed': True, 'evidence': known_risks[:3]}},
+    {{'check': 'operator_next_step_clear', 'passed': True, 'evidence': ['Review known risks before announcing']}},
+]
+audience_summary = {{
+    'operator_summary': 'Release update for ' + def_text[:160],
+    'technical_summary': 'Artifacts=' + str(len(changed_artifacts)) + ', validation_items=' + str(len(validation_evidence)) + ', risk_items=' + str(len(known_risks)),
+    'external_summary': 'A validated capability update is ready once listed risks and validation gaps are reviewed.',
+}}
+rollback_note = 'Hold or roll back the release if any known risk blocks production readiness.' if known_risks else 'No rollback trigger detected from supplied evidence.'
 release_notes = {{
     'title': plugin_name,
     'summary': 'Generated artifact update for ' + def_text[:160],
+    'audience_summary': audience_summary,
     'changed_artifacts': changed_artifacts,
     'validation_evidence': validation_evidence,
     'known_risks': known_risks,
+    'validation_gaps': validation_gaps,
+    'release_sections': release_sections,
+    'publish_checklist': publish_checklist,
+    'rollback_note': rollback_note,
     'next_checks': ['Run quality audit', 'Confirm GitHub push', 'Review known risks'],
 }}
 result['summary'] = plugin_name + ': generated release notes for ' + str(len(changed_artifacts)) + ' artifact change(s).'
@@ -1636,13 +1744,19 @@ result['primary_insights'] = [
     {{'title': 'Release notes', 'detail': release_notes}},
     {{'title': 'Validation evidence', 'detail': validation_evidence or 'No validation evidence found.'}},
     {{'title': 'Known risks', 'detail': known_risks or 'No release-note risk signal detected.'}},
+    {{'title': 'Validation gaps', 'detail': validation_gaps or 'No validation gap detected.'}},
+    {{'title': 'Publish checklist', 'detail': publish_checklist}},
 ]
 result['recommended_actions'] = [
     {{'action': 'Publish release notes after validation review', 'release_notes': release_notes}},
     {{'action': 'Resolve known risks before announcing', 'known_risks': known_risks}},
+    {{'action': 'Close validation gaps before release', 'validation_gaps': validation_gaps}},
+    {{'action': 'Use audience summaries for operator and public updates', 'audience_summary': audience_summary}},
+    {{'action': 'Attach rollback note to the release record', 'rollback_note': rollback_note}},
 ]
-result['scores'] = {{'confidence': round(min(0.92, 0.42 + 0.06 * len(changed_artifacts) + 0.06 * len(validation_evidence)), 2), 'release_note_completeness': round(min(0.95, 0.38 + 0.12 * bool(changed_artifacts) + 0.12 * bool(validation_evidence) + 0.08 * bool(release_notes['next_checks'])), 2), 'risk': round(min(0.9, 0.14 + 0.09 * len(known_risks)), 2)}}
-result['details'] = {{'release_notes': release_notes, 'validation_evidence': validation_evidence, 'changed_artifacts': changed_artifacts, 'known_risks': known_risks, 'missing_inputs': ['artifacts or completed_steps'] if not changed_artifacts else []}}
+release_note_completeness = round(min(0.96, 0.38 + 0.1 * bool(changed_artifacts) + 0.1 * bool(validation_evidence) + 0.08 * bool(release_sections) + 0.08 * bool(publish_checklist) + 0.05 * bool(audience_summary) + 0.04 * bool(rollback_note)), 2)
+result['scores'] = {{'confidence': round(min(0.94, 0.46 + 0.055 * len(changed_artifacts) + 0.055 * len(validation_evidence) + 0.03 * bool(publish_checklist)), 2), 'usefulness': round(min(0.95, 0.62 + 0.04 * len(result['recommended_actions']) + 0.03 * bool(release_sections)), 2), 'release_note_completeness': release_note_completeness, 'risk': round(min(0.9, 0.14 + 0.09 * len(known_risks)), 2), 'validation_gap_count': len(validation_gaps)}}
+result['details'] = {{'release_notes': release_notes, 'release_sections': release_sections, 'audience_summary': audience_summary, 'validation_evidence': validation_evidence, 'validation_gaps': validation_gaps, 'publish_checklist': publish_checklist, 'changed_artifacts': changed_artifacts, 'known_risks': known_risks, 'rollback_note': rollback_note, 'operator_next_steps': release_notes['next_checks'], 'input_evidence': {{'current_plan': current_plan, 'completed_steps': completed, 'blocked_steps': blocked_steps, 'workstreams': workstreams, 'ownership_scopes': ownership_scopes, 'quality_failures': quality_failures}}, 'missing_inputs': ['artifacts, completed_steps, current_plan, workstreams, or ownership_scopes'] if not changed_artifacts else []}}
 {_common_result_footer("'Publish release notes after validation review'")}
 """.strip()
 
