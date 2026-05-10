@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .profile_utils import capability_spec_payload, finalize_profile_result, normalize_payload, user_candidate_text
+from .profile_utils import capability_spec_payload, finalize_profile_result, normalize_payload, user_candidate_text, user_target_text
 
 
 PROFILE_ID = "plugin_test_payload_generator_profile"
@@ -20,11 +20,35 @@ def run(context: Any, payload: Any, config: dict[str, Any] | None, manifest: dic
         forbidden_behavior = spec.get("does_not_own") if isinstance(spec.get("does_not_own"), list) else []
     required_detail_keys = spec.get("required_detail_keys") if isinstance(spec.get("required_detail_keys"), list) else []
     forbidden_detail_keys = spec.get("forbidden_detail_keys") if isinstance(spec.get("forbidden_detail_keys"), list) else []
+    target_text = user_target_text(payload_data)
+    target_lower = target_text.lower()
+    if any(term in target_lower for term in ["auth", "login", "middleware", "migration", "rollback", "database"]):
+        domain_probe = {
+            "name": "release_safety_domain_probe",
+            "payload": {"task": "Verify auth middleware rollback and login regression safety", "capability_spec": spec},
+            "expect": {"must_reflect_terms": ["auth", "rollback", "login"], "risk_topic": "release_safety"},
+        }
+        domain_expectation = "release probes should produce rollback, migration, and login-regression decisions"
+    elif any(term in target_lower for term in ["medical", "citation", "source", "claim", "retrieval", "hallucination"]):
+        domain_probe = {
+            "name": "grounded_answer_domain_probe",
+            "payload": {"task": "Verify medical claim support against citations and source notes", "capability_spec": spec},
+            "expect": {"must_reflect_terms": ["claim", "citation", "source"], "risk_topic": "grounding"},
+        }
+        domain_expectation = "grounding probes should produce claim, citation, source-support, and caveat decisions"
+    else:
+        domain_probe = {
+            "name": "generic_domain_probe",
+            "payload": {"task": name, "capability_spec": spec},
+            "expect": {"must_reflect_terms": [str(name).split()[0] if str(name).split() else "capability"], "risk_topic": "generic"},
+        }
+        domain_expectation = "generic probes should still change decision fields from empty and forbidden probes"
     test_payloads = [
         {"name": "empty_payload_missing_input", "payload": {}, "expect": {"missing_inputs": True, "blockers": True}},
         {"name": "required_behavior_happy_path", "payload": {"task": name, "required_behavior": required_behavior, "capability_spec": spec}, "expect": {"detail_keys": required_detail_keys}},
         {"name": "forbidden_behavior_guard", "payload": {"task": name, "forbidden_behavior": forbidden_behavior, "capability_spec": spec}, "expect": {"forbidden_detail_keys_absent": forbidden_detail_keys}},
         {"name": "semantic_contrast", "payload": {"task": "different domain contrast", "capability_spec": spec}, "expect": {"decision_surface_differs": True}},
+        domain_probe,
     ]
     contrast_pairs = [
         {"left": "required_behavior_happy_path", "right": "semantic_contrast", "expected_difference": "summary, recommended_actions, scores, and machine details should change"},
@@ -51,23 +75,33 @@ def run(context: Any, payload: Any, config: dict[str, Any] | None, manifest: dic
             {"title": "Generated probes", "detail": test_payloads},
             {"title": "Edge cases", "detail": edge_cases},
             {"title": "Contrast pairs", "detail": contrast_pairs},
+            {"title": "Domain-specific expectation", "detail": domain_expectation},
             {"title": "Probe execution plan", "detail": probe_execution_plan},
         ],
         "recommended_actions": [
+            {"action": "Run domain-specific probe", "probe": domain_probe["name"], "expectation": domain_expectation},
             {"action": "Run generated payloads before promotion", "payload_count": len(test_payloads)},
             {"action": "Fail on forbidden behavior", "forbidden_behavior": forbidden_behavior},
             {"action": "Diff semantic contrast pairs", "contrast_pairs": contrast_pairs},
             {"action": "Track regressions across future repairs", "regression_watchlist": regression_watchlist},
         ],
-        "scores": {"confidence": 0.93 if spec else 0.4, "usefulness": 0.94 if spec else 0.5, "probe_count": len(test_payloads), "contrast_pair_count": len(contrast_pairs)},
+        "scores": {"confidence": 0.93 if spec else 0.4, "usefulness": 0.94 if spec else 0.5, "probe_count": len(test_payloads), "contrast_pair_count": len(contrast_pairs), "domain_probe_specificity": 0.9 if domain_probe["name"] != "generic_domain_probe" else 0.62},
         "details": {
             "test_payloads": test_payloads,
             "edge_cases": edge_cases,
             "expected_differences": [pair["expected_difference"] for pair in contrast_pairs],
             "contrast_pairs": contrast_pairs,
+            "domain_probe": domain_probe,
+            "domain_expectation": domain_expectation,
             "probe_execution_plan": probe_execution_plan,
             "regression_watchlist": regression_watchlist,
             "missing_inputs": missing,
+        },
+        "progress_state": {
+            "current_stage": PROFILE_ID,
+            "next_step": f"Run {domain_probe['name']}",
+            "blockers": missing,
+            "done_signals": ["test_payloads_ready", domain_probe["name"]],
         },
     }
     return finalize_profile_result(result, profile_id=PROFILE_ID, payload_warnings=warnings, manifest=manifest, payload_data=payload_data)
