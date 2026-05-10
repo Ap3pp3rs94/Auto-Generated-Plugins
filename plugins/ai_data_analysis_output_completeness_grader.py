@@ -19,12 +19,12 @@ _PLUGIN_CATEGORY: str = 'ai_evaluation'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Grade AI data analysis and analytics workflows AI outputs for completeness against task requirements and acceptance criteria.'
 _PLUGIN_TAGS = ['data', 'analytics', 'evaluation', 'completeness', 'quality', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress']
-_PLUGIN_OWNER_ID = 'francis-factory'
+_PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'scoring'
 _PLUGIN_INTENDED_DOMAIN = 'AI data analysis and analytics workflows output completeness and acceptance scoring'
 _PLUGIN_USE_CASES = ['Apply this capability to the distinct use case: Data Analysis.', 'Identify missing sections or unmet requirements.', 'Score completeness using task-specific signals.', 'Recommend edits that close blocking gaps.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Data Analysis Output Completeness Grader 000299', 'slug': 'ai_data_analysis_output_completeness_grader', 'goal': 'Grade AI data analysis and analytics workflows AI outputs for completeness against task requirements and acceptance criteria.', 'category': 'ai_evaluation', 'tags': ['data', 'analytics', 'evaluation', 'completeness', 'quality', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI data analysis and analytics workflows output completeness and acceptance scoring', 'owner_id': 'francis-factory', 'use_cases': ['Apply this capability to the distinct use case: Data Analysis.', 'Identify missing sections or unmet requirements.', 'Score completeness using task-specific signals.', 'Recommend edits that close blocking gaps.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Data Analysis Output Completeness Grader 000299', 'slug': 'ai_data_analysis_output_completeness_grader', 'goal': 'Grade AI data analysis and analytics workflows AI outputs for completeness against task requirements and acceptance criteria.', 'category': 'ai_evaluation', 'tags': ['data', 'analytics', 'evaluation', 'completeness', 'quality', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI data analysis and analytics workflows output completeness and acceptance scoring', 'owner_id': None, 'use_cases': ['Apply this capability to the distinct use case: Data Analysis.', 'Identify missing sections or unmet requirements.', 'Score completeness using task-specific signals.', 'Recommend edits that close blocking gaps.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:
@@ -148,7 +148,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI data analysis and analytics workflows output completeness and acceptance scoring'
         capability_type = 'scoring'
         logic_profile_id = 'continuous_output_completeness_grader_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'regenerated after capability identity gate'
         use_cases = ['Apply this capability to the distinct use case: Data Analysis.', 'Identify missing sections or unmet requirements.', 'Score completeness using task-specific signals.', 'Recommend edits that close blocking gaps.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = list(payload_data.get('_payload_warnings', [])) if isinstance(payload_data.get('_payload_warnings'), list) else []
@@ -316,6 +316,37 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'semantic_probe_ready': bool(has_user_input and not result['details'].get('missing_inputs')),
         }
         result['diagnostics']['profile_output_keys'] = sorted(result.keys())
+        missing_sections = []
+        for label, terms in [
+            ('objective', ['objective', 'goal', 'outcome']),
+            ('evidence', ['evidence', 'source', 'proof', 'validation']),
+            ('risk', ['risk', 'rollback', 'safety', 'blocked']),
+            ('next_steps', ['next', 'action', 'step', 'owner']),
+            ('verification', ['test', 'verify', 'check', 'acceptance']),
+        ]:
+            if not any(term in lower_response for term in terms):
+                missing_sections.append(label)
+        completeness_findings = [
+            {'section': 'covered_requirements', 'count': len(covered_requirements), 'status': 'present' if covered_requirements else 'missing'},
+            {'section': 'missing_requirements', 'count': len(missing_requirements), 'status': 'blocking' if missing_requirements else 'clear'},
+            {'section': 'missing_sections', 'items': missing_sections, 'status': 'blocking' if missing_sections else 'clear'},
+        ]
+        completeness_score = round(max(0.05, min(0.97, 0.35 + 0.35 * coverage + 0.08 * bool(covered_requirements) - 0.04 * len(missing_sections))), 2)
+        result['summary'] = plugin_name + ': graded output completeness at ' + str(completeness_score) + ' with ' + str(len(missing_sections)) + ' missing section(s).'
+        result['primary_insights'].append({'title': 'Completeness findings', 'detail': completeness_findings})
+        result['recommended_actions'] = [
+            {'action': 'Fill missing output sections', 'missing_sections': missing_sections},
+            {'action': 'Close missing requirements', 'missing_requirements': missing_requirements},
+            {'action': 'Regrade completeness after edits', 'completeness_score': completeness_score},
+        ] + result.get('recommended_actions', [])[:2]
+        result['scores']['completeness_score'] = completeness_score
+        result['scores']['missing_section_count'] = len(missing_sections)
+        result['details']['completeness_findings'] = completeness_findings
+        result['details']['missing_sections'] = missing_sections
+        result['details']['completeness_score'] = completeness_score
+        result['progress_state']['next_step'] = 'Fill missing output sections'
+        result['fun_mode']['optional_next_challenge'] = 'Regrade completeness after edits'
+        result['fun_mode']['celebratory_microcopy'] = result['summary']
     except Exception as _exc:
         result = {
             'summary': 'Capability profile failed; fallback applied.',

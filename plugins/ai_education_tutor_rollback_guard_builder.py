@@ -19,12 +19,12 @@ _PLUGIN_CATEGORY: str = 'ai_safety'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Check rollback readiness for AI education, tutoring, and learning workflows AI changes before they are applied or published.'
 _PLUGIN_TAGS = ['education', 'learning', 'rollback', 'safety', 'release', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress']
-_PLUGIN_OWNER_ID = 'francis-factory'
+_PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'scoring'
 _PLUGIN_INTENDED_DOMAIN = 'AI education, tutoring, and learning workflows rollback safety and recovery planning'
 _PLUGIN_USE_CASES = ['Apply this capability to the distinct use case: Education Tutor.', 'Detect missing rollback and backup details.', 'Score blast radius and recovery readiness.', 'Recommend proceed, hold, or add safeguards.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Education Tutor Rollback Guard Builder 000255', 'slug': 'ai_education_tutor_rollback_guard_builder', 'goal': 'Check rollback readiness for AI education, tutoring, and learning workflows AI changes before they are applied or published.', 'category': 'ai_safety', 'tags': ['education', 'learning', 'rollback', 'safety', 'release', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI education, tutoring, and learning workflows rollback safety and recovery planning', 'owner_id': 'francis-factory', 'use_cases': ['Apply this capability to the distinct use case: Education Tutor.', 'Detect missing rollback and backup details.', 'Score blast radius and recovery readiness.', 'Recommend proceed, hold, or add safeguards.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Education Tutor Rollback Guard Builder 000255', 'slug': 'ai_education_tutor_rollback_guard_builder', 'goal': 'Check rollback readiness for AI education, tutoring, and learning workflows AI changes before they are applied or published.', 'category': 'ai_safety', 'tags': ['education', 'learning', 'rollback', 'safety', 'release', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI education, tutoring, and learning workflows rollback safety and recovery planning', 'owner_id': None, 'use_cases': ['Apply this capability to the distinct use case: Education Tutor.', 'Detect missing rollback and backup details.', 'Score blast radius and recovery readiness.', 'Recommend proceed, hold, or add safeguards.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:
@@ -148,7 +148,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI education, tutoring, and learning workflows rollback safety and recovery planning'
         capability_type = 'scoring'
         logic_profile_id = 'continuous_rollback_guard_builder_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'regenerated after capability identity gate'
         use_cases = ['Apply this capability to the distinct use case: Education Tutor.', 'Detect missing rollback and backup details.', 'Score blast radius and recovery readiness.', 'Recommend proceed, hold, or add safeguards.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = list(payload_data.get('_payload_warnings', [])) if isinstance(payload_data.get('_payload_warnings'), list) else []
@@ -295,6 +295,44 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'semantic_probe_ready': bool(has_user_input and not result['details'].get('missing_inputs')),
         }
         result['diagnostics']['profile_output_keys'] = sorted(result.keys())
+        rollback_signals = []
+        for finding in risk_findings:
+            text = (finding.get('step', '') + ' ' + ' '.join(finding.get('risk_terms', []))).lower()
+            if any(term in text for term in ['rollback', 'database', 'migration', 'production', 'auth', 'login', 'deploy']):
+                rollback_signals.append(finding)
+        missing_rollback_controls = []
+        control_text = ' '.join(controls).lower()
+        if 'rollback' not in control_text:
+            missing_rollback_controls.append('rollback procedure')
+        if not any('owner' in str(step).lower() for step in steps):
+            missing_rollback_controls.append('rollback owner')
+        if not any(term in ' '.join(str(step).lower() for step in steps) for term in ['backup', 'restore', 'snapshot']):
+            missing_rollback_controls.append('backup or restore evidence')
+        blast_radius = 'high' if any(item.get('category') == 'release_safety' for item in risk_findings) else 'medium' if risk_findings else 'low'
+        rollback_readiness = round(max(0.05, min(0.96, 0.72 - 0.1 * len(missing_rollback_controls) - (0.08 if blast_radius == 'high' else 0) + 0.04 * bool(rollback_signals))), 2)
+        rollback_plan = [
+            {'step': 'name rollback owner', 'required': 'rollback owner' in missing_rollback_controls},
+            {'step': 'capture backup or restore evidence', 'required': 'backup or restore evidence' in missing_rollback_controls},
+            {'step': 'define rollback trigger before release', 'required': True},
+            {'step': 'run recovery check after rollback rehearsal', 'required': blast_radius != 'low'},
+        ]
+        result['summary'] = plugin_name + ': built rollback guard with readiness=' + str(rollback_readiness) + ' and blast_radius=' + blast_radius + '.'
+        result['primary_insights'].append({'title': 'Rollback plan', 'detail': rollback_plan})
+        result['recommended_actions'] = [
+            {'action': 'Complete rollback plan before release', 'rollback_plan': rollback_plan},
+            {'action': 'Resolve missing rollback controls', 'missing_rollback_controls': missing_rollback_controls},
+            {'action': 'Review blast radius before approval', 'blast_radius': blast_radius},
+        ] + result.get('recommended_actions', [])[:2]
+        result['scores']['rollback_readiness'] = rollback_readiness
+        result['scores']['blast_radius_risk'] = {'low': 0.2, 'medium': 0.5, 'high': 0.82}.get(blast_radius, 0.5)
+        result['details']['rollback_plan'] = rollback_plan
+        result['details']['rollback_readiness'] = rollback_readiness
+        result['details']['blast_radius'] = blast_radius
+        result['details']['missing_rollback_controls'] = missing_rollback_controls
+        result['details']['rollback_signals'] = rollback_signals
+        result['progress_state']['next_step'] = 'Complete rollback plan before release'
+        result['fun_mode']['optional_next_challenge'] = 'Complete rollback plan before release'
+        result['fun_mode']['celebratory_microcopy'] = result['summary']
     except Exception as _exc:
         result = {
             'summary': 'Capability profile failed; fallback applied.',

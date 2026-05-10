@@ -19,12 +19,12 @@ _PLUGIN_CATEGORY: str = 'ai_safety'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Inspect tool arguments for AI capability factory and generated module operations for unsafe scope, missing bounds, or injected instructions.'
 _PLUGIN_TAGS = ['capabilities', 'factory', 'tools', 'arguments', 'safety', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress']
-_PLUGIN_OWNER_ID = 'francis-factory'
+_PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'scoring'
 _PLUGIN_INTENDED_DOMAIN = 'AI capability factory and generated module operations tool argument safety and sanitization'
 _PLUGIN_USE_CASES = ['Apply this capability to the distinct use case: Capability Factory.', 'Detect broad paths, destructive flags, and untrusted text.', 'Recommend bounded arguments before execution.', 'Separate safe read-only calls from risky mutations.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Capability Factory Tool Argument Checker 000442', 'slug': 'ai_plugin_factory_tool_argument_checker', 'goal': 'Inspect tool arguments for AI capability factory and generated module operations for unsafe scope, missing bounds, or injected instructions.', 'category': 'ai_safety', 'tags': ['capabilities', 'factory', 'tools', 'arguments', 'safety', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI capability factory and generated module operations tool argument safety and sanitization', 'owner_id': 'francis-factory', 'use_cases': ['Apply this capability to the distinct use case: Capability Factory.', 'Detect broad paths, destructive flags, and untrusted text.', 'Recommend bounded arguments before execution.', 'Separate safe read-only calls from risky mutations.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Capability Factory Tool Argument Checker 000442', 'slug': 'ai_plugin_factory_tool_argument_checker', 'goal': 'Inspect tool arguments for AI capability factory and generated module operations for unsafe scope, missing bounds, or injected instructions.', 'category': 'ai_safety', 'tags': ['capabilities', 'factory', 'tools', 'arguments', 'safety', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'scoring', 'intended_domain': 'AI capability factory and generated module operations tool argument safety and sanitization', 'owner_id': None, 'use_cases': ['Apply this capability to the distinct use case: Capability Factory.', 'Detect broad paths, destructive flags, and untrusted text.', 'Recommend bounded arguments before execution.', 'Separate safe read-only calls from risky mutations.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:
@@ -148,7 +148,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI capability factory and generated module operations tool argument safety and sanitization'
         capability_type = 'scoring'
         logic_profile_id = 'continuous_tool_argument_checker_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'regenerated after capability identity gate'
         use_cases = ['Apply this capability to the distinct use case: Capability Factory.', 'Detect broad paths, destructive flags, and untrusted text.', 'Recommend bounded arguments before execution.', 'Separate safe read-only calls from risky mutations.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = list(payload_data.get('_payload_warnings', [])) if isinstance(payload_data.get('_payload_warnings'), list) else []
@@ -312,6 +312,38 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'semantic_probe_ready': bool(has_user_input and not result['details'].get('missing_inputs')),
         }
         result['diagnostics']['profile_output_keys'] = sorted(result.keys())
+        argument_risks = []
+        for surface in surfaces:
+            lower = surface['text'].lower()
+            hits = []
+            for term in ['--force', '--recursive', '--all', 'delete', 'drop', 'truncate', 'overwrite', 'secret', 'token', '../', '*', 'sudo', 'admin']:
+                if term in lower:
+                    hits.append(term)
+            if hits:
+                argument_risks.append({'source': surface['source'], 'signals': hits, 'preview': surface['text'][:220]})
+        unsafe_arguments = sorted({signal for item in argument_risks for signal in item.get('signals', [])})
+        sanitized_arguments = {
+            'remove_or_confirm': unsafe_arguments,
+            'safe_defaults': ['read-only scope', 'explicit path allowlist', 'dry-run before mutation'],
+            'bounded_context_sources': [surface['source'] for surface in surfaces[:8]],
+        }
+        argument_safety_decision = 'repair_arguments' if argument_risks else 'arguments_clear'
+        result['summary'] = plugin_name + ': checked tool arguments and found ' + str(len(argument_risks)) + ' risky argument surface(s).'
+        result['primary_insights'].append({'title': 'Argument risks', 'detail': argument_risks or 'No risky argument signal detected.'})
+        result['recommended_actions'] = [
+            {'action': 'Sanitize tool arguments before execution', 'sanitized_arguments': sanitized_arguments},
+            {'action': 'Review unsafe arguments', 'unsafe_arguments': unsafe_arguments},
+            {'action': 'Apply trust-boundary handling rules', 'rules': handling_rules},
+        ] + result.get('recommended_actions', [])[:2]
+        result['scores']['argument_risk'] = round(min(0.95, 0.12 + 0.12 * len(argument_risks) + 0.04 * len(unsafe_arguments)), 2)
+        result['scores']['argument_safety_readiness'] = round(max(0.05, 0.9 - 0.12 * len(argument_risks)), 2)
+        result['details']['argument_risks'] = argument_risks
+        result['details']['unsafe_arguments'] = unsafe_arguments
+        result['details']['sanitized_arguments'] = sanitized_arguments
+        result['details']['argument_safety_decision'] = argument_safety_decision
+        result['progress_state']['next_step'] = 'Sanitize tool arguments before execution'
+        result['fun_mode']['optional_next_challenge'] = 'Sanitize tool arguments before execution'
+        result['fun_mode']['celebratory_microcopy'] = result['summary']
     except Exception as _exc:
         result = {
             'summary': 'Capability profile failed; fallback applied.',

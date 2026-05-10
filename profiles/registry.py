@@ -574,6 +574,83 @@ result['details'] = {{'evaluated_response': response_text[:1200], 'covered_requi
 """.strip()
 
 
+def _output_completeness_grader(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
+    return _output_quality(spec, capability_type, profile_id, reason) + "\n" + """
+missing_sections = []
+for label, terms in [
+    ('objective', ['objective', 'goal', 'outcome']),
+    ('evidence', ['evidence', 'source', 'proof', 'validation']),
+    ('risk', ['risk', 'rollback', 'safety', 'blocked']),
+    ('next_steps', ['next', 'action', 'step', 'owner']),
+    ('verification', ['test', 'verify', 'check', 'acceptance']),
+]:
+    if not any(term in lower_response for term in terms):
+        missing_sections.append(label)
+completeness_findings = [
+    {'section': 'covered_requirements', 'count': len(covered_requirements), 'status': 'present' if covered_requirements else 'missing'},
+    {'section': 'missing_requirements', 'count': len(missing_requirements), 'status': 'blocking' if missing_requirements else 'clear'},
+    {'section': 'missing_sections', 'items': missing_sections, 'status': 'blocking' if missing_sections else 'clear'},
+]
+completeness_score = round(max(0.05, min(0.97, 0.35 + 0.35 * coverage + 0.08 * bool(covered_requirements) - 0.04 * len(missing_sections))), 2)
+result['summary'] = plugin_name + ': graded output completeness at ' + str(completeness_score) + ' with ' + str(len(missing_sections)) + ' missing section(s).'
+result['primary_insights'].append({'title': 'Completeness findings', 'detail': completeness_findings})
+result['recommended_actions'] = [
+    {'action': 'Fill missing output sections', 'missing_sections': missing_sections},
+    {'action': 'Close missing requirements', 'missing_requirements': missing_requirements},
+    {'action': 'Regrade completeness after edits', 'completeness_score': completeness_score},
+] + result.get('recommended_actions', [])[:2]
+result['scores']['completeness_score'] = completeness_score
+result['scores']['missing_section_count'] = len(missing_sections)
+result['details']['completeness_findings'] = completeness_findings
+result['details']['missing_sections'] = missing_sections
+result['details']['completeness_score'] = completeness_score
+result['progress_state']['next_step'] = 'Fill missing output sections'
+result['fun_mode']['optional_next_challenge'] = 'Regrade completeness after edits'
+result['fun_mode']['celebratory_microcopy'] = result['summary']
+""".strip()
+
+
+def _response_action_planner(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
+    return _output_quality(spec, capability_type, profile_id, reason) + "\n" + """
+actionability_gaps = []
+if not any(word in lower_response for word in ['owner', 'assign', 'who']):
+    actionability_gaps.append('owner')
+if not any(word in lower_response for word in ['when', 'deadline', 'before', 'after']):
+    actionability_gaps.append('sequence_or_timing')
+if not any(word in lower_response for word in ['verify', 'test', 'check', 'evidence']):
+    actionability_gaps.append('verification')
+if not any(word in lower_response for word in ['risk', 'rollback', 'safe', 'blocked']):
+    actionability_gaps.append('risk_note')
+action_plan = []
+for idx, item in enumerate(improvement_checklist[:6], start=1):
+    action_plan.append({
+        'step': idx,
+        'action': item,
+        'owner_hint': 'human reviewer' if 'evidence' in item.lower() or 'risk' in item.lower() else 'builder',
+        'verification_check': 'Confirm this action closes a missing requirement before final response.',
+    })
+if not action_plan:
+    action_plan.append({'step': 1, 'action': 'Publish response after final verification.', 'owner_hint': 'operator', 'verification_check': 'All requirements are covered.'})
+next_step_checks = [item['verification_check'] for item in action_plan]
+actionability_score = round(max(0.05, min(0.97, 0.42 + 0.07 * len(action_plan) - 0.06 * len(actionability_gaps))), 2)
+result['summary'] = plugin_name + ': built ' + str(len(action_plan)) + ' executable response action(s) with actionability=' + str(actionability_score) + '.'
+result['primary_insights'].append({'title': 'Actionability gaps', 'detail': actionability_gaps or 'No blocking actionability gap detected.'})
+result['recommended_actions'] = [
+    {'action': 'Execute response action plan', 'action_plan': action_plan},
+    {'action': 'Close actionability gaps', 'actionability_gaps': actionability_gaps},
+    {'action': 'Run next-step checks', 'next_step_checks': next_step_checks},
+]
+result['scores']['actionability_score'] = actionability_score
+result['scores']['actionability_gap_count'] = len(actionability_gaps)
+result['details']['action_plan'] = action_plan
+result['details']['actionability_gaps'] = actionability_gaps
+result['details']['next_step_checks'] = next_step_checks
+result['progress_state']['next_step'] = 'Execute response action plan'
+result['fun_mode']['optional_next_challenge'] = 'Execute response action plan'
+result['fun_mode']['celebratory_microcopy'] = result['summary']
+""".strip()
+
+
 def _hallucination(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
@@ -829,6 +906,34 @@ result['recommended_actions'] = [{{'action': 'Run prompt test case', 'case': ite
 result['scores'] = {{'confidence': round(min(0.92, 0.46 + min(0.22, len(prompt_text.split()) / 120) + 0.035 * len(test_cases)), 2), 'test_coverage': coverage, 'ambiguity_risk': round(min(0.9, 0.12 * len(ambiguities) + 0.025 * signal_count), 2), 'risk': round(min(0.9, 1 - coverage + 0.025 * signal_count), 2), 'risk_signal_count': signal_count}}
 result['details'] = {{'test_cases': test_cases, 'ambiguities': ambiguities, 'risk_tags': risk_tags, 'expected_behavior': expected_behavior, 'missing_inputs': ['prompt'] if not prompt_text else []}}
 {_common_result_footer("'Run prompt test case: ' + test_cases[0]['case_type']")}
+""".strip()
+
+
+def _verification_checklist_builder(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
+    return _prompt_test_cases(spec, capability_type, profile_id, reason) + "\n" + """
+verification_checklist = [
+    {'check': 'normal_path', 'evidence_required': test_cases[0]['expected_check'] if test_cases else expected_behavior, 'owner': 'automation' if test_cases else 'human reviewer'},
+    {'check': 'edge_case', 'evidence_required': 'Prove missing context is handled without guessing.', 'owner': 'automation'},
+    {'check': 'adversarial_case', 'evidence_required': 'Prove conflicting instructions do not override constraints.', 'owner': 'human reviewer'},
+]
+for tag in risk_tags:
+    verification_checklist.append({'check': tag['category'], 'evidence_required': 'Verify signals: ' + ', '.join(tag['signals'][:5]), 'owner': 'human reviewer'})
+automated_checks = [item for item in verification_checklist if item['owner'] == 'automation']
+human_review_checks = [item for item in verification_checklist if item['owner'] != 'automation']
+result['summary'] = plugin_name + ': built verification checklist with ' + str(len(verification_checklist)) + ' acceptance check(s).'
+result['primary_insights'].append({'title': 'Verification checklist', 'detail': verification_checklist})
+result['recommended_actions'] = [
+    {'action': 'Run verification checklist', 'verification_checklist': verification_checklist},
+    {'action': 'Run automated checks first', 'checks': automated_checks},
+    {'action': 'Assign human review checks', 'checks': human_review_checks},
+] + result.get('recommended_actions', [])[:2]
+result['scores']['verification_readiness'] = round(min(0.96, 0.48 + 0.08 * len(verification_checklist) + 0.03 * len(automated_checks)), 2)
+result['details']['verification_checklist'] = verification_checklist
+result['details']['automated_checks'] = automated_checks
+result['details']['human_review_checks'] = human_review_checks
+result['progress_state']['next_step'] = 'Run verification checklist'
+result['fun_mode']['optional_next_challenge'] = 'Run verification checklist'
+result['fun_mode']['celebratory_microcopy'] = result['summary']
 """.strip()
 
 
@@ -1154,6 +1259,49 @@ result['details'] = {{'risk_findings': risk_findings, 'controls': controls, 'app
 """.strip()
 
 
+def _rollback_guard_builder(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
+    return _automation_safety(spec, capability_type, profile_id, reason) + "\n" + """
+rollback_signals = []
+for finding in risk_findings:
+    text = (finding.get('step', '') + ' ' + ' '.join(finding.get('risk_terms', []))).lower()
+    if any(term in text for term in ['rollback', 'database', 'migration', 'production', 'auth', 'login', 'deploy']):
+        rollback_signals.append(finding)
+missing_rollback_controls = []
+control_text = ' '.join(controls).lower()
+if 'rollback' not in control_text:
+    missing_rollback_controls.append('rollback procedure')
+if not any('owner' in str(step).lower() for step in steps):
+    missing_rollback_controls.append('rollback owner')
+if not any(term in ' '.join(str(step).lower() for step in steps) for term in ['backup', 'restore', 'snapshot']):
+    missing_rollback_controls.append('backup or restore evidence')
+blast_radius = 'high' if any(item.get('category') == 'release_safety' for item in risk_findings) else 'medium' if risk_findings else 'low'
+rollback_readiness = round(max(0.05, min(0.96, 0.72 - 0.1 * len(missing_rollback_controls) - (0.08 if blast_radius == 'high' else 0) + 0.04 * bool(rollback_signals))), 2)
+rollback_plan = [
+    {'step': 'name rollback owner', 'required': 'rollback owner' in missing_rollback_controls},
+    {'step': 'capture backup or restore evidence', 'required': 'backup or restore evidence' in missing_rollback_controls},
+    {'step': 'define rollback trigger before release', 'required': True},
+    {'step': 'run recovery check after rollback rehearsal', 'required': blast_radius != 'low'},
+]
+result['summary'] = plugin_name + ': built rollback guard with readiness=' + str(rollback_readiness) + ' and blast_radius=' + blast_radius + '.'
+result['primary_insights'].append({'title': 'Rollback plan', 'detail': rollback_plan})
+result['recommended_actions'] = [
+    {'action': 'Complete rollback plan before release', 'rollback_plan': rollback_plan},
+    {'action': 'Resolve missing rollback controls', 'missing_rollback_controls': missing_rollback_controls},
+    {'action': 'Review blast radius before approval', 'blast_radius': blast_radius},
+] + result.get('recommended_actions', [])[:2]
+result['scores']['rollback_readiness'] = rollback_readiness
+result['scores']['blast_radius_risk'] = {'low': 0.2, 'medium': 0.5, 'high': 0.82}.get(blast_radius, 0.5)
+result['details']['rollback_plan'] = rollback_plan
+result['details']['rollback_readiness'] = rollback_readiness
+result['details']['blast_radius'] = blast_radius
+result['details']['missing_rollback_controls'] = missing_rollback_controls
+result['details']['rollback_signals'] = rollback_signals
+result['progress_state']['next_step'] = 'Complete rollback plan before release'
+result['fun_mode']['optional_next_challenge'] = 'Complete rollback plan before release'
+result['fun_mode']['celebratory_microcopy'] = result['summary']
+""".strip()
+
+
 def _progress_tracker(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
     return f"""
 {_common_header(spec, capability_type, profile_id, reason)}
@@ -1438,6 +1586,43 @@ context_signal_count = sum(len(match['signals']) for item in context_risk_findin
 result['scores'] = {{'confidence': round(min(0.92, 0.42 + 0.025 * len(surfaces) + 0.05 * len(injection_findings) + 0.025 * context_signal_count), 2), 'injection_risk': round(min(0.95, 0.12 + 0.18 * len(injection_findings) + 0.035 * context_signal_count), 2), 'risk': round(min(0.95, 0.12 + 0.18 * len(injection_findings) + 0.035 * context_signal_count), 2), 'surface_count': len(surfaces), 'context_signal_count': context_signal_count}}
 result['details'] = {{'injection_findings': injection_findings, 'context_risk_findings': context_risk_findings, 'trust_boundaries': trust_boundaries, 'handling_rules': handling_rules, 'sanitized_context_plan': sanitized_context_plan, 'missing_inputs': ['prompt or context surfaces'] if not surfaces else []}}
 {_common_result_footer("'Apply ' + top_context_risk + ' prompt-injection handling rules'")}
+""".strip()
+
+
+def _tool_argument_checker(spec: PluginSpec, capability_type: Optional[str], profile_id: str, reason: str) -> str:
+    return _prompt_injection_scanner(spec, capability_type, profile_id, reason) + "\n" + """
+argument_risks = []
+for surface in surfaces:
+    lower = surface['text'].lower()
+    hits = []
+    for term in ['--force', '--recursive', '--all', 'delete', 'drop', 'truncate', 'overwrite', 'secret', 'token', '../', '*', 'sudo', 'admin']:
+        if term in lower:
+            hits.append(term)
+    if hits:
+        argument_risks.append({'source': surface['source'], 'signals': hits, 'preview': surface['text'][:220]})
+unsafe_arguments = sorted({signal for item in argument_risks for signal in item.get('signals', [])})
+sanitized_arguments = {
+    'remove_or_confirm': unsafe_arguments,
+    'safe_defaults': ['read-only scope', 'explicit path allowlist', 'dry-run before mutation'],
+    'bounded_context_sources': [surface['source'] for surface in surfaces[:8]],
+}
+argument_safety_decision = 'repair_arguments' if argument_risks else 'arguments_clear'
+result['summary'] = plugin_name + ': checked tool arguments and found ' + str(len(argument_risks)) + ' risky argument surface(s).'
+result['primary_insights'].append({'title': 'Argument risks', 'detail': argument_risks or 'No risky argument signal detected.'})
+result['recommended_actions'] = [
+    {'action': 'Sanitize tool arguments before execution', 'sanitized_arguments': sanitized_arguments},
+    {'action': 'Review unsafe arguments', 'unsafe_arguments': unsafe_arguments},
+    {'action': 'Apply trust-boundary handling rules', 'rules': handling_rules},
+] + result.get('recommended_actions', [])[:2]
+result['scores']['argument_risk'] = round(min(0.95, 0.12 + 0.12 * len(argument_risks) + 0.04 * len(unsafe_arguments)), 2)
+result['scores']['argument_safety_readiness'] = round(max(0.05, 0.9 - 0.12 * len(argument_risks)), 2)
+result['details']['argument_risks'] = argument_risks
+result['details']['unsafe_arguments'] = unsafe_arguments
+result['details']['sanitized_arguments'] = sanitized_arguments
+result['details']['argument_safety_decision'] = argument_safety_decision
+result['progress_state']['next_step'] = 'Sanitize tool arguments before execution'
+result['fun_mode']['optional_next_challenge'] = 'Sanitize tool arguments before execution'
+result['fun_mode']['celebratory_microcopy'] = result['summary']
 """.strip()
 
 
@@ -2033,12 +2218,12 @@ CONTINUOUS_PROFILE_PATTERNS: tuple[tuple[str, str, Callable[[PluginSpec, Optiona
     ("agent_handoff_checker", "continuous_agent_handoff_checker_profile", _handoff),
     ("parallelization_planner", "continuous_parallelization_planner_profile", _task_planner),
     ("tool_safety_reviewer", "continuous_tool_safety_reviewer_profile", _automation_safety),
-    ("tool_argument_checker", "continuous_tool_argument_checker_profile", _prompt_injection_scanner),
-    ("output_completeness_grader", "continuous_output_completeness_grader_profile", _output_quality),
-    ("response_action_planner", "continuous_response_action_planner_profile", _output_quality),
+    ("tool_argument_checker", "continuous_tool_argument_checker_profile", _tool_argument_checker),
+    ("output_completeness_grader", "continuous_output_completeness_grader_profile", _output_completeness_grader),
+    ("response_action_planner", "continuous_response_action_planner_profile", _response_action_planner),
     ("assumption_risk_mapper", "continuous_assumption_risk_mapper_profile", _requirement_gap_analyzer),
-    ("verification_checklist_builder", "continuous_verification_checklist_builder_profile", _prompt_test_cases),
-    ("rollback_guard_builder", "continuous_rollback_guard_builder_profile", _automation_safety),
+    ("verification_checklist_builder", "continuous_verification_checklist_builder_profile", _verification_checklist_builder),
+    ("rollback_guard_builder", "continuous_rollback_guard_builder_profile", _rollback_guard_builder),
     ("anomaly_watch_builder", "continuous_anomaly_watch_builder_profile", _autonomous_run_governor),
     ("capability_overlap_checker", "capability_overlap_checker_profile", _dispatcher_profile),
     ("release_evidence_summarizer", "continuous_release_evidence_summarizer_profile", _artifact_release_notes),

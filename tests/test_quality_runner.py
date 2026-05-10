@@ -134,7 +134,23 @@ class QualityRunnerTests(unittest.TestCase):
         )
         self.assertEqual(
             _required_detail_keys("continuous_tool_argument_checker_profile"),
-            PROFILE_REQUIRED_DETAIL_KEYS["prompt_injection_surface_scanner_profile"],
+            PROFILE_REQUIRED_DETAIL_KEYS["continuous_tool_argument_checker_profile"],
+        )
+        self.assertIn(
+            "completeness_findings",
+            _required_detail_keys("continuous_output_completeness_grader_profile"),
+        )
+        self.assertIn(
+            "action_plan",
+            _required_detail_keys("continuous_response_action_planner_profile"),
+        )
+        self.assertIn(
+            "verification_checklist",
+            _required_detail_keys("continuous_verification_checklist_builder_profile"),
+        )
+        self.assertIn(
+            "rollback_plan",
+            _required_detail_keys("continuous_rollback_guard_builder_profile"),
         )
 
     def test_tool_routing_probe_rejects_missing_github_tool(self) -> None:

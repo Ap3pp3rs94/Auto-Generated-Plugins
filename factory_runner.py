@@ -1782,6 +1782,252 @@ async def _production_quality_gate(
     )
 
 
+_CAPABILITY_NAME_CONTRACTS: tuple[tuple[str, dict[str, Any]], ...] = (
+    (
+        "tool_argument_checker",
+        {
+            "required_detail_keys": {"argument_risks", "unsafe_arguments", "sanitized_arguments", "argument_safety_decision"},
+            "forbidden_detail_keys": set(),
+        },
+    ),
+    (
+        "output_completeness_grader",
+        {
+            "required_detail_keys": {"completeness_findings", "missing_sections", "completeness_score"},
+            "forbidden_detail_keys": {"action_plan", "actionability_gaps"},
+        },
+    ),
+    (
+        "response_action_planner",
+        {
+            "required_detail_keys": {"action_plan", "actionability_gaps", "next_step_checks"},
+            "forbidden_detail_keys": {"completeness_findings"},
+        },
+    ),
+    (
+        "rollback_guard_builder",
+        {
+            "required_detail_keys": {"rollback_plan", "rollback_readiness", "blast_radius", "missing_rollback_controls"},
+            "forbidden_detail_keys": set(),
+        },
+    ),
+    (
+        "verification_checklist_builder",
+        {
+            "required_detail_keys": {"verification_checklist", "automated_checks", "human_review_checks"},
+            "forbidden_detail_keys": set(),
+        },
+    ),
+    (
+        "agent_handoff_checker",
+        {
+            "required_detail_keys": {"handoff_inputs", "ownership_boundaries", "handoff_overlap_decision"},
+            "forbidden_detail_keys": set(),
+        },
+    ),
+    (
+        "parallelization_planner",
+        {
+            "required_detail_keys": {"sequenced_plan", "handoff_packet"},
+            "forbidden_detail_keys": {"ownership_boundaries"},
+        },
+    ),
+)
+
+
+def _capability_name_marker(slug: str) -> Optional[str]:
+    slug = str(slug or "")
+    for marker, _contract in sorted(_CAPABILITY_NAME_CONTRACTS, key=lambda item: len(item[0]), reverse=True):
+        if marker in slug:
+            return marker
+    return None
+
+
+def _capability_family_prefix(slug: str) -> str:
+    marker = _capability_name_marker(slug)
+    if not marker:
+        return str(slug or "")
+    return str(slug or "").split(marker, 1)[0].strip("_-")
+
+
+def _normalized_gate_profile_id(profile_id: Any) -> str:
+    raw = str(profile_id or "").strip()
+    if not raw:
+        return ""
+    if callable(_normalize_logic_profile_id):
+        try:
+            return str(_normalize_logic_profile_id(raw) or raw)
+        except Exception:
+            return raw
+    return raw
+
+
+def _result_detail_keys(output: Dict[str, Any]) -> Set[str]:
+    details = output.get("details")
+    if not isinstance(details, dict):
+        return set()
+    return {str(key) for key in details.keys()}
+
+
+async def _capability_identity_gate(plugin_path: Path, spec: PluginSpec) -> Tuple[bool, str]:
+    """
+    Prove that the generated behavior matches the capability name/profile.
+
+    Production score measures richness. This gate makes sure the name is not a
+    metadata-only relabel of another profile: the advertised capability must
+    expose its own machine-readable detail keys and route through the expected
+    profile id.
+    """
+    module = _module_from_plugin_path(plugin_path, slug=spec.slug, purpose="capability_identity")
+    output = await _invoke_plugin_for_semantic_check(
+        module,
+        PRODUCTION_QUALITY_PROBE_PAYLOAD,
+        f"{spec.slug}-identity",
+    )
+    details = output.get("details") if isinstance(output.get("details"), dict) else {}
+    diagnostics = output.get("diagnostics") if isinstance(output.get("diagnostics"), dict) else {}
+
+    expected_profile = _registered_profile_id(spec.slug) if callable(_registered_profile_id) else None
+    actual_profile = details.get("logic_profile_id") or diagnostics.get("logic_profile_id")
+    if expected_profile:
+        expected_norm = _normalized_gate_profile_id(expected_profile)
+        actual_norm = _normalized_gate_profile_id(actual_profile)
+        if actual_norm and actual_norm != expected_norm:
+            return (
+                False,
+                "capability_identity: logic profile mismatch "
+                f"(expected={expected_norm}, actual={actual_norm})",
+            )
+        if not actual_norm:
+            return False, f"capability_identity: missing logic_profile_id for expected profile {expected_norm}"
+
+    marker = _capability_name_marker(str(getattr(spec, "slug", "") or ""))
+    if not marker:
+        return True, "capability_identity: no specialized name contract"
+
+    contract = dict(next(item[1] for item in _CAPABILITY_NAME_CONTRACTS if item[0] == marker))
+    detail_keys = _result_detail_keys(output)
+    required = set(contract.get("required_detail_keys") or set())
+    forbidden = set(contract.get("forbidden_detail_keys") or set())
+    missing = sorted(required - detail_keys)
+    present_forbidden = sorted(forbidden & detail_keys)
+    if missing:
+        return (
+            False,
+            f"capability_identity: {marker} missing required detail keys {missing}; "
+            f"present={sorted(detail_keys)}",
+        )
+    if present_forbidden:
+        return (
+            False,
+            f"capability_identity: {marker} contains sibling-only detail keys {present_forbidden}",
+        )
+
+    return (
+        True,
+        f"capability_identity: {marker} matched profile {expected_profile or actual_profile} "
+        f"with detail keys {sorted(required)}",
+    )
+
+
+def _sibling_candidate_paths(spec: PluginSpec, *, max_paths: int = 24) -> list[Path]:
+    slug = str(getattr(spec, "slug", "") or "")
+    prefix = _capability_family_prefix(slug)
+    if not prefix or prefix == slug:
+        return []
+    siblings = [
+        path
+        for path in sorted(PLUGINS_DIR.glob("*.py"))
+        if path.stem != slug and _capability_family_prefix(path.stem) == prefix
+    ]
+    return siblings[-max_paths:]
+
+
+def _sibling_comparison_surface(output: Dict[str, Any]) -> str:
+    details = output.get("details") if isinstance(output.get("details"), dict) else {}
+    surface = {
+        "summary": output.get("summary"),
+        "primary_insights": output.get("primary_insights"),
+        "recommended_actions": output.get("recommended_actions"),
+        "scores": output.get("scores"),
+        "progress_state": output.get("progress_state"),
+        "detail_keys": sorted(str(key) for key in details.keys()),
+        "details": details,
+    }
+    return _jsonish_text(surface, max_chars=16000)
+
+
+async def _sibling_uniqueness_gate(
+    plugin_path: Path,
+    spec: PluginSpec,
+    *,
+    sibling_paths: Optional[Sequence[Path]] = None,
+) -> Tuple[bool, str]:
+    """
+    Prevent a new same-family plugin from being accepted when its behavior is
+    effectively the same as an already-retained sibling.
+    """
+    paths = list(sibling_paths) if sibling_paths is not None else _sibling_candidate_paths(spec)
+    if not paths:
+        return True, "sibling_uniqueness: no same-family siblings to compare"
+
+    candidate_module = _module_from_plugin_path(plugin_path, slug=spec.slug, purpose="sibling_candidate")
+    candidate_output = await _invoke_plugin_for_semantic_check(
+        candidate_module,
+        PRODUCTION_QUALITY_PROBE_PAYLOAD,
+        f"{spec.slug}-sibling-candidate",
+    )
+    candidate_words = _word_set(_sibling_comparison_surface(candidate_output))
+    candidate_keys = _result_detail_keys(candidate_output)
+    strongest: tuple[float, float, str] = (0.0, 0.0, "")
+
+    for sibling_path in paths:
+        try:
+            sibling_module = _module_from_plugin_path(
+                sibling_path,
+                slug=sibling_path.stem,
+                purpose="sibling_existing",
+            )
+            sibling_output = await _invoke_plugin_for_semantic_check(
+                sibling_module,
+                PRODUCTION_QUALITY_PROBE_PAYLOAD,
+                f"{spec.slug}-sibling-existing-{sibling_path.stem}",
+            )
+        except Exception:
+            LOG.debug("Skipping sibling comparison for %s", sibling_path, exc_info=True)
+            continue
+        sibling_words = _word_set(_sibling_comparison_surface(sibling_output))
+        union = candidate_words | sibling_words
+        similarity = (len(candidate_words & sibling_words) / len(union)) if union else 1.0
+        sibling_keys = _result_detail_keys(sibling_output)
+        key_union = candidate_keys | sibling_keys
+        key_similarity = (len(candidate_keys & sibling_keys) / len(key_union)) if key_union else 1.0
+        if similarity > strongest[0]:
+            strongest = (similarity, key_similarity, sibling_path.stem)
+        if similarity >= 0.95 and key_similarity >= 0.72:
+            return (
+                False,
+                "sibling_uniqueness: candidate behavior is too close to retained sibling "
+                f"{sibling_path.stem} (similarity={similarity:.2f}, detail_key_similarity={key_similarity:.2f})",
+            )
+
+    return (
+        True,
+        "sibling_uniqueness: closest sibling "
+        f"{strongest[2] or 'none'} similarity={strongest[0]:.2f}, detail_key_similarity={strongest[1]:.2f}",
+    )
+
+
+async def _capability_name_and_uniqueness_gate(plugin_path: Path, spec: PluginSpec) -> Tuple[bool, str]:
+    identity_ok, identity_reason = await _capability_identity_gate(plugin_path, spec)
+    if not identity_ok:
+        return False, identity_reason
+    sibling_ok, sibling_reason = await _sibling_uniqueness_gate(plugin_path, spec)
+    if not sibling_ok:
+        return False, sibling_reason
+    return True, f"{identity_reason}; {sibling_reason}"
+
+
 async def _capability_promotion_gate(
     plugin_path: Path,
     spec: PluginSpec,
@@ -3291,6 +3537,65 @@ async def run_factory(config: RunnerConfig) -> None:
 
                 LOG.info(
                     "AI roadmap plugin scored below production threshold; retrying same spec in %.1f seconds.",
+                    config.sleep_seconds,
+                )
+                await asyncio.sleep(config.sleep_seconds)
+                continue
+
+            try:
+                identity_ok, identity_reason = await _capability_name_and_uniqueness_gate(candidate_path, spec)
+            except Exception as exc:
+                identity_ok = False
+                identity_reason = f"capability_identity: check crashed: {exc}"
+
+            if identity_ok:
+                LOG.info("Plugin capability identity OK: %s", identity_reason)
+            else:
+                LOG.error(
+                    "Capability identity FAILED for AI roadmap plugin %r → %s",
+                    spec.slug,
+                    identity_reason,
+                )
+                try:
+                    rejected_path = _discard_candidate_plugin(candidate_path, reason=identity_reason)
+                    LOG.info("Rejected identity/overlap candidate moved to %s", rejected_path)
+                except Exception:
+                    LOG.warning("Unable to discard identity/overlap candidate %r", spec.slug, exc_info=True)
+                if is_upgrade_attempt and source_spec is not None:
+                    _upgrade_attempt_record(
+                        state=ai_roadmap_state,
+                        source_spec=source_spec,
+                        canonical_spec=spec,
+                        status="rejected",
+                        reason=identity_reason,
+                    )
+                elif source_spec is not None:
+                    _capability_rejection_record(
+                        state=ai_roadmap_state,
+                        spec=source_spec,
+                        reason=identity_reason,
+                    )
+                    existing_slugs.add(spec.slug)
+                    existing_signatures.add(_spec_signature(spec))
+                    index_counter = selected_index + 1
+
+                _se_record(
+                    EVENT_FACTORY_PLUGIN_LOW_SCORE,
+                    slug=spec.slug,
+                    category=getattr(spec, "category", None),
+                    capability_type=capability_type,
+                    domain=intended_domain,
+                    score=0.0,
+                    threshold=PRODUCTION_QUALITY_THRESHOLD,
+                    reason=identity_reason,
+                    identity_quality_failed=True,
+                )
+
+                if not config.loop_forever:
+                    break
+
+                LOG.info(
+                    "AI roadmap plugin failed name/uniqueness gate; retrying same spec in %.1f seconds.",
                     config.sleep_seconds,
                 )
                 await asyncio.sleep(config.sleep_seconds)

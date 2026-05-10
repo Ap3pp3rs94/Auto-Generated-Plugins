@@ -19,12 +19,12 @@ _PLUGIN_CATEGORY: str = 'ai_evaluation'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Convert AI research, retrieval, and synthesis work AI responses into concrete next actions with owners, checks, and risks.'
 _PLUGIN_TAGS = ['research', 'retrieval', 'evaluation', 'actions', 'planning', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress']
-_PLUGIN_OWNER_ID = 'francis-factory'
+_PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'data_insight'
 _PLUGIN_INTENDED_DOMAIN = 'AI research, retrieval, and synthesis work response actionability and next-step planning'
 _PLUGIN_USE_CASES = ['Apply this capability to the distinct use case: Research Agent.', 'Find vague advice that needs executable next steps.', 'Create action items with checks and risk notes.', 'Score whether the response is ready to act on.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Research Agent Response Action Planner 000108', 'slug': 'ai_research_agent_response_action_planner', 'goal': 'Convert AI research, retrieval, and synthesis work AI responses into concrete next actions with owners, checks, and risks.', 'category': 'ai_evaluation', 'tags': ['research', 'retrieval', 'evaluation', 'actions', 'planning', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'data_insight', 'intended_domain': 'AI research, retrieval, and synthesis work response actionability and next-step planning', 'owner_id': 'francis-factory', 'use_cases': ['Apply this capability to the distinct use case: Research Agent.', 'Find vague advice that needs executable next steps.', 'Create action items with checks and risk notes.', 'Score whether the response is ready to act on.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Research Agent Response Action Planner 000108', 'slug': 'ai_research_agent_response_action_planner', 'goal': 'Convert AI research, retrieval, and synthesis work AI responses into concrete next actions with owners, checks, and risks.', 'category': 'ai_evaluation', 'tags': ['research', 'retrieval', 'evaluation', 'actions', 'planning', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'data_insight', 'intended_domain': 'AI research, retrieval, and synthesis work response actionability and next-step planning', 'owner_id': None, 'use_cases': ['Apply this capability to the distinct use case: Research Agent.', 'Find vague advice that needs executable next steps.', 'Create action items with checks and risk notes.', 'Score whether the response is ready to act on.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:
@@ -148,7 +148,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI research, retrieval, and synthesis work response actionability and next-step planning'
         capability_type = 'data_insight'
         logic_profile_id = 'continuous_response_action_planner_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'regenerated after capability identity gate'
         use_cases = ['Apply this capability to the distinct use case: Research Agent.', 'Find vague advice that needs executable next steps.', 'Create action items with checks and risk notes.', 'Score whether the response is ready to act on.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = list(payload_data.get('_payload_warnings', [])) if isinstance(payload_data.get('_payload_warnings'), list) else []
@@ -316,6 +316,42 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'semantic_probe_ready': bool(has_user_input and not result['details'].get('missing_inputs')),
         }
         result['diagnostics']['profile_output_keys'] = sorted(result.keys())
+        actionability_gaps = []
+        if not any(word in lower_response for word in ['owner', 'assign', 'who']):
+            actionability_gaps.append('owner')
+        if not any(word in lower_response for word in ['when', 'deadline', 'before', 'after']):
+            actionability_gaps.append('sequence_or_timing')
+        if not any(word in lower_response for word in ['verify', 'test', 'check', 'evidence']):
+            actionability_gaps.append('verification')
+        if not any(word in lower_response for word in ['risk', 'rollback', 'safe', 'blocked']):
+            actionability_gaps.append('risk_note')
+        action_plan = []
+        for idx, item in enumerate(improvement_checklist[:6], start=1):
+            action_plan.append({
+                'step': idx,
+                'action': item,
+                'owner_hint': 'human reviewer' if 'evidence' in item.lower() or 'risk' in item.lower() else 'builder',
+                'verification_check': 'Confirm this action closes a missing requirement before final response.',
+            })
+        if not action_plan:
+            action_plan.append({'step': 1, 'action': 'Publish response after final verification.', 'owner_hint': 'operator', 'verification_check': 'All requirements are covered.'})
+        next_step_checks = [item['verification_check'] for item in action_plan]
+        actionability_score = round(max(0.05, min(0.97, 0.42 + 0.07 * len(action_plan) - 0.06 * len(actionability_gaps))), 2)
+        result['summary'] = plugin_name + ': built ' + str(len(action_plan)) + ' executable response action(s) with actionability=' + str(actionability_score) + '.'
+        result['primary_insights'].append({'title': 'Actionability gaps', 'detail': actionability_gaps or 'No blocking actionability gap detected.'})
+        result['recommended_actions'] = [
+            {'action': 'Execute response action plan', 'action_plan': action_plan},
+            {'action': 'Close actionability gaps', 'actionability_gaps': actionability_gaps},
+            {'action': 'Run next-step checks', 'next_step_checks': next_step_checks},
+        ]
+        result['scores']['actionability_score'] = actionability_score
+        result['scores']['actionability_gap_count'] = len(actionability_gaps)
+        result['details']['action_plan'] = action_plan
+        result['details']['actionability_gaps'] = actionability_gaps
+        result['details']['next_step_checks'] = next_step_checks
+        result['progress_state']['next_step'] = 'Execute response action plan'
+        result['fun_mode']['optional_next_challenge'] = 'Execute response action plan'
+        result['fun_mode']['celebratory_microcopy'] = result['summary']
     except Exception as _exc:
         result = {
             'summary': 'Capability profile failed; fallback applied.',

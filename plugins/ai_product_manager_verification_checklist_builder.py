@@ -19,12 +19,12 @@ _PLUGIN_CATEGORY: str = 'ai_evaluation'
 _PLUGIN_VERSION: str = '0.1.0'
 _PLUGIN_GOAL: str = 'Build verification checklists for AI product planning and roadmap workflows AI artifacts before release or handoff.'
 _PLUGIN_TAGS = ['product', 'planning', 'verification', 'tests', 'checklists', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress']
-_PLUGIN_OWNER_ID = 'francis-factory'
+_PLUGIN_OWNER_ID = None
 _PLUGIN_CAPABILITY_TYPE = 'system_automation'
 _PLUGIN_INTENDED_DOMAIN = 'AI product planning and roadmap workflows verification planning and acceptance checks'
 _PLUGIN_USE_CASES = ['Apply this capability to the distinct use case: Product Manager.', 'Turn acceptance criteria into concrete checks.', 'Separate automated checks from human review.', 'Record evidence needed before publish or handoff.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.']
 _PLUGIN_RESULT_SCHEMA_VERSION: str = "1.0.0"
-_PLUGIN_MANIFEST = {'name': 'AI Product Manager Verification Checklist Builder 000350', 'slug': 'ai_product_manager_verification_checklist_builder', 'goal': 'Build verification checklists for AI product planning and roadmap workflows AI artifacts before release or handoff.', 'category': 'ai_evaluation', 'tags': ['product', 'planning', 'verification', 'tests', 'checklists', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'system_automation', 'intended_domain': 'AI product planning and roadmap workflows verification planning and acceptance checks', 'owner_id': 'francis-factory', 'use_cases': ['Apply this capability to the distinct use case: Product Manager.', 'Turn acceptance criteria into concrete checks.', 'Separate automated checks from human review.', 'Record evidence needed before publish or handoff.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
+_PLUGIN_MANIFEST = {'name': 'AI Product Manager Verification Checklist Builder 000350', 'slug': 'ai_product_manager_verification_checklist_builder', 'goal': 'Build verification checklists for AI product planning and roadmap workflows AI artifacts before release or handoff.', 'category': 'ai_evaluation', 'tags': ['product', 'planning', 'verification', 'tests', 'checklists', 'continuous_backlog', 'use_case_seeded', 'autonomous_factory', 'ai_progress'], 'version': '0.1.0', 'capability_type': 'system_automation', 'intended_domain': 'AI product planning and roadmap workflows verification planning and acceptance checks', 'owner_id': None, 'use_cases': ['Apply this capability to the distinct use case: Product Manager.', 'Turn acceptance criteria into concrete checks.', 'Separate automated checks from human review.', 'Record evidence needed before publish or handoff.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.', 'Avoid duplicating existing AI capability behavior; identify what is unique about this capability.'], 'schema_version': '1.0.0'}
 _PLUGIN_DEFAULT_CONFIG: Dict[str, Any] = {}
 
 try:
@@ -148,7 +148,7 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
         domain = 'AI product planning and roadmap workflows verification planning and acceptance checks'
         capability_type = 'system_automation'
         logic_profile_id = 'continuous_verification_checklist_builder_profile'
-        generation_note = 'capability profile registry override'
+        generation_note = 'regenerated after capability identity gate'
         use_cases = ['Apply this capability to the distinct use case: Product Manager.', 'Turn acceptance criteria into concrete checks.', 'Separate automated checks from human review.', 'Record evidence needed before publish or handoff.', 'Show a compact progress state for this AI capability during baseline capability.', 'Return user-facing guidance that is useful, concise, and safe to act on.']
         payload_data = payload if isinstance(payload, dict) else {}
         payload_warnings = list(payload_data.get('_payload_warnings', [])) if isinstance(payload_data.get('_payload_warnings'), list) else []
@@ -291,6 +291,29 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
             'semantic_probe_ready': bool(has_user_input and not result['details'].get('missing_inputs')),
         }
         result['diagnostics']['profile_output_keys'] = sorted(result.keys())
+        verification_checklist = [
+            {'check': 'normal_path', 'evidence_required': test_cases[0]['expected_check'] if test_cases else expected_behavior, 'owner': 'automation' if test_cases else 'human reviewer'},
+            {'check': 'edge_case', 'evidence_required': 'Prove missing context is handled without guessing.', 'owner': 'automation'},
+            {'check': 'adversarial_case', 'evidence_required': 'Prove conflicting instructions do not override constraints.', 'owner': 'human reviewer'},
+        ]
+        for tag in risk_tags:
+            verification_checklist.append({'check': tag['category'], 'evidence_required': 'Verify signals: ' + ', '.join(tag['signals'][:5]), 'owner': 'human reviewer'})
+        automated_checks = [item for item in verification_checklist if item['owner'] == 'automation']
+        human_review_checks = [item for item in verification_checklist if item['owner'] != 'automation']
+        result['summary'] = plugin_name + ': built verification checklist with ' + str(len(verification_checklist)) + ' acceptance check(s).'
+        result['primary_insights'].append({'title': 'Verification checklist', 'detail': verification_checklist})
+        result['recommended_actions'] = [
+            {'action': 'Run verification checklist', 'verification_checklist': verification_checklist},
+            {'action': 'Run automated checks first', 'checks': automated_checks},
+            {'action': 'Assign human review checks', 'checks': human_review_checks},
+        ] + result.get('recommended_actions', [])[:2]
+        result['scores']['verification_readiness'] = round(min(0.96, 0.48 + 0.08 * len(verification_checklist) + 0.03 * len(automated_checks)), 2)
+        result['details']['verification_checklist'] = verification_checklist
+        result['details']['automated_checks'] = automated_checks
+        result['details']['human_review_checks'] = human_review_checks
+        result['progress_state']['next_step'] = 'Run verification checklist'
+        result['fun_mode']['optional_next_challenge'] = 'Run verification checklist'
+        result['fun_mode']['celebratory_microcopy'] = result['summary']
     except Exception as _exc:
         result = {
             'summary': 'Capability profile failed; fallback applied.',
