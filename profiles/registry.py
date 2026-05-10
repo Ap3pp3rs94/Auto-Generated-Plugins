@@ -583,7 +583,7 @@ if raw_text is None and candidate_outputs:
 context_text = ' '.join([def_text, objective_text, ' '.join(str(item) for item in constraints), str(payload_data.get('trace') or '')]).strip()
 text = (str(raw_text or '') + '. ' + context_text).strip()
 sentences = [part.strip() for part in text.replace('\\n', '. ').split('.') if part.strip()]
-risk_terms = ['always', 'never', 'guaranteed', 'latest', 'current', 'law', 'legal', 'medical', 'clinical', 'financial', 'price', 'study', 'research', 'statistic', 'percent', 'dosage', 'unsupported', 'citation', 'source', 'claim', 'auth', 'login', 'database', 'migration', 'rollback']
+risk_terms = ['always', 'never', 'guaranteed', 'latest', 'current', 'law', 'legal', 'medical', 'clinical', 'financial', 'price', 'study', 'research', 'statistic', 'percent', 'dosage', 'unsupported', 'citation', 'source', 'claim', 'auth', 'login', 'database', 'migration', 'rollback', 'invent', 'facts', 'evidence', 'duplicate', 'shallow', 'publish', 'validation']
 claims = []
 for sentence in sentences:
     lower = sentence.lower()
@@ -599,13 +599,39 @@ context_signals = sorted(set(term for term in risk_terms if term in context_text
 safer_rewrites = []
 for claim in high_risk[:5]:
     safer_rewrites.append({{'original': claim['claim'], 'rewrite': 'Verify before relying on this claim: ' + claim['claim']}})
+risk_domains = sorted(set(term for claim in claims for term in claim['risk_signals']))
+verification_priorities = []
+for claim in high_risk[:5]:
+    verification_priorities.append({{'priority': 'verify_uncited_claim', 'claim': claim['claim'], 'signals': claim['risk_signals']}})
+if not verification_priorities and context_signals:
+    verification_priorities.append({{'priority': 'preserve_context_caveat', 'signals': context_signals, 'reason': 'Payload asks for safety around factual or release claims.'}})
+if not verification_priorities:
+    verification_priorities.append({{'priority': 'monitor_new_claims', 'reason': 'No factual claim was detected, so require citations before adding new factual statements.'}})
+claim_inventory = {{
+    'sentences_checked': len(sentences),
+    'flagged_claim_count': len(claims),
+    'high_risk_claim_count': len(high_risk),
+    'cited_claim_count': len([c for c in claims if c['has_citation']]),
+    'context_signal_count': len(context_signals),
+}}
+low_risk_observations = []
+if not claims:
+    low_risk_observations.append('No explicit factual claim, numeric claim, or citation-bearing claim was detected in the supplied response text.')
+if claims and not high_risk:
+    low_risk_observations.append('Flagged claims appear caveated or citation-aware under this deterministic scan.')
+citation_plan = [
+    {{'step': 'extract_claims', 'status': 'complete', 'count': len(claims)}},
+    {{'step': 'verify_high_risk_claims', 'status': 'needed' if high_risk else 'watch', 'count': len(high_risk)}},
+    {{'step': 'preserve_or_add_caveats', 'status': 'needed' if context_signals or high_risk else 'watch'}},
+]
 risk_score = round(min(0.95, 0.14 + 0.11 * len(high_risk) + 0.035 * len(claims) + 0.02 * len(context_signals)), 2)
 result['summary'] = plugin_name + ': found ' + str(len(high_risk)) + ' claim(s) needing verification.'
 result['primary_insights'] = [
     {{'title': 'Claims needing verification', 'detail': high_risk[:6]}},
     {{'title': 'Citation coverage', 'detail': str(len([c for c in claims if c['has_citation']])) + ' cited of ' + str(len(claims)) + ' flagged claims'}},
-    {{'title': 'Risk domains', 'detail': sorted(set(term for claim in claims for term in claim['risk_signals']))}},
+    {{'title': 'Risk domains', 'detail': risk_domains}},
     {{'title': 'Context signals', 'detail': context_signals or 'No context risk signals.'}},
+    {{'title': 'Verification priorities', 'detail': verification_priorities}},
 ]
 result['recommended_actions'] = [
     {{'action': 'Verify claim', 'claim': claim['claim'], 'signals': claim['risk_signals']}} for claim in high_risk[:5]
@@ -614,10 +640,12 @@ if not result['recommended_actions'] and context_signals:
     result['recommended_actions'].append({{'action': 'Preserve context caveat', 'signals': context_signals, 'context': context_text[:240]}})
 if not result['recommended_actions']:
     result['recommended_actions'].append({{'action': 'Keep answer caveated and cite any new factual claims', 'context': context_text[:240] or def_text[:240]}})
+result['recommended_actions'].append({{'action': 'Use claim inventory before publishing', 'claim_inventory': claim_inventory}})
+result['recommended_actions'].append({{'action': 'Follow citation plan', 'citation_plan': citation_plan}})
 if safer_rewrites:
     result['recommended_actions'].append({{'action': 'Use safer rewrites', 'rewrites': safer_rewrites}})
-result['scores'] = {{'confidence': round(min(0.92, 0.44 + min(0.24, 0.045 * len(sentences)) + min(0.16, 0.025 * len(context_signals)) + (0.08 if claims else 0)), 2), 'hallucination_risk': risk_score, 'citation_coverage': round(len([c for c in claims if c['has_citation']]) / max(1, len(claims)), 2), 'risk': risk_score, 'context_signal_count': len(context_signals)}}
-result['details'] = {{'claims': claims, 'high_risk_claims': high_risk, 'context_signals': context_signals, 'evaluated_text': text[:1200], 'safer_rewrites': safer_rewrites, 'missing_inputs': ['response or candidate_outputs'] if not raw_text and not candidate_outputs else []}}
+result['scores'] = {{'confidence': round(min(0.92, 0.44 + min(0.24, 0.045 * len(sentences)) + min(0.16, 0.025 * len(context_signals)) + (0.08 if claims else 0) + (0.04 if verification_priorities else 0)), 2), 'hallucination_risk': risk_score, 'citation_coverage': round(len([c for c in claims if c['has_citation']]) / max(1, len(claims)), 2), 'risk': risk_score, 'context_signal_count': len(context_signals), 'claim_inventory_count': claim_inventory['flagged_claim_count']}}
+result['details'] = {{'claims': claims, 'high_risk_claims': high_risk, 'context_signals': context_signals, 'risk_domains': risk_domains, 'evaluated_text': text[:1200], 'safer_rewrites': safer_rewrites, 'verification_priorities': verification_priorities, 'claim_inventory': claim_inventory, 'citation_plan': citation_plan, 'low_risk_observations': low_risk_observations, 'missing_inputs': ['response or candidate_outputs'] if not raw_text and not candidate_outputs else []}}
 {_common_result_footer("'Verify the highest-risk uncited claim.'")}
 """.strip()
 
