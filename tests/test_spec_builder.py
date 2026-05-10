@@ -54,8 +54,10 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertEqual(len({spec.slug for spec in specs}), 3)
         for spec in specs:
             self.assertRegex(spec.name, r"^AI .+ \d{6}$")
+            self.assertRegex(spec.slug, r"^ai_[a-z_]+_\d{6}$")
             self.assertRegex(spec.extra["display_number"], r"^\d{6}$")
             self.assertIn("canonical_name", spec.extra)
+            self.assertIn("canonical_slug", spec.extra)
             self.assertIn("ai", spec.tags)
             self.assertGreaterEqual(len(spec.use_cases), 6)
             self.assertEqual(spec.extra["factory_focus"], "ai_functionality_and_progress")
@@ -67,12 +69,12 @@ class SpecBuilderTests(unittest.TestCase):
 
         self.assertEqual(len(slugs), len(set(slugs)))
         self.assertGreaterEqual(len(slugs), 40)
-        self.assertIn("ai_citation_need_detector", slugs)
-        self.assertIn("ai_regression_watchlist_builder", slugs)
-        self.assertIn("ai_autonomous_run_governor", slugs)
-        self.assertIn("ai_plugin_spec_architect", slugs)
-        self.assertIn("ai_plugin_quality_gate_designer", slugs)
-        self.assertIn("ai_plugin_factory_backlog_planner", slugs)
+        self.assertIn("ai_citation_need_detector_000019", slugs)
+        self.assertIn("ai_regression_watchlist_builder_000030", slugs)
+        self.assertIn("ai_autonomous_run_governor_000040", slugs)
+        self.assertIn("ai_plugin_spec_architect_000041", slugs)
+        self.assertIn("ai_plugin_quality_gate_designer_000043", slugs)
+        self.assertIn("ai_plugin_factory_backlog_planner_000048", slugs)
 
     def test_post_roadmap_index_is_new_canonical_capability(self) -> None:
         existing = {build_next_spec(i)[0].slug for i in range(1, len(AI_CAPABILITY_ROADMAP) + 1)}
@@ -232,7 +234,8 @@ class SpecBuilderTests(unittest.TestCase):
         self.assertTrue(_upgrade_backlog_exhausted(state, existing))
 
     def test_existing_registered_profile_can_seed_upgrade_memory(self) -> None:
-        slug = AI_CAPABILITY_ROADMAP[0].slug
+        legacy_slug = AI_CAPABILITY_ROADMAP[0].slug
+        slug = build_next_spec(1)[0].slug
         state = {"completed": [], "next_directive": "", "upgrade_attempts": {}, "upgrade_attempt_order": []}
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -241,16 +244,16 @@ class SpecBuilderTests(unittest.TestCase):
             try:
                 runner.PLUGINS_DIR = Path(tmp)
                 runner._registered_profile_id = lambda candidate: (
-                    "prompt_refinement_profile" if candidate == slug else None
+                    "prompt_refinement_profile" if candidate in {slug, legacy_slug} else None
                 )
-                (Path(tmp) / f"{slug}.py").write_text(
+                (Path(tmp) / f"{legacy_slug}.py").write_text(
                     "logic_profile_id = 'prompt_refinement_profile'\n",
                     encoding="utf-8",
                 )
 
                 seeded = runner._seed_retained_canonical_upgrade_memory(
                     state,
-                    {slug},
+                    {legacy_slug},
                     persist=False,
                 )
             finally:
@@ -258,7 +261,7 @@ class SpecBuilderTests(unittest.TestCase):
                 runner._registered_profile_id = old_registered_profile_id
 
         self.assertEqual(seeded, 1)
-        self.assertTrue(_upgrade_backlog_exhausted(state, {slug}))
+        self.assertTrue(_upgrade_backlog_exhausted(state, {legacy_slug}))
         record = state["upgrade_attempts"][slug]
         self.assertEqual(record["status"], "retained")
         self.assertIn("metadata-only retry is not an improvement", record["reason"])

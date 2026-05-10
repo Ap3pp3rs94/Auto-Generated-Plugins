@@ -1494,6 +1494,11 @@ CONTINUOUS_EXPANSION_FAMILIES: Tuple[ContinuousExpansionFamily, ...] = (
 CONTINUOUS_SHORT_SLUG_START_INDEX = len(AI_CAPABILITY_ROADMAP) + 1
 
 
+def numbered_capability_slug(base_slug: str, index: int) -> str:
+    """Return the installable slug cadence for a deterministic capability slot."""
+    return f"{str(base_slug or '').strip('_')}_{max(int(index), 1):06d}"
+
+
 @dataclass(frozen=True)
 class CategoryProfile:
     name: str
@@ -1916,7 +1921,10 @@ def _build_huge_ai_spec(
     display_number = f"{global_index:06d}"
     canonical_name = blueprint.name
     name = f"{canonical_name} {display_number}"
-    slug = blueprint.slug
+    if global_index <= len(AI_CAPABILITY_ROADMAP):
+        slug = numbered_capability_slug(blueprint.slug, global_index)
+    else:
+        slug = blueprint.slug
     goal = blueprint.goal
 
     progress_focus = {
@@ -2020,9 +2028,11 @@ def _build_huge_ai_spec(
         "roadmap_size": len(AI_CAPABILITY_ROADMAP),
         "display_number": display_number,
         "canonical_name": canonical_name,
+        "canonical_slug": blueprint.slug,
         "generation_round": generation_round,
         "progress_focus": progress_focus,
         "global_index": global_index,
+        "installable_naming_policy": "all installable AI capabilities use a six-digit numbered slug suffix",
         "duplicate_policy": {
             "slug_must_be_unique": True,
             "capability_must_be_distinct": True,

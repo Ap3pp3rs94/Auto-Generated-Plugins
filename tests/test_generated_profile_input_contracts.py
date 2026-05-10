@@ -188,7 +188,11 @@ class GeneratedProfileInputContractTests(unittest.TestCase):
                 self.assertNotEqual(output_a["scores"], output_b["scores"])
 
     def test_multi_agent_handoff_requires_handoff_specific_inputs(self) -> None:
-        module = next(module for spec, _profile_id, module in self.modules if spec.slug == "ai_multi_agent_handoff_planner")
+        module = next(
+            module
+            for spec, _profile_id, module in self.modules
+            if spec.extra.get("canonical_slug") == "ai_multi_agent_handoff_planner"
+        )
 
         weak = self._invoke(module, {"task": "Plan work", "objective": "Ship safely"})
         strong = self._invoke(module, RICH_PAYLOAD_A)

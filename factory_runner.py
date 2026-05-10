@@ -58,9 +58,19 @@ except ImportError:  # pragma: no cover - direct local execution
     from plugin_spec import PluginSpec
     from station_c_validator import validate_plugin_module
 try:
-    from factory.spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec, legacy_continuous_expansion_slug
+    from factory.spec_builder import (
+        AI_CAPABILITY_ROADMAP,
+        build_next_spec,
+        legacy_continuous_expansion_slug,
+        numbered_capability_slug,
+    )
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
-    from spec_builder import AI_CAPABILITY_ROADMAP, build_next_spec, legacy_continuous_expansion_slug
+    from spec_builder import (
+        AI_CAPABILITY_ROADMAP,
+        build_next_spec,
+        legacy_continuous_expansion_slug,
+        numbered_capability_slug,
+    )
 
 try:
     from factory.profiles import (
@@ -577,10 +587,11 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
 
     roadmap_size = len(AI_CAPABILITY_ROADMAP)
     for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
-        if slug == blueprint.slug:
+        numbered_slug = numbered_capability_slug(blueprint.slug, position)
+        if slug == blueprint.slug or slug == numbered_slug:
             return position
 
-    # Short continuous slugs end with their deterministic global index, e.g.
+    # Short slugs end with their deterministic global index, e.g.
     # ai_verification_checklist_builder_000734. Resolve those directly so
     # library-wide audits and sibling checks do not walk thousands of legacy
     # candidates for every plugin.
@@ -588,7 +599,7 @@ def _roadmap_slug_index(slug: str) -> Optional[int]:
         suffix = str(slug or "").rsplit("_", 1)[-1]
         if len(suffix) == 6 and suffix.isdigit():
             idx = int(suffix)
-            if idx > roadmap_size:
+            if idx >= 1:
                 spec, _capability_type, _intended_domain = build_next_spec(idx)
                 if getattr(spec, "slug", None) == slug:
                     return idx
@@ -682,8 +693,16 @@ def _next_ai_roadmap_index(existing_slugs: Set[str]) -> int:
     that canonical slot before moving into continuous expansion.
     """
     for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
-        slug = str(getattr(blueprint, "slug", "") or "")
-        if slug and slug not in existing_slugs and not (PLUGINS_DIR / f"{slug}.py").exists():
+        spec, _, _ = build_next_spec(position)
+        slug = str(getattr(spec, "slug", "") or "")
+        legacy_slug = str(getattr(blueprint, "slug", "") or "")
+        has_current = bool(slug) and (
+            slug in existing_slugs or (PLUGINS_DIR / f"{slug}.py").exists()
+        )
+        has_legacy = bool(legacy_slug) and (
+            legacy_slug in existing_slugs or (PLUGINS_DIR / f"{legacy_slug}.py").exists()
+        )
+        if slug and not has_current and not has_legacy:
             return position
 
     existing_indexes = [
@@ -1120,13 +1139,16 @@ def _seed_retained_canonical_upgrade_memory(
     seeded = 0
     current_fp = _upgrade_knowledge_fingerprint()
     for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
-        canonical_slug = blueprint.slug
-        if canonical_slug not in existing_slugs:
+        canonical_spec, _, _ = build_next_spec(position)
+        canonical_slug = canonical_spec.slug
+        legacy_slug = blueprint.slug
+        active_slug = canonical_slug if canonical_slug in existing_slugs else legacy_slug
+        if canonical_slug not in existing_slugs and legacy_slug not in existing_slugs:
             continue
         existing_record = attempts.get(canonical_slug)
         if isinstance(existing_record, dict) and existing_record.get("knowledge_fingerprint") == current_fp:
             continue
-        if not _existing_canonical_has_registered_profile(canonical_slug):
+        if not _existing_canonical_has_registered_profile(active_slug):
             continue
 
         upgrade_spec, _, _ = build_next_spec(position)
@@ -1153,7 +1175,11 @@ def _seed_retained_canonical_upgrade_memory(
 
 
 def _upgrade_backlog_exhausted(state: Dict[str, Any], existing_slugs: Set[str]) -> bool:
-    canonical_slugs = {blueprint.slug for blueprint in AI_CAPABILITY_ROADMAP if blueprint.slug in existing_slugs}
+    canonical_slugs: Set[str] = set()
+    for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
+        spec, _, _ = build_next_spec(position)
+        if spec.slug in existing_slugs or blueprint.slug in existing_slugs:
+            canonical_slugs.add(spec.slug)
     if not canonical_slugs:
         return False
     remembered = _remembered_upgrade_canonical_slugs(state)

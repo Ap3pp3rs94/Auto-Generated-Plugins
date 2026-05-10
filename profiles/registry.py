@@ -15,7 +15,7 @@ LOGIC_END = "# === LOGIC END ==="
 
 
 def _base_slug(slug: str) -> str:
-    return str(slug or "")
+    return re.sub(r"_\d{6}$", "", str(slug or ""))
 
 
 def _quote(value: Any) -> str:
@@ -1108,19 +1108,36 @@ for key in ['constraints', 'current_plan', 'completed_steps', 'blocked_steps', '
     if value:
         route_context_parts.append(str(value))
 text = ' '.join(route_context_parts).lower()
+route_evidence_terms = []
+for raw_word in text.replace('[', ' ').replace(']', ' ').replace('{{', ' ').replace('}}', ' ').replace(',', ' ').split():
+    clean_word = raw_word.strip(".,:;!?\\\"'()").lower()
+    if len(clean_word) > 7 and clean_word not in ['candidate', 'objective', 'current_plan', 'completed_steps', 'blocked_steps']:
+        route_evidence_terms.append(clean_word)
+route_evidence_terms = sorted(set(route_evidence_terms))[:12]
 routes = [
     ('coding_agent', ['code', 'bug', 'repo', 'repository', 'test', 'file', 'plugin', 'factory']),
-    ('github_publish_agent', ['git', 'github', 'commit', 'push', 'branch', 'remote', 'origin', 'pr', 'pull request']),
+    ('github_publish_agent', ['git', 'github', 'commit', 'push', 'publish', 'upload', 'branch', 'remote', 'origin', 'pull request']),
     ('research_agent', ['research', 'latest', 'source', 'docs', 'citation']),
     ('evaluation_agent', ['score', 'rubric', 'compare', 'quality', 'validate', 'validation', 'semantic', 'pass', 'fail', 'reject']),
     ('planning_agent', ['plan', 'workflow', 'handoff', 'multi-step', 'autonomous', 'continuous']),
     ('safety_agent', ['risk', 'delete', 'approval', 'unsafe', 'production', 'rollback']),
 ]
+route_weights = {{
+    'github_publish_agent': 3,
+    'safety_agent': 1,
+    'evaluation_agent': 0,
+    'coding_agent': 0,
+    'planning_agent': 0,
+    'research_agent': 0,
+}}
 matches = []
 for route, terms in routes:
     hits = [term for term in terms if term in text]
     if hits:
-        matches.append({{'route': route, 'signals': hits, 'priority': len(hits)}})
+        priority = len(hits) + route_weights.get(route, 0)
+        if route == 'github_publish_agent' and any(term in hits for term in ['github', 'push', 'commit', 'publish', 'upload']):
+            priority += 2
+        matches.append({{'route': route, 'signals': hits, 'priority': priority}})
 matches = sorted(matches, key=lambda item: item['priority'], reverse=True) or [{{'route': 'clarifier', 'signals': [], 'priority': 0}}]
 route_handoff_plan = []
 for idx, match in enumerate(matches[:4], start=1):
@@ -1142,21 +1159,22 @@ if split_needed:
     route_conflicts.append({{'conflict': 'multiple high-priority routes', 'routes': [item['route'] for item in matches[:3]]}})
 if matches[0]['route'] == 'clarifier':
     route_conflicts.append({{'conflict': 'insufficient routing signal', 'routes': []}})
-result['summary'] = plugin_name + ': routed task to ' + matches[0]['route'] + '.'
+result['summary'] = plugin_name + ': routed task to ' + matches[0]['route'] + ' for ' + def_text[:120] + '.'
 result['primary_insights'] = [
     {{'title': 'Route matches', 'detail': matches}},
+    {{'title': 'Payload routing evidence', 'detail': route_evidence_terms}},
     {{'title': 'Split needed', 'detail': split_needed}},
     {{'title': 'Routing decision', 'detail': routing_decision}},
     {{'title': 'Route handoff plan', 'detail': route_handoff_plan}},
 ]
 result['recommended_actions'] = [
-    {{'action': 'Route to ' + matches[0]['route'], 'signals': matches[0]['signals']}},
+    {{'action': 'Route ' + def_text[:80] + ' to ' + matches[0]['route'], 'signals': matches[0]['signals'], 'evidence_terms': route_evidence_terms[:8]}},
     {{'action': 'Split task across top routes' if split_needed else 'Keep task with primary route', 'routes': matches[:3]}},
     {{'action': 'Attach route handoff payload', 'handoff_plan': route_handoff_plan}},
     {{'action': 'Resolve route conflicts before execution', 'conflicts': route_conflicts}},
 ]
 result['scores'] = {{'confidence': round(0.5 + min(0.4, 0.11 * matches[0]['priority']) + min(0.08, 0.015 * len(route_handoff_plan)), 2), 'routing_specificity': round(min(1.0, 0.3 + 0.1 * sum(len(item['signals']) for item in matches)), 2), 'risk': 0.22 if not split_needed else 0.38, 'route_count': len(matches), 'split_pressure': round(min(1.0, len(route_conflicts) * 0.35 + (0.2 if len(matches) > 2 else 0)), 2)}}
-result['details'] = {{'routes': matches, 'selected_route': matches[0]['route'], 'split_needed': split_needed, 'routing_decision': routing_decision, 'route_handoff_plan': route_handoff_plan, 'route_conflicts': route_conflicts, 'route_context_preview': text[:1000], 'missing_inputs': ['task'] if not def_text else []}}
+result['details'] = {{'routes': matches, 'selected_route': matches[0]['route'], 'split_needed': split_needed, 'routing_decision': routing_decision, 'route_handoff_plan': route_handoff_plan, 'route_conflicts': route_conflicts, 'route_evidence_terms': route_evidence_terms, 'route_context_preview': text[:1000], 'missing_inputs': ['task'] if not def_text else []}}
 {_common_result_footer("'Route to ' + matches[0]['route']")}
 """.strip()
 
