@@ -1873,7 +1873,7 @@ def _build_huge_ai_spec(
     """
     display_number = f"{global_index:06d}"
     canonical_name = blueprint.name
-    name = f"Francis AI Capability {display_number} - {canonical_name}"
+    name = f"{canonical_name} {display_number}"
     slug = blueprint.slug
     goal = blueprint.goal
 
