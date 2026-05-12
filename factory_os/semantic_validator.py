@@ -53,11 +53,11 @@ def _contains_generic_backlog(output: dict[str, Any]) -> bool:
     return "highest-leverage capability factory backlog" in text or "next_plugin_specs" in text
 
 
-def _is_metadata_only(output: dict[str, Any]) -> bool:
+def _is_metadata_only(output: dict[str, Any], required_detail_keys: list[str] | None = None) -> bool:
     details = _details(output)
     if not details:
         return True
-    decision_keys = {
+    decision_keys = set(required_detail_keys or []) or {
         "duplicate_risks",
         "uniqueness_fingerprint",
         "comparison_targets",
@@ -65,10 +65,20 @@ def _is_metadata_only(output: dict[str, Any]) -> bool:
         "max_similarity",
         "missing_inputs",
     }
+    decision_keys.update(
+        {
+            "missing_inputs",
+            "has_user_input",
+            "used_goal_fallback",
+            "logic_profile_id",
+        }
+    )
     meaningful = [key for key in decision_keys if key in details and details.get(key) not in (None, "", [], {})]
     if details.get("merge_or_reject_decision") == "insufficient_input" and details.get("missing_inputs"):
         return False
-    return len(meaningful) < 3
+    if details.get("missing_inputs") and details.get("used_goal_fallback") is True:
+        return False
+    return len(meaningful) < min(3, max(2, len(decision_keys)))
 
 
 def validate_plugin_output_against_spec(
@@ -156,6 +166,19 @@ def validate_plugin_output_against_spec(
             findings.append(_finding("missing_input_probe_failed", "blocker", "Missing-input probe must produce insufficient_input.", "details.merge_or_reject_decision"))
         if not details.get("missing_inputs"):
             findings.append(_finding("missing_inputs_not_reported", "blocker", "Missing-input probe must report missing_inputs.", "details.missing_inputs"))
+    if "missing_input" in probe_id:
+        if not details.get("missing_inputs"):
+            findings.append(_finding("missing_inputs_not_reported", "blocker", "Missing-input probe must report missing_inputs.", "details.missing_inputs"))
+        progress = output.get("progress_state") if isinstance(output.get("progress_state"), dict) else {}
+        if not progress.get("blockers"):
+            findings.append(_finding("missing_input_blockers_not_reported", "blocker", "Missing-input probe must report progress_state.blockers.", "progress_state.blockers"))
+        diagnostics = output.get("diagnostics") if isinstance(output.get("diagnostics"), dict) else {}
+        if diagnostics.get("has_user_input") is True:
+            findings.append(_finding("missing_input_claimed_user_input", "blocker", "Missing-input probe must not claim user input.", "diagnostics.has_user_input"))
+    if "non_dict" in probe_id:
+        warnings = details.get("payload_warnings")
+        if not isinstance(warnings, list) or not warnings:
+            findings.append(_finding("payload_warnings_not_reported", "blocker", "Non-dict probe must preserve payload_warnings.", "details.payload_warnings"))
     if probe_id == "duplicate_existing_plugin_test":
         if decision not in {"merge_or_reject", "redesign_boundary"}:
             findings.append(_finding("duplicate_probe_failed", "blocker", "Duplicate probe must merge/reject or redesign.", "details.merge_or_reject_decision"))
@@ -163,7 +186,7 @@ def validate_plugin_output_against_spec(
         if decision != "generate_new":
             findings.append(_finding("unique_probe_failed", "blocker", "Unique probe must generate_new unless evidence says otherwise.", "details.merge_or_reject_decision"))
 
-    if _is_metadata_only(output):
+    if _is_metadata_only(output, required_detail_keys):
         findings.append(_finding("metadata_only_behavior", "blocker", "Output looks like metadata-only relabeling, not capability behavior."))
     if _contains_generic_backlog(output):
         findings.append(_finding("generic_backlog_behavior", "blocker", "Overlap checker output contains generic backlog/release/repair fields."))
@@ -220,4 +243,3 @@ def run_semantic_contract(
             "reject_or_merge",
         )
     return asyncio.run(run_semantic_contract_async(plugin_callable, spec, profile, contract))
-

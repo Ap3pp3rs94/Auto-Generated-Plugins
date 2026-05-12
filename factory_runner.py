@@ -88,6 +88,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
         _registered_profile_id = None  # type: ignore[assignment]
 
 try:
+    from factory.factory_os.capability_spec import CapabilitySpec, LogicProfile, SemanticContract, SemanticProbe
     from factory.factory_os.capability_specs import get_capability_spec as _get_capability_spec
     from factory.factory_os.logic_profiles import (
         get_logic_profile as _get_logic_profile,
@@ -98,6 +99,7 @@ try:
     from factory.factory_os.semantic_validator import run_semantic_contract_async as _run_semantic_contract_async
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
     try:
+        from factory_os.capability_spec import CapabilitySpec, LogicProfile, SemanticContract, SemanticProbe  # type: ignore
         from factory_os.capability_specs import get_capability_spec as _get_capability_spec  # type: ignore
         from factory_os.logic_profiles import (  # type: ignore
             get_logic_profile as _get_logic_profile,
@@ -115,6 +117,10 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
         _get_semantic_contract = None  # type: ignore[assignment]
         _run_semantic_contract_async = None  # type: ignore[assignment]
         _repair_draft_plugin_file = None  # type: ignore[assignment]
+        CapabilitySpec = None  # type: ignore[assignment]
+        LogicProfile = None  # type: ignore[assignment]
+        SemanticContract = None  # type: ignore[assignment]
+        SemanticProbe = None  # type: ignore[assignment]
 else:
     try:
         from factory.factory_os.draft_plugin_repair_surgeon import repair_plugin_file as _repair_draft_plugin_file
@@ -1455,6 +1461,29 @@ def _write_plugin_file(slug: str, source: str) -> Path:
     return path
 
 
+class DraftRepairGateError(RuntimeError):
+    """Raised when the repair surgeon says a candidate must not continue."""
+
+    def __init__(
+        self,
+        *,
+        slug: str,
+        action: str,
+        findings: Sequence[Any],
+        candidate_path: Path,
+        quarantine_path: Path | None = None,
+    ) -> None:
+        self.slug = slug
+        self.action = action
+        self.findings = list(findings)
+        self.candidate_path = candidate_path
+        self.quarantine_path = quarantine_path
+        location = f"; moved to {quarantine_path}" if quarantine_path is not None else ""
+        super().__init__(
+            f"draft_repair_gate: {slug} requires {action}; findings={self.findings}{location}"
+        )
+
+
 def _write_candidate_plugin_file(slug: str, source: str) -> Path:
     CANDIDATE_PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
     path = CANDIDATE_PLUGINS_DIR / f"{slug}.py"
@@ -1475,7 +1504,27 @@ def _write_candidate_plugin_file(slug: str, source: str) -> Path:
                     repair_result.recommended_next_action,
                     repair_result.remaining_findings,
                 )
+                reason = (
+                    "draft_repair_gate: "
+                    f"action={repair_result.recommended_next_action}; "
+                    f"findings={repair_result.remaining_findings}; "
+                    f"recipe={repair_result.repair_recipe}"
+                )
+                try:
+                    quarantine_path = _discard_candidate_plugin(path, reason=reason)
+                except Exception:
+                    quarantine_path = None
+                    LOG.warning("Unable to quarantine repair-gated candidate %r", slug, exc_info=True)
+                raise DraftRepairGateError(
+                    slug=slug,
+                    action=repair_result.recommended_next_action,
+                    findings=repair_result.remaining_findings,
+                    candidate_path=path,
+                    quarantine_path=quarantine_path,
+                )
         except Exception:
+            if sys.exc_info()[0] is DraftRepairGateError:
+                raise
             LOG.warning("Draft repair surgeon failed for candidate %r.", slug, exc_info=True)
     return path
 
@@ -1968,6 +2017,249 @@ def _normalized_gate_profile_id(profile_id: Any) -> str:
     return raw
 
 
+_GENERIC_REQUIRED_DETAIL_KEYS = [
+    "missing_inputs",
+    "payload_warnings",
+    "logic_profile_id",
+    "has_user_input",
+    "used_goal_fallback",
+]
+
+_PROFILE_REQUIRED_DETAIL_KEYS: Dict[str, Set[str]] = {
+    "prompt_refinement_profile": {"identified_vagueness", "missing_constraints", "rewrites", "refined_prompt"},
+    "structured_prompt_builder_profile": {"structured_prompt", "contract_sections", "missing_prompt_parts"},
+    "grounded_answer_planner_profile": {"supported_claims", "unsupported_claims", "retrieval_gaps", "answer_plan"},
+    "hallucination_risk_auditor_profile": {"claims", "risk_factors", "citation_needs", "safer_rewrites"},
+    "context_window_optimizer_profile": {"kept_context", "compressed_context", "dropped_context", "token_budget"},
+    "memory_compression_profile": {"memory_summary", "retained_facts", "dropped_noise", "update_recommendations"},
+    "multi_agent_handoff_profile": {"handoff_inputs", "ownership_boundaries", "handoff_overlap_decision"},
+    "task_planner_profile": {"sequenced_plan", "handoff_packet", "risk_signals"},
+    "automation_safety_gate_profile": {"safety_checks", "unsafe_actions", "approval_requirements", "execution_decision"},
+    "prompt_injection_surface_scanner_profile": {"injection_patterns", "untrusted_segments", "safe_handling_rules", "risk_level"},
+    "output_quality_scorer_profile": {"quality_findings", "rubric_scores", "missing_requirements", "improvement_checklist"},
+    "requirement_gap_analyzer_profile": {"requirement_gaps", "assumptions", "clarification_questions", "readiness_decision"},
+    "artifact_release_note_generator_profile": {"release_notes", "validation_evidence", "changed_artifacts", "known_risks"},
+    "data_contract_mapper_profile": {"input_contract", "output_contract", "validation_rules", "schema_gaps"},
+    "autonomous_run_governor_profile": {"governance_decision", "run_signals", "stop_conditions", "allowed_next_actions"},
+    "model_selection_scorecard_profile": {"model_scorecard", "selected_model_style", "cost_risk_tradeoffs", "escalation_triggers"},
+    "instruction_conflict_detector_profile": {"instruction_conflicts", "priority_order", "clarified_instruction_set"},
+    "retrieval_query_expander_profile": {"query_plan", "expanded_queries", "retrieval_constraints"},
+    "workflow_debugger_profile": {"failure_routes", "trace_findings", "debug_next_steps"},
+    "plugin_spec_architect_profile": {"spec_blueprint", "uniqueness_checks", "capability_boundaries", "prompt_requirements"},
+    "plugin_logic_blueprint_designer_profile": {"logic_blueprint", "deterministic_rules", "data_flow", "failure_modes"},
+    "plugin_quality_gate_designer_profile": {"quality_gates", "rejection_rules", "semantic_probes", "pass_criteria"},
+    "plugin_test_payload_generator_profile": {"test_payloads", "edge_cases", "expected_differences", "regression_watchlist"},
+    "capability_overlap_checker_profile": {"duplicate_risks", "uniqueness_fingerprint", "comparison_targets", "merge_or_reject_decision", "max_similarity", "missing_inputs"},
+    "plugin_repair_strategy_planner_profile": {"repair_plan", "weak_signals", "capability_specific_targets", "acceptance_checks"},
+    "plugin_release_packager_profile": {"release_package", "validation_summary", "github_publish_plan", "rollback_notes"},
+    "plugin_factory_backlog_planner_profile": {"backlog_items", "priority_rationale", "dependency_order", "next_plugin_specs"},
+    "plugin_profile_gap_detector_profile": {"profile_gaps", "missing_profile_slugs", "alias_gaps", "coverage_summary"},
+    "semantic_probe_result_analyzer_profile": {"probe_failures", "contrast_findings", "repair_targets", "promotion_recommendation"},
+    "release_readiness_scorecard_profile": {"readiness_checks", "blocking_findings", "release_decision", "evidence_summary"},
+    "continuous_prompt_contract_designer_profile": {"structured_prompt", "requirements", "output_schema", "checklist"},
+    "continuous_evidence_gap_detector_profile": {"answer_plan", "supported_claims", "unsupported_claims", "evidence_map"},
+    "continuous_source_quality_ranker_profile": {"ranked_sources", "anchor_sources", "rejected_sources", "ranking_criteria"},
+    "continuous_memory_update_recommender_profile": {"memory_summary", "durable_facts", "discard_candidates", "open_threads"},
+    "continuous_tool_safety_reviewer_profile": {"risk_findings", "approval_required", "controls"},
+    "continuous_trace_failure_router_profile": {"failure_points", "root_cause_stage", "retry_plan"},
+    "continuous_retrieval_query_planner_profile": {"core_query", "expanded_queries", "grounding_plan"},
+    "continuous_citation_priority_scorer_profile": {"claims", "risk_domains", "verification_priorities", "citation_plan"},
+    "continuous_instruction_hierarchy_checker_profile": {"conflicts", "clarified_instruction", "instruction_sources"},
+    "continuous_tool_argument_checker_profile": {"argument_risks", "unsafe_arguments", "sanitized_arguments", "argument_safety_decision"},
+    "continuous_output_completeness_grader_profile": {"completeness_findings", "missing_sections", "completeness_score"},
+    "continuous_response_action_planner_profile": {"action_plan", "actionability_gaps", "next_step_checks"},
+    "continuous_verification_checklist_builder_profile": {"verification_checklist", "automated_checks", "human_review_checks"},
+    "continuous_rollback_guard_builder_profile": {"rollback_plan", "rollback_readiness", "blast_radius", "missing_rollback_controls"},
+}
+
+_PROFILE_REQUIRED_DETAIL_FALLBACKS: tuple[tuple[str, str], ...] = (
+    ("continuous_prompt_contract_designer_profile", "structured_prompt_builder_profile"),
+    ("continuous_prompt_clarity_auditor_profile", "prompt_refinement_profile"),
+    ("continuous_evidence_gap_detector_profile", "grounded_answer_planner_profile"),
+    ("continuous_source_quality_ranker_profile", "grounded_answer_planner_profile"),
+    ("continuous_context_noise_filter_profile", "context_window_optimizer_profile"),
+    ("continuous_memory_update_recommender_profile", "memory_compression_profile"),
+    ("continuous_agent_handoff_checker_profile", "multi_agent_handoff_profile"),
+    ("continuous_parallelization_planner_profile", "task_planner_profile"),
+    ("continuous_tool_safety_reviewer_profile", "automation_safety_gate_profile"),
+    ("continuous_tool_argument_checker_profile", "prompt_injection_surface_scanner_profile"),
+    ("continuous_output_completeness_grader_profile", "output_quality_scorer_profile"),
+    ("continuous_response_action_planner_profile", "output_quality_scorer_profile"),
+    ("continuous_assumption_risk_mapper_profile", "requirement_gap_analyzer_profile"),
+    ("continuous_verification_checklist_builder_profile", "prompt_test_case_generator_profile"),
+    ("continuous_rollback_guard_builder_profile", "automation_safety_gate_profile"),
+    ("continuous_anomaly_watch_builder_profile", "autonomous_run_governor_profile"),
+    ("continuous_release_evidence_summarizer_profile", "artifact_release_note_generator_profile"),
+    ("continuous_trace_failure_router_profile", "workflow_debugger_profile"),
+    ("continuous_retrieval_query_planner_profile", "retrieval_query_expander_profile"),
+    ("continuous_citation_priority_scorer_profile", "hallucination_risk_auditor_profile"),
+    ("continuous_model_fit_triage_profile", "model_selection_scorecard_profile"),
+    ("continuous_instruction_hierarchy_checker_profile", "instruction_conflict_detector_profile"),
+    ("continuous_data_contract_validator_profile", "data_contract_mapper_profile"),
+)
+
+
+def _required_detail_keys_for_profile(profile_id: str) -> list[str]:
+    normalized = _normalized_gate_profile_id(profile_id) or str(profile_id or "")
+    required = _PROFILE_REQUIRED_DETAIL_KEYS.get(normalized)
+    if required is None:
+        for continuous_profile, base_profile in _PROFILE_REQUIRED_DETAIL_FALLBACKS:
+            if normalized == continuous_profile:
+                required = _PROFILE_REQUIRED_DETAIL_KEYS.get(base_profile, set())
+                break
+    return sorted(required or set())
+
+
+def _generic_probe_payload(spec: PluginSpec) -> Dict[str, Any]:
+    return {
+        "task": getattr(spec, "goal", "") or getattr(spec, "name", ""),
+        "objective": getattr(spec, "goal", "") or "Validate this AI capability.",
+        "prompt": "Plan, verify, and safely improve this AI capability without inventing facts.",
+        "instruction": "Return machine-readable findings and concrete next actions.",
+        "query": "capability validation evidence",
+        "question": "What should be checked before promoting this capability?",
+        "response": "Draft response with missing evidence, unclear assumptions, and unverified claims.",
+        "answer": "Candidate answer requiring quality review.",
+        "messages": [
+            {"role": "user", "content": "Check whether this AI capability is ready."},
+            {"role": "assistant", "content": "Drafted a plan with assumptions and gaps."},
+        ],
+        "source_notes": [
+            "Source A supports the implementation boundary.",
+            "Source B conflicts with one unstated assumption.",
+        ],
+        "candidate_outputs": [
+            {"summary": "Candidate A omits verification evidence."},
+            {"summary": "Candidate B includes citations and caveats."},
+        ],
+        "current_plan": ["inspect inputs", "build logic", "validate semantics"],
+        "completed_steps": ["created draft capability shell"],
+        "blocked_steps": ["need promotion evidence"],
+        "constraints": ["preserve Station C envelope", "reject shallow behavior"],
+        "agents": [{"name": "builder", "role": "implementation"}, {"name": "reviewer", "role": "validation"}],
+        "workstreams": ["implementation", "semantic validation"],
+        "ownership_scopes": ["plugin source", "validation evidence"],
+        "context_items": [
+            {"text": "Keep this constraint because it affects safety.", "importance": "high"},
+            {"text": "Ignore this unrelated noisy status note.", "importance": "low"},
+        ],
+        "existing_plugins": [
+            {"name": "Existing Capability", "slug": "existing_capability", "owns": ["baseline comparison"]},
+        ],
+    }
+
+
+def _build_generic_capability_spec(spec: PluginSpec, profile_id: str) -> Any:
+    if CapabilitySpec is None:
+        return None
+    profile_required = _required_detail_keys_for_profile(profile_id)
+    return CapabilitySpec(
+        name=str(getattr(spec, "name", "") or getattr(spec, "slug", "")),
+        slug=str(getattr(spec, "slug", "")),
+        family_key=str((getattr(spec, "extra", {}) or {}).get("family_key") or getattr(spec, "slug", "")),
+        purpose=str(getattr(spec, "goal", "") or getattr(spec, "name", "")),
+        owns=list(getattr(spec, "use_cases", []) or []),
+        does_not_own=["metadata-only relabeling", "generic fallback behavior", "hidden external side effects"],
+        required_inputs=["user-provided payload values"],
+        optional_inputs=[
+            "task",
+            "objective",
+            "prompt",
+            "instruction",
+            "query",
+            "question",
+            "response",
+            "messages",
+            "source_notes",
+            "candidate_outputs",
+            "current_plan",
+            "completed_steps",
+            "blocked_steps",
+            "agents",
+            "workstreams",
+            "ownership_scopes",
+        ],
+        required_detail_keys=list(_GENERIC_REQUIRED_DETAIL_KEYS),
+        required_scores=["confidence", "usefulness"],
+        forbidden_detail_keys=[],
+        logic_profile_ids=[profile_id],
+        semantic_probe_ids=[
+            "generic_empty_payload_missing_input_test",
+            "generic_non_dict_payload_warning_test",
+            "generic_useful_payload_profile_contract_test",
+        ],
+    )
+
+
+def _build_generic_logic_profile(profile_id: str) -> Any:
+    if LogicProfile is None:
+        return None
+    return LogicProfile(
+        profile_id=profile_id,
+        aliases=[],
+        purpose="Generic generated AI capability profile contract.",
+        required_behavior=(
+            "Use actual payload values, report profile-specific details, preserve payload warnings, "
+            "and expose diagnostics proving the plugin did not treat its own goal as user input."
+        ),
+        forbidden_behavior=[
+            "metadata-only relabeling",
+            "empty payload treated as complete",
+            "dropping non-dict payload warnings",
+            "generic fallback output",
+        ],
+        required_detail_keys=list(_GENERIC_REQUIRED_DETAIL_KEYS),
+        required_scores=["confidence", "usefulness"],
+        allowed_result_modes=[],
+    )
+
+
+def _build_generic_semantic_contract(spec: PluginSpec, cap_spec: Any, profile_id: str) -> Any:
+    if SemanticContract is None or SemanticProbe is None:
+        return None
+    profile_required = _required_detail_keys_for_profile(profile_id)
+    return SemanticContract(
+        spec_slug=cap_spec.slug,
+        probes=[
+            SemanticProbe(
+                probe_id="generic_empty_payload_missing_input_test",
+                name="Generic empty payload missing-input test",
+                payload={},
+                required_detail_keys=["missing_inputs", "payload_warnings", "has_user_input", "used_goal_fallback"],
+            ),
+            SemanticProbe(
+                probe_id="generic_non_dict_payload_warning_test",
+                name="Generic non-dict payload warning test",
+                payload="make this capability better",
+                required_detail_keys=["missing_inputs", "payload_warnings", "has_user_input", "used_goal_fallback"],
+            ),
+            SemanticProbe(
+                probe_id="generic_useful_payload_profile_contract_test",
+                name="Generic useful payload profile contract test",
+                payload=_generic_probe_payload(spec),
+                expected_min_scores={"confidence": 0.2, "usefulness": 0.2},
+                required_detail_keys=profile_required,
+            ),
+        ],
+        structural_requirements={
+            "required_top_level_keys": [
+                "summary",
+                "primary_insights",
+                "recommended_actions",
+                "scores",
+                "details",
+                "progress_state",
+                "user_experience",
+            ]
+        },
+        semantic_requirements={
+            "forbid_metadata_only_relabeling": True,
+            "require_payload_warning_preservation": True,
+            "require_profile_specific_details": True,
+        },
+    )
+
+
 def _result_detail_keys(output: Dict[str, Any]) -> Set[str]:
     details = output.get("details")
     if not isinstance(details, dict):
@@ -2148,23 +2440,31 @@ async def _capability_promotion_gate(
     spec: PluginSpec,
 ) -> Tuple[bool, str]:
     if not (
-        callable(_get_capability_spec)
-        and callable(_get_logic_profile)
-        and callable(_get_semantic_contract)
+        callable(_get_logic_profile)
         and callable(_run_semantic_contract_async)
         and callable(_evaluate_for_promotion)
     ):
         return True, "capability_promotion: operating layer unavailable"
 
-    cap_spec = _get_capability_spec(str(getattr(spec, "slug", "") or ""))
-    if cap_spec is None:
-        return True, "capability_promotion: no specialized capability spec"
-
     profile_id = _registered_profile_id(spec.slug) if callable(_registered_profile_id) else None
     if callable(_normalize_logic_profile_id):
         profile_id = _normalize_logic_profile_id(profile_id or "") or profile_id
+    if not profile_id:
+        return False, "capability_promotion: missing registered logic profile"
+
+    cap_spec = _get_capability_spec(str(getattr(spec, "slug", "") or "")) if callable(_get_capability_spec) else None
     profile = _get_logic_profile(profile_id or "")
-    contract = _get_semantic_contract(cap_spec.slug)
+    contract = _get_semantic_contract(cap_spec.slug) if cap_spec is not None and callable(_get_semantic_contract) else None
+
+    using_generic_contract = False
+    if cap_spec is None:
+        cap_spec = _build_generic_capability_spec(spec, profile_id)
+        profile = _build_generic_logic_profile(profile_id)
+        contract = _build_generic_semantic_contract(spec, cap_spec, profile_id) if cap_spec is not None else None
+        using_generic_contract = True
+
+    if cap_spec is None:
+        return False, "capability_promotion: unable to build CapabilitySpec"
     if profile is None or contract is None:
         return False, f"capability_promotion: missing profile or semantic contract for {cap_spec.slug}"
 
@@ -2174,6 +2474,8 @@ async def _capability_promotion_gate(
     first_output = await _invoke_plugin_for_semantic_check(module, first_payload, f"{spec.slug}-promotion")
     decision = _evaluate_for_promotion(first_output, cap_spec, profile, semantic_result)
     if decision.decision == "promote":
+        if using_generic_contract:
+            return True, "capability_promotion: generated generic CapabilitySpec contract passed and promotion approved"
         return True, "capability_promotion: semantic contract passed and promotion approved"
     finding_text = "; ".join(
         f"{finding.code}: {finding.message}" for finding in semantic_result.findings[:8]
@@ -3387,7 +3689,37 @@ async def run_factory(config: RunnerConfig) -> None:
         # Candidates are intentionally kept out of plugins/ until every gate
         # passes. A rejected plugin should never appear as an installable
         # artifact or be committed to GitHub.
-        candidate_path = _write_candidate_plugin_file(spec.slug, result.source)
+        try:
+            candidate_path = _write_candidate_plugin_file(spec.slug, result.source)
+        except DraftRepairGateError as exc:
+            reason = str(exc)
+            LOG.error("Draft repair gate rejected AI roadmap plugin %r → %s", spec.slug, reason)
+            if is_upgrade_attempt and source_spec is not None:
+                _upgrade_attempt_record(
+                    state=ai_roadmap_state,
+                    source_spec=source_spec,
+                    canonical_spec=spec,
+                    status="rejected",
+                    reason=reason,
+                )
+            elif source_spec is not None:
+                _capability_rejection_record(
+                    state=ai_roadmap_state,
+                    spec=source_spec,
+                    reason=reason,
+                    repair_gate_failed=True,
+                )
+                existing_slugs.add(spec.slug)
+                existing_signatures.add(_spec_signature(spec))
+                index_counter = selected_index + 1
+            if not config.loop_forever:
+                break
+            LOG.info(
+                "AI roadmap plugin failed draft repair gate; retrying same spec in %.1f seconds.",
+                config.sleep_seconds,
+            )
+            await asyncio.sleep(config.sleep_seconds)
+            continue
         plugin_path = candidate_path
         LOG.info("Plugin candidate staged: %s", candidate_path)
 
@@ -3461,30 +3793,40 @@ async def run_factory(config: RunnerConfig) -> None:
                     reason=semantic_reason,
                 )
                 if repair_source:
-                    candidate_path = _write_candidate_plugin_file(spec.slug, repair_source)
-                    plugin_path = candidate_path
-                    ok, reason = await _validate_plugin_file(candidate_path, spec)
-                    if ok:
-                        try:
-                            semantic_ok, semantic_reason = await _semantic_depth_check(candidate_path, spec)
-                        except Exception as exc:
-                            semantic_ok = False
-                            semantic_reason = f"semantic_depth: repaired check crashed: {exc}"
-                    if ok and semantic_ok:
-                        LOG.info(
-                            "Semantic repair accepted for AI roadmap plugin %r: %s",
-                            spec.slug,
-                            semantic_reason,
-                        )
-                        result.source = repair_source
-                    else:
+                    try:
+                        candidate_path = _write_candidate_plugin_file(spec.slug, repair_source)
+                    except DraftRepairGateError as exc:
+                        semantic_ok = False
+                        semantic_reason = str(exc)
                         LOG.error(
-                            "Semantic repair failed for AI roadmap plugin %r → validation_ok=%r reason=%s semantic=%s",
+                            "Draft repair gate rejected semantic repair for AI roadmap plugin %r → %s",
                             spec.slug,
-                            ok,
-                            reason,
                             semantic_reason,
                         )
+                    else:
+                        plugin_path = candidate_path
+                        ok, reason = await _validate_plugin_file(candidate_path, spec)
+                        if ok:
+                            try:
+                                semantic_ok, semantic_reason = await _semantic_depth_check(candidate_path, spec)
+                            except Exception as exc:
+                                semantic_ok = False
+                                semantic_reason = f"semantic_depth: repaired check crashed: {exc}"
+                        if ok and semantic_ok:
+                            LOG.info(
+                                "Semantic repair accepted for AI roadmap plugin %r: %s",
+                                spec.slug,
+                                semantic_reason,
+                            )
+                            result.source = repair_source
+                        else:
+                            LOG.error(
+                                "Semantic repair failed for AI roadmap plugin %r → validation_ok=%r reason=%s semantic=%s",
+                                spec.slug,
+                                ok,
+                                reason,
+                                semantic_reason,
+                            )
 
                 if semantic_ok:
                     # Repair succeeded; continue to optional evaluation/handoff.
@@ -3555,16 +3897,26 @@ async def run_factory(config: RunnerConfig) -> None:
                     reason=promotion_reason,
                 )
                 if repair_source:
-                    candidate_path = _write_candidate_plugin_file(spec.slug, repair_source)
-                    plugin_path = candidate_path
                     try:
-                        promotion_ok, promotion_reason = await _capability_promotion_gate(candidate_path, spec)
-                    except Exception as exc:
+                        candidate_path = _write_candidate_plugin_file(spec.slug, repair_source)
+                    except DraftRepairGateError as exc:
                         promotion_ok = False
-                        promotion_reason = f"capability_promotion: repaired check crashed: {exc}"
-                    if promotion_ok:
-                        LOG.info("Capability promotion repair accepted for %r: %s", spec.slug, promotion_reason)
-                        result.source = repair_source
+                        promotion_reason = str(exc)
+                        LOG.error(
+                            "Draft repair gate rejected promotion repair for AI roadmap plugin %r → %s",
+                            spec.slug,
+                            promotion_reason,
+                        )
+                    else:
+                        plugin_path = candidate_path
+                        try:
+                            promotion_ok, promotion_reason = await _capability_promotion_gate(candidate_path, spec)
+                        except Exception as exc:
+                            promotion_ok = False
+                            promotion_reason = f"capability_promotion: repaired check crashed: {exc}"
+                        if promotion_ok:
+                            LOG.info("Capability promotion repair accepted for %r: %s", spec.slug, promotion_reason)
+                            result.source = repair_source
 
                 if not promotion_ok:
                     try:
