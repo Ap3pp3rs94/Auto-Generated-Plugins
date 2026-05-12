@@ -1,0 +1,245 @@
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import textwrap
+import tempfile
+import unittest
+from pathlib import Path
+
+from factory_os.draft_plugin_repair_surgeon import (
+    analyze_draft_plugin,
+    plan_repairs,
+    repair_draft_plugin,
+)
+
+
+def buggy_plugin_source() -> str:
+    return textwrap.dedent(
+        '''
+        from __future__ import annotations
+
+        from typing import Any, Dict, Optional
+
+        _PLUGIN_NAME = "AI Draft Plugin Repair Target"
+        _PLUGIN_SLUG = "ai_draft_plugin_repair_target_000001"
+        _PLUGIN_CATEGORY = "ai_prompting"
+        _PLUGIN_VERSION = "0.1.0"
+        _PLUGIN_GOAL = "Analyze task instructions and produce clearer, safer, more testable prompts."
+        _PLUGIN_MANIFEST = {"slug": _PLUGIN_SLUG}
+
+
+        class SkillContext:
+            def __init__(
+                self,
+                *,
+                user_id: str,
+                run_id: Optional[str],
+                plugin_slug: str,
+                plugin_name: str,
+                learning_profile: Optional[Dict[str, Any]] = None,
+                logger: Optional[Any] = None,
+                brain: Optional[Any] = None,
+            ) -> None:
+                self.user_id = user_id
+                self.run_id = run_id
+                self.plugin_slug = plugin_slug
+                self.plugin_name = plugin_name
+                self.learning_profile = learning_profile or {}
+                self.logger = logger
+                self.brain = brain
+
+
+        def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+            # === LOGIC START ===
+            plugin_name = "AI Draft Plugin Repair Target"
+            goal = "Analyze task instructions and produce clearer, safer, more testable prompts."
+            capability_type = "enrichment"
+            logic_profile_id = "prompt_refinement_profile"
+            payload_data = payload if isinstance(payload, dict) else {}
+            payload_warnings = [] if isinstance(payload, dict) else ["payload was not a dict; using empty payload"]
+            task_text = str(payload_data.get('task') or '').strip()
+            explicit_objective_text = str(payload_data.get('objective') or '').strip()
+            def_text = str(task_text or explicit_objective_text or payload_data.get('prompt') or goal).strip()
+            objective_text = str(explicit_objective_text or goal).strip()
+            missing_inputs = []
+            if not def_text:
+                missing_inputs.append("task")
+            result = {
+                "summary": plugin_name + ": processed " + def_text[:80],
+                "primary_insights": [{"title": "Target", "detail": def_text}],
+                "recommended_actions": [{"action": "Use output", "objective": objective_text}],
+                "scores": {"confidence": 0.5},
+                "details": {
+                    "logic_profile_id": logic_profile_id,
+                    "missing_inputs": missing_inputs,
+                    "payload_warnings": payload_warnings,
+                },
+                "progress_state": {"current_stage": logic_profile_id, "next_step": "Use output", "blockers": missing_inputs},
+                "user_experience": {"plain_language_takeaway": "Processed draft."},
+                "fun_mode": {"microcopy": "Draft processed."},
+                "diagnostics": {"logic_profile_id": logic_profile_id},
+            }
+            return result
+            # === LOGIC END ===
+
+
+        async def invoke(
+            user_id: str,
+            payload: Dict[str, Any],
+            *,
+            run_id: Optional[str] = None,
+            brain: Optional[Any] = None,
+            logger: Optional[Any] = None,
+            config: Optional[Dict[str, Any]] = None,
+            **kwargs: Any,
+        ) -> Dict[str, Any]:
+            if not isinstance(payload, dict):
+                payload = {"_value": payload}
+            context = SkillContext(
+                user_id=user_id,
+                run_id=run_id,
+                plugin_slug=_PLUGIN_SLUG,
+                plugin_name=_PLUGIN_NAME,
+                logger=logger,
+                brain=brain,
+            )
+            try:
+                core_output = _run_core_logic(context, payload, config or {})
+                return {"status": "succeeded", "output": core_output, "error": "", "meta": {"plugin_slug": _PLUGIN_SLUG}}
+            except Exception as exc:
+                return {"status": "failed", "output": None, "error": str(exc), "meta": {"plugin_slug": _PLUGIN_SLUG}}
+        '''
+    )
+
+
+def old_multi_profile_source() -> str:
+    return textwrap.dedent(
+        '''
+        _PLUGIN_NAME = "Old Branch Table"
+        _PLUGIN_SLUG = "old_branch_table"
+        def _run_core_logic(context, payload, config):
+            # === LOGIC START ===
+            logic_profile_id = "plugin_spec_architect_profile"
+            if logic_profile_id == "plugin_spec_architect_profile":
+                result = {}
+            elif logic_profile_id == "plugin_logic_blueprint_designer_profile":
+                result = {}
+            elif logic_profile_id == "plugin_quality_gate_designer_profile":
+                result = {}
+            elif logic_profile_id == "plugin_test_payload_generator_profile":
+                result = {}
+            elif logic_profile_id == "plugin_duplicate_detector_profile":
+                result = {}
+            return result
+            # === LOGIC END ===
+        '''
+    )
+
+
+def overlap_mismatch_source() -> str:
+    return textwrap.dedent(
+        '''
+        _PLUGIN_NAME = "AI Capability Overlap Checker"
+        _PLUGIN_SLUG = "ai_capability_overlap_checker_000999"
+        def _run_core_logic(context, payload, config):
+            # === LOGIC START ===
+            logic_profile_id = "continuous_capability_overlap_checker_profile"
+            if logic_profile_id == "plugin_spec_architect_profile":
+                result = {"details": {"backlog_items": []}}
+            elif logic_profile_id == "plugin_duplicate_detector_profile":
+                result = {"details": {"duplicate_risks": []}}
+            else:
+                result = {"details": {"backlog_items": []}}
+            return result
+            # === LOGIC END ===
+        '''
+    )
+
+
+class DraftPluginRepairSurgeonTests(unittest.TestCase):
+    def test_repair_detects_goal_fallback_bug(self) -> None:
+        analysis = analyze_draft_plugin(buggy_plugin_source())
+
+        self.assertTrue(analysis.has_goal_fallback_input_bug)
+        self.assertEqual(analysis.recommended_action, "repair")
+
+    def test_repair_patches_payload_warning_preservation(self) -> None:
+        result = repair_draft_plugin(buggy_plugin_source())
+
+        self.assertIn("preserve_payload_warnings", result.applied_patches)
+        self.assertIn("_payload_warnings", result.patched_source)
+        self.assertNotIn("payload_warnings = [] if isinstance(payload, dict) else", result.patched_source)
+
+    def test_repair_adds_enriched_diagnostics(self) -> None:
+        result = repair_draft_plugin(buggy_plugin_source())
+
+        self.assertIn("add_profile_missing_input_and_diagnostics_finalizer", result.applied_patches)
+        self.assertIn("'has_user_input'", result.patched_source)
+        self.assertIn("'input_signal_count'", result.patched_source)
+        self.assertIn("'semantic_probe_ready'", result.patched_source)
+
+    def test_empty_payload_after_repair_reports_missing_inputs_and_blockers(self) -> None:
+        module = self._load_repaired_module()
+        envelope = asyncio.run(module.invoke("tester", {}))
+
+        self.assertEqual(envelope["status"], "succeeded", envelope)
+        output = envelope["output"]
+        self.assertTrue(output["details"]["missing_inputs"], output)
+        self.assertIn("prompt or instruction", output["details"]["missing_inputs"])
+        self.assertTrue(output["progress_state"]["blockers"], output)
+        self.assertFalse(output["diagnostics"]["has_user_input"], output)
+        self.assertTrue(output["diagnostics"]["used_goal_fallback"], output)
+
+    def test_non_dict_payload_after_repair_preserves_payload_warnings(self) -> None:
+        module = self._load_repaired_module()
+        envelope = asyncio.run(module.invoke("tester", "make this better"))
+
+        self.assertEqual(envelope["status"], "succeeded", envelope)
+        output = envelope["output"]
+        warnings = output["details"]["payload_warnings"]
+        self.assertTrue(any("not a dict" in warning for warning in warnings), output)
+        self.assertGreater(output["diagnostics"]["payload_warning_count"], 0, output)
+
+    def test_old_multi_profile_branch_table_is_classified_as_regenerate(self) -> None:
+        analysis = analyze_draft_plugin(old_multi_profile_source())
+        plan = plan_repairs(analysis)
+
+        self.assertTrue(analysis.has_multi_profile_branch_table)
+        self.assertEqual(analysis.recommended_action, "regenerate")
+        self.assertEqual(plan.risk_level, "high")
+        self.assertEqual(plan.repair_steps, [])
+
+    def test_overlap_checker_routing_mismatch_is_detected(self) -> None:
+        analysis = analyze_draft_plugin(overlap_mismatch_source())
+
+        self.assertTrue(analysis.has_profile_routing_mismatch)
+
+    def test_patched_source_still_imports_and_invoke_returns_station_c_envelope(self) -> None:
+        module = self._load_repaired_module()
+        envelope = asyncio.run(module.invoke("tester", {"prompt": "Make this better", "objective": "Ship safely"}))
+
+        self.assertEqual(envelope["status"], "succeeded", envelope)
+        self.assertIsInstance(envelope["output"], dict)
+        self.assertEqual(envelope["meta"]["plugin_slug"], "ai_draft_plugin_repair_target_000001")
+        self.assertIn("output", envelope)
+        self.assertIn("error", envelope)
+        self.assertIn("meta", envelope)
+
+    def _load_repaired_module(self):
+        result = repair_draft_plugin(buggy_plugin_source())
+        self.assertEqual(result.recommended_next_action, "retest", result)
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        path = Path(temp_dir.name) / "repaired_plugin.py"
+        path.write_text(result.patched_source, encoding="utf-8")
+        spec = importlib.util.spec_from_file_location("repaired_plugin", path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
+        return module
+
+
+if __name__ == "__main__":
+    unittest.main()
