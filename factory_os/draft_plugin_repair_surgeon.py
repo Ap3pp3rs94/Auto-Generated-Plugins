@@ -245,10 +245,14 @@ def _has_context_noise_filter_weak_drop_bug(source: str) -> bool:
 def _has_source_quality_ranker_grounded_answer_bug(source: str) -> bool:
     return (
         "continuous_source_quality_ranker_profile" in source
-        and "answer_plan" in source
-        and "supported_claims" in source
-        and "ranked_sources" not in source
-        and "AI Draft Plugin Repair Surgeon source quality finalizer" not in source
+        and (
+            (
+                "answer_plan" in source
+                and "supported_claims" in source
+                and "ranked_sources" not in source
+            )
+            or "AI Draft Plugin Repair Surgeon source quality finalizer v2" not in source
+        )
     )
 
 
@@ -779,7 +783,7 @@ except Exception as _context_repair_exc:
 
 def _source_quality_ranker_finalizer_block() -> str:
     return r"""
-# AI Draft Plugin Repair Surgeon source quality finalizer.
+# AI Draft Plugin Repair Surgeon source quality finalizer v2.
 try:
     _details = result.get('details') if isinstance(result.get('details'), dict) else {}
     _profile_id = str(_details.get('logic_profile_id') or locals().get('logic_profile_id') or '')
@@ -787,7 +791,11 @@ try:
         _payload_data = payload if isinstance(payload, dict) else {}
         _objective_text = str(_payload_data.get('objective') or _payload_data.get('task') or _payload_data.get('question') or '').lower()
         _source_records = []
-        for _key in ['source_notes', 'retrieved_context', 'citations', 'references', 'sources']:
+        for _key in [
+            'source_notes', 'retrieved_context', 'citations', 'references', 'sources',
+            'candidate_outputs', 'trace', 'current_plan', 'completed_steps',
+            'blocked_steps', 'constraints', 'messages',
+        ]:
             _value = _payload_data.get(_key)
             _items = _value if isinstance(_value, list) else ([_value] if _value else [])
             for _idx, _item in enumerate(_items):
@@ -805,6 +813,23 @@ try:
                     _date = ''
                 _source_records.append({'title': _title, 'type': _kind, 'content': _content, 'url': _url, 'date': _date, 'source_key': _key})
         _objective_terms = {term.strip('.,:;!?').lower() for term in _objective_text.split() if len(term.strip('.,:;!?')) > 4}
+        _all_source_text = ' '.join(str(item) for item in _source_records).lower()
+        if any(term in _all_source_text + ' ' + _objective_text for term in ['auth', 'login', 'database', 'migration', 'rollback', 'middleware']):
+            _ranking_mode = 'release_auth_source_ranking'
+            _mode_terms = ['auth', 'login', 'database', 'migration', 'rollback', 'middleware', 'production']
+            _anchor_action = 'Anchor release-safety sources first'
+        elif any(term in _all_source_text + ' ' + _objective_text for term in ['medical', 'clinical', 'citation', 'dosage', 'claim', 'hallucination']):
+            _ranking_mode = 'citation_safety_source_ranking'
+            _mode_terms = ['medical', 'clinical', 'citation', 'dosage', 'claim', 'source', 'unsupported']
+            _anchor_action = 'Anchor citation and safety sources first'
+        elif any(term in _all_source_text + ' ' + _objective_text for term in ['tool', 'trace', 'retrieval', 'consistency', 'mismatch']):
+            _ranking_mode = 'tool_trace_source_ranking'
+            _mode_terms = ['tool', 'trace', 'retrieval', 'consistency', 'mismatch', 'partial']
+            _anchor_action = 'Anchor tool and trace evidence first'
+        else:
+            _ranking_mode = 'general_source_quality_ranking'
+            _mode_terms = []
+            _anchor_action = 'Use anchor sources first'
         _ranked = []
         for _record in _source_records:
             _text = ' '.join(str(_record.get(key, '')) for key in ['title', 'type', 'content', 'url', 'date']).lower()
@@ -822,6 +847,10 @@ try:
             if any(term in _text for term in ['unverified', 'blog', 'forum', 'social', 'claims']):
                 _score -= 0.18
                 _signals.append('weak_or_unverified')
+            _mode_overlap = [term for term in _mode_terms if term in _text]
+            if _mode_overlap:
+                _score += min(0.2, 0.05 * len(_mode_overlap))
+                _signals.append(_ranking_mode)
             _content_terms = {term.strip('.,:;!?').lower() for term in _text.split() if len(term.strip('.,:;!?')) > 4}
             _overlap = sorted(_objective_terms & _content_terms)
             if _overlap:
@@ -836,7 +865,7 @@ try:
                 'source_type': _record['type'],
                 'quality_score': _score,
                 'trust_signals': _signals,
-                'relevance_terms': _overlap[:8],
+                'relevance_terms': sorted(set(_overlap + _mode_overlap))[:8],
                 'freshness': _record.get('date') or ('freshness_signal' if 'freshness_signal' in _signals else 'unknown'),
                 'preview': _record['content'][:220],
                 'recommended_use': 'anchor' if _score >= 0.62 else ('supporting' if _score >= 0.4 else 'avoid_or_verify'),
@@ -846,16 +875,18 @@ try:
         _rejected_sources = [item for item in _ranked if item['recommended_use'] == 'avoid_or_verify']
         _missing = [] if _source_records else ['source_notes, retrieved_context, citations, references, or sources']
         _avg_score = round(sum(item['quality_score'] for item in _ranked) / max(1, len(_ranked)), 2)
-        result['summary'] = f"{locals().get('plugin_name', 'AI Source Quality Ranker')}: ranked {len(_ranked)} source(s) by trust, relevance, freshness, and usefulness."
+        _top_source = _ranked[0]['source'] if _ranked else 'no source'
+        result['summary'] = f"{locals().get('plugin_name', 'AI Source Quality Ranker')}: {_ranking_mode} ranked {len(_ranked)} source(s); top source={_top_source}; weak={len(_rejected_sources)}."
         result['primary_insights'] = [
+            {'title': 'Ranking mode', 'detail': {'mode': _ranking_mode, 'mode_terms': _mode_terms}},
             {'title': 'Ranked sources', 'detail': _ranked[:8]},
             {'title': 'Anchor sources', 'detail': _anchor_sources[:5]},
             {'title': 'Sources needing verification', 'detail': _rejected_sources[:5]},
         ]
         result['recommended_actions'] = [
-            {'action': 'Use anchor sources first', 'sources': _anchor_sources[:5]},
-            {'action': 'Verify or exclude weak sources', 'sources': _rejected_sources[:5]},
-            {'action': 'Fill source gaps before synthesis', 'missing_inputs': _missing},
+            {'action': _anchor_action, 'ranking_mode': _ranking_mode, 'sources': _anchor_sources[:5]},
+            {'action': 'Verify or exclude weak sources for ' + _ranking_mode, 'sources': _rejected_sources[:5]},
+            {'action': 'Fill source gaps before synthesis for ' + _ranking_mode, 'missing_inputs': _missing},
         ]
         _scores = result.get('scores') if isinstance(result.get('scores'), dict) else {}
         _scores.update({
@@ -864,6 +895,7 @@ try:
             'source_quality': _avg_score,
             'anchor_source_count': len(_anchor_sources),
             'weak_source_count': len(_rejected_sources),
+            'ranking_mode_signal_count': sum(1 for item in _ranked for signal in item.get('trust_signals', []) if signal == _ranking_mode),
             'risk': round(min(0.92, 0.2 + 0.12 * len(_rejected_sources) + (0.2 if not _ranked else 0)), 2),
         })
         _details.update({
@@ -871,6 +903,7 @@ try:
             'anchor_sources': _anchor_sources,
             'rejected_sources': _rejected_sources,
             'ranking_criteria': ['trust', 'objective_relevance', 'freshness', 'answer_usefulness'],
+            'ranking_mode': _ranking_mode,
             'missing_inputs': _missing,
             'source_quality_repair': {'replaced_grounded_answer_plan': True, 'source_count': len(_ranked)},
         })
@@ -897,7 +930,7 @@ def _patch_context_noise_filter_semantics(source: str) -> tuple[str, bool]:
 def _patch_source_quality_ranker_semantics(source: str) -> tuple[str, bool]:
     return _insert_before_return_result(
         source,
-        "AI Draft Plugin Repair Surgeon source quality finalizer",
+        "AI Draft Plugin Repair Surgeon source quality finalizer v2",
         _source_quality_ranker_finalizer_block(),
     )
 

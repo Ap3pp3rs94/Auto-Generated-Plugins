@@ -480,6 +480,41 @@ class DraftPluginRepairSurgeonTests(unittest.TestCase):
         self.assertNotEqual(output["recommended_actions"][0]["action"], "Draft general_grounding answer from plan")
         self.assertTrue(output["diagnostics"]["source_quality_repair_applied"])
 
+    def test_source_quality_ranker_repair_changes_decision_surface_by_payload(self) -> None:
+        result = repair_draft_plugin(source_quality_ranker_grounded_answer_source())
+        module = self._load_module_from_source(result.patched_source, "source_quality_ranker_contrast")
+
+        auth_output = asyncio.run(
+            module.invoke(
+                "tester",
+                {
+                    "objective": "Rank release evidence for auth middleware and database rollback safety.",
+                    "candidate_outputs": [
+                        {"summary": "Change authentication middleware first."},
+                        {"summary": "Add rollback checks before production release."},
+                    ],
+                },
+            )
+        )["output"]
+        citation_output = asyncio.run(
+            module.invoke(
+                "tester",
+                {
+                    "objective": "Rank evidence for hallucination risk in a medical citation answer.",
+                    "trace": [{"tool": "retrieval", "issue": "citation mismatch"}],
+                    "candidate_outputs": [
+                        {"summary": "States an unsupported dosage claim."},
+                        {"summary": "Flags missing source support."},
+                    ],
+                },
+            )
+        )["output"]
+
+        self.assertIn("release_auth_source_ranking", auth_output["summary"])
+        self.assertIn("citation_safety_source_ranking", citation_output["summary"])
+        self.assertNotEqual(auth_output["recommended_actions"][0]["action"], citation_output["recommended_actions"][0]["action"])
+        self.assertNotEqual(auth_output["scores"], citation_output["scores"])
+
     def _load_repaired_module(self):
         result = repair_draft_plugin(buggy_plugin_source())
         self.assertEqual(result.recommended_next_action, "retest", result)
