@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 from pathlib import Path
 import sys
@@ -16,6 +17,7 @@ try:
         PROFILE_REQUIRED_DETAIL_KEYS,
         QualityConfig,
         _profile_specific_checks,
+        _promotion_gate_checks,
         _required_detail_keys,
         _roadmap_spec_from_slug,
         build_config_from_args,
@@ -27,6 +29,7 @@ except ModuleNotFoundError:
         PROFILE_REQUIRED_DETAIL_KEYS,
         QualityConfig,
         _profile_specific_checks,
+        _promotion_gate_checks,
         _required_detail_keys,
         _roadmap_spec_from_slug,
         build_config_from_args,
@@ -200,6 +203,34 @@ class QualityRunnerTests(unittest.TestCase):
         _profile_specific_checks(result, output)
 
         self.assertTrue(result.passed, [issue.message for issue in result.issues])
+
+    def test_quality_runner_uses_factory_promotion_gate(self) -> None:
+        try:
+            from factory import quality_runner as quality_module
+        except (ImportError, ModuleNotFoundError):  # pragma: no cover
+            import quality_runner as quality_module  # type: ignore
+
+        original_gate = quality_module._capability_promotion_gate
+
+        async def fake_gate(_path, _spec):
+            return False, "capability_promotion: generic contract failed"
+
+        quality_module._capability_promotion_gate = fake_gate
+        self.addCleanup(setattr, quality_module, "_capability_promotion_gate", original_gate)
+
+        result = AuditResult(
+            slug="ai_prompt_contract_designer_000073",
+            path=Path("plugins/ai_prompt_contract_designer_000073.py"),
+            profile_id="continuous_prompt_contract_designer_profile",
+            passed=True,
+        )
+        spec = _roadmap_spec_from_slug("ai_prompt_contract_designer_000073")
+        self.assertIsNotNone(spec)
+
+        asyncio.run(_promotion_gate_checks(result, result.path, spec))
+
+        self.assertFalse(result.passed)
+        self.assertTrue(any(issue.code == "promotion_gate" for issue in result.issues))
 
 
 if __name__ == "__main__":

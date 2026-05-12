@@ -188,7 +188,12 @@ def validate_plugin_output_against_spec(
 
     if _is_metadata_only(output, required_detail_keys):
         findings.append(_finding("metadata_only_behavior", "blocker", "Output looks like metadata-only relabeling, not capability behavior."))
-    if _contains_generic_backlog(output):
+    is_overlap_checker = (
+        profile.profile_id == "capability_overlap_checker_profile"
+        or "capability_overlap_checker" in str(spec.slug or "")
+        or "capability_overlap_checker" in str(spec.family_key or "")
+    )
+    if is_overlap_checker and _contains_generic_backlog(output):
         findings.append(_finding("generic_backlog_behavior", "blocker", "Overlap checker output contains generic backlog/release/repair fields."))
 
     blockers = [item for item in findings if item.severity in {"error", "blocker"}]

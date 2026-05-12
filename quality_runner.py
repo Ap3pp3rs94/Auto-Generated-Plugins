@@ -28,6 +28,7 @@ try:
         PRODUCTION_QUALITY_THRESHOLD,
         _build_registered_profile_result,
         _capability_quality_score,
+        _capability_promotion_gate,
         _extract_output_payload,
         _git_run,
         _semantic_depth_check,
@@ -47,6 +48,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - direct sidecar 
         PRODUCTION_QUALITY_THRESHOLD,
         _build_registered_profile_result,
         _capability_quality_score,
+        _capability_promotion_gate,
         _extract_output_payload,
         _git_run,
         _semantic_depth_check,
@@ -421,6 +423,16 @@ async def _semantic_contract_checks(result: AuditResult, path: Path, spec: Any) 
         result.add("promotion_gate", f"{decision.decision}: {decision.reason}")
 
 
+async def _promotion_gate_checks(result: AuditResult, path: Path, spec: Any) -> None:
+    try:
+        promotion_ok, promotion_reason = await _capability_promotion_gate(path, spec)
+    except Exception as exc:
+        result.add("promotion_gate_crash", str(exc))
+        return
+    if not promotion_ok:
+        result.add("promotion_gate", promotion_reason)
+
+
 async def audit_plugin_path(path: Path, spec: Any) -> AuditResult:
     profile_id = registered_profile_id(spec.slug)
     result = AuditResult(slug=spec.slug, path=path, profile_id=profile_id, passed=True)
@@ -460,6 +472,7 @@ async def audit_plugin_path(path: Path, spec: Any) -> AuditResult:
 
     _profile_specific_checks(result, output)
     await _semantic_contract_checks(result, path, spec)
+    await _promotion_gate_checks(result, path, spec)
     return result
 
 
