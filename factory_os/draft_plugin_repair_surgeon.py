@@ -45,6 +45,8 @@ class DraftPluginAnalysis:
     has_patchable_windows_temp_path_bug: bool = False
     has_windows_shell_command_bug: bool = False
     has_windows_subprocess_shell_bug: bool = False
+    has_context_noise_filter_weak_drop_bug: bool = False
+    has_source_quality_ranker_grounded_answer_bug: bool = False
 
 
 @dataclass(frozen=True)
@@ -230,6 +232,26 @@ def _has_windows_subprocess_shell_bug(source: str) -> bool:
     return bool(re.search(r"subprocess\.(?:run|check_call|check_output|Popen)\([^)]*shell\s*=\s*True", source, flags=re.DOTALL))
 
 
+def _has_context_noise_filter_weak_drop_bug(source: str) -> bool:
+    return (
+        "continuous_context_noise_filter_profile" in source
+        and "kept_context" in source
+        and "dropped_context" in source
+        and "AI Draft Plugin Repair Surgeon context noise finalizer" not in source
+        and "explicit_noise_terms" not in source
+    )
+
+
+def _has_source_quality_ranker_grounded_answer_bug(source: str) -> bool:
+    return (
+        "continuous_source_quality_ranker_profile" in source
+        and "answer_plan" in source
+        and "supported_claims" in source
+        and "ranked_sources" not in source
+        and "AI Draft Plugin Repair Surgeon source quality finalizer" not in source
+    )
+
+
 def analyze_draft_plugin(source: str, *, plugin_path: str | None = None) -> DraftPluginAnalysis:
     constants = _literal_module_constants(source)
     plugin_name = constants.get("_PLUGIN_NAME")
@@ -248,6 +270,8 @@ def analyze_draft_plugin(source: str, *, plugin_path: str | None = None) -> Draf
     has_patchable_windows_temp_bug = _has_patchable_windows_temp_path_bug(source)
     has_windows_shell_bug = _has_windows_shell_command_bug(source)
     has_windows_subprocess_shell_bug = _has_windows_subprocess_shell_bug(source)
+    has_context_noise_bug = _has_context_noise_filter_weak_drop_bug(source)
+    has_source_ranker_bug = _has_source_quality_ranker_grounded_answer_bug(source)
 
     patchable_findings = any(
         [
@@ -257,6 +281,8 @@ def analyze_draft_plugin(source: str, *, plugin_path: str | None = None) -> Draf
             has_missing_input_bug,
             has_routing_mismatch,
             has_patchable_windows_temp_bug,
+            has_context_noise_bug,
+            has_source_ranker_bug,
         ]
     )
     has_nonpatchable_windows_risk = (
@@ -293,6 +319,8 @@ def analyze_draft_plugin(source: str, *, plugin_path: str | None = None) -> Draf
         has_patchable_windows_temp_path_bug=has_patchable_windows_temp_bug,
         has_windows_shell_command_bug=has_windows_shell_bug,
         has_windows_subprocess_shell_bug=has_windows_subprocess_shell_bug,
+        has_context_noise_filter_weak_drop_bug=has_context_noise_bug,
+        has_source_quality_ranker_grounded_answer_bug=has_source_ranker_bug,
     )
 
 
@@ -410,6 +438,28 @@ def plan_repairs(
             )
         )
         expected.append("windows_path_literal_bug")
+    if analysis.has_context_noise_filter_weak_drop_bug:
+        steps.append(
+            RepairStep(
+                patch_id="add_context_noise_filter_semantic_finalizer",
+                target="logic_region",
+                description="Move explicit noise/off-topic context out of kept_context into dropped_context.",
+                severity="error",
+                patch_mode="marker_block",
+            )
+        )
+        expected.append("context_noise_filter_weak_drop_bug")
+    if analysis.has_source_quality_ranker_grounded_answer_bug:
+        steps.append(
+            RepairStep(
+                patch_id="add_source_quality_ranker_semantic_finalizer",
+                target="logic_region",
+                description="Add ranked_sources output and source ranking scores for source-quality ranker drafts.",
+                severity="error",
+                patch_mode="marker_block",
+            )
+        )
+        expected.append("source_quality_ranker_grounded_answer_bug")
     if analysis.has_windows_shell_command_bug or analysis.has_windows_subprocess_shell_bug:
         risk = "high"
         expected.extend(["windows_shell_command_bug", "windows_subprocess_shell_bug"])
@@ -626,6 +676,232 @@ def _patch_finalizer(source: str) -> tuple[str, bool]:
     return source[:body_start] + patched_body + source[body_end:], True
 
 
+def _insert_before_return_result(source: str, marker: str, block: str) -> tuple[str, bool]:
+    region = _logic_region(source)
+    if region is None:
+        return source, False
+    body_start, body_end, body = region
+    if marker in body:
+        return source, False
+    matches = list(re.finditer(r"(?m)^(?P<indent>\s*)return\s+result\s*$", body))
+    if not matches:
+        return source, False
+    match = matches[-1]
+    indent = match.group("indent")
+    indented_block = "\n".join(indent + line if line else line for line in block.strip("\n").splitlines())
+    patched_body = body[: match.start()] + indented_block + "\n" + body[match.start() :]
+    return source[:body_start] + patched_body + source[body_end:], True
+
+
+def _context_noise_filter_finalizer_block() -> str:
+    return r"""
+# AI Draft Plugin Repair Surgeon context noise finalizer.
+try:
+    _details = result.get('details') if isinstance(result.get('details'), dict) else {}
+    _profile_id = str(_details.get('logic_profile_id') or locals().get('logic_profile_id') or '')
+    if 'context_noise_filter' in _profile_id:
+        explicit_noise_terms = [
+            'irrelevant', 'unrelated', 'off-topic', 'off topic', 'noise',
+            'random old', 'small talk', 'lunch', 'chatter', 'thanks only',
+            'no action needed', 'discard', 'do not need',
+        ]
+        def _repair_context_items(key):
+            value = _details.get(key)
+            return list(value) if isinstance(value, list) else []
+        def _repair_item_text(item):
+            if isinstance(item, dict):
+                parts = [item.get('text'), item.get('preview'), item.get('compressed_text'), item.get('source')]
+                return ' '.join(str(part) for part in parts if part is not None).lower()
+            return str(item).lower()
+        def _repair_mark_noise(item):
+            text = _repair_item_text(item)
+            return any(term in text for term in explicit_noise_terms)
+        _kept = _repair_context_items('kept_context')
+        _compressed = _repair_context_items('compressed_context')
+        _dropped = _repair_context_items('dropped_context')
+        _moved = []
+        _new_kept = []
+        for _item in _kept:
+            if _repair_mark_noise(_item):
+                if isinstance(_item, dict):
+                    _item = dict(_item)
+                    _item.setdefault('reason_tags', [])
+                    if isinstance(_item['reason_tags'], list) and 'explicit_noise' not in _item['reason_tags']:
+                        _item['reason_tags'].append('explicit_noise')
+                _moved.append(_item)
+            else:
+                _new_kept.append(_item)
+        _new_compressed = []
+        for _item in _compressed:
+            if _repair_mark_noise(_item):
+                if isinstance(_item, dict):
+                    _item = dict(_item)
+                    _item.setdefault('reason_tags', [])
+                    if isinstance(_item['reason_tags'], list) and 'explicit_noise' not in _item['reason_tags']:
+                        _item['reason_tags'].append('explicit_noise')
+                _moved.append(_item)
+            else:
+                _new_compressed.append(_item)
+        if _moved:
+            _details['kept_context'] = _new_kept
+            _details['compressed_context'] = _new_compressed
+            _details['dropped_context'] = _moved + _dropped
+            _reason_counts = _details.get('priority_reason_counts') if isinstance(_details.get('priority_reason_counts'), dict) else {}
+            _reason_counts['explicit_noise'] = _reason_counts.get('explicit_noise', 0) + len(_moved)
+            _details['priority_reason_counts'] = _reason_counts
+            _details['noise_filter_repair'] = {'moved_to_dropped': len(_moved), 'terms': explicit_noise_terms}
+            _total = max(1, len(_new_kept) + len(_new_compressed) + len(_details['dropped_context']))
+            _scores = result.get('scores') if isinstance(result.get('scores'), dict) else {}
+            _scores['context_retention'] = round((len(_new_kept) + len(_new_compressed)) / _total, 2)
+            _scores['noise_drop_count'] = len(_details['dropped_context'])
+            _scores['usefulness'] = max(float(_scores.get('usefulness', _scores.get('confidence', 0.65)) or 0.65), 0.7)
+            result['scores'] = _scores
+            result['primary_insights'] = [
+                {'title': 'Kept context', 'detail': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'reason_tags': item.get('reason_tags', [])} for item in _new_kept if isinstance(item, dict)]},
+                {'title': 'Compressed context', 'detail': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'reason_tags': item.get('reason_tags', [])} for item in _new_compressed if isinstance(item, dict)]},
+                {'title': 'Dropped context', 'detail': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'reason_tags': item.get('reason_tags', [])} for item in _details['dropped_context'] if isinstance(item, dict)]},
+            ]
+            result['recommended_actions'] = [
+                {'action': 'Keep high-priority context', 'items': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'why': item.get('reason_tags', [])} for item in _new_kept[:8] if isinstance(item, dict)]},
+                {'action': 'Compress oversized but important context', 'items': [{'source': item.get('source'), 'preview': item.get('compressed_text', item.get('preview', '')), 'why': item.get('reason_tags', [])} for item in _new_compressed[:8] if isinstance(item, dict)]},
+                {'action': 'Drop explicit noise and low-signal context', 'items': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'why': item.get('reason_tags', [])} for item in _details['dropped_context'][:8] if isinstance(item, dict)]},
+            ]
+            _diagnostics = result.get('diagnostics') if isinstance(result.get('diagnostics'), dict) else {}
+            _diagnostics['context_noise_repair_applied'] = True
+            _diagnostics['context_noise_moved_count'] = len(_moved)
+            result['diagnostics'] = _diagnostics
+            result['details'] = _details
+except Exception as _context_repair_exc:
+    if isinstance(result, dict):
+        result.setdefault('details', {})['context_noise_repair_error'] = str(_context_repair_exc)
+"""
+
+
+def _source_quality_ranker_finalizer_block() -> str:
+    return r"""
+# AI Draft Plugin Repair Surgeon source quality finalizer.
+try:
+    _details = result.get('details') if isinstance(result.get('details'), dict) else {}
+    _profile_id = str(_details.get('logic_profile_id') or locals().get('logic_profile_id') or '')
+    if 'source_quality_ranker' in _profile_id:
+        _payload_data = payload if isinstance(payload, dict) else {}
+        _objective_text = str(_payload_data.get('objective') or _payload_data.get('task') or _payload_data.get('question') or '').lower()
+        _source_records = []
+        for _key in ['source_notes', 'retrieved_context', 'citations', 'references', 'sources']:
+            _value = _payload_data.get(_key)
+            _items = _value if isinstance(_value, list) else ([_value] if _value else [])
+            for _idx, _item in enumerate(_items):
+                if isinstance(_item, dict):
+                    _title = str(_item.get('title') or _item.get('name') or _item.get('source') or f'{_key}_{_idx}')
+                    _kind = str(_item.get('type') or _item.get('kind') or _key)
+                    _content = str(_item.get('content') or _item.get('text') or _item.get('summary') or _item)
+                    _url = str(_item.get('url') or _item.get('uri') or '')
+                    _date = str(_item.get('date') or _item.get('published_at') or _item.get('updated_at') or '')
+                else:
+                    _title = f'{_key}_{_idx}'
+                    _kind = _key
+                    _content = str(_item)
+                    _url = ''
+                    _date = ''
+                _source_records.append({'title': _title, 'type': _kind, 'content': _content, 'url': _url, 'date': _date, 'source_key': _key})
+        _objective_terms = {term.strip('.,:;!?').lower() for term in _objective_text.split() if len(term.strip('.,:;!?')) > 4}
+        _ranked = []
+        for _record in _source_records:
+            _text = ' '.join(str(_record.get(key, '')) for key in ['title', 'type', 'content', 'url', 'date']).lower()
+            _score = 0.35
+            _signals = []
+            if any(term in _text for term in ['official', 'docs', 'documentation', 'api reference', 'standard']):
+                _score += 0.2
+                _signals.append('official_or_primary')
+            if any(term in _text for term in ['command_log', 'test output', 'tests ok', 'repository', 'git log', 'local validation', 'py_compile']):
+                _score += 0.24
+                _signals.append('local_validation')
+            if any(term in _text for term in ['citation', 'reference', 'source', 'doi', 'published']):
+                _score += 0.12
+                _signals.append('citable')
+            if any(term in _text for term in ['unverified', 'blog', 'forum', 'social', 'claims']):
+                _score -= 0.18
+                _signals.append('weak_or_unverified')
+            _content_terms = {term.strip('.,:;!?').lower() for term in _text.split() if len(term.strip('.,:;!?')) > 4}
+            _overlap = sorted(_objective_terms & _content_terms)
+            if _overlap:
+                _score += min(0.18, 0.04 * len(_overlap))
+                _signals.append('objective_relevance')
+            if _record.get('date') or any(term in _text for term in ['2026', '2025', 'latest', 'current']):
+                _score += 0.06
+                _signals.append('freshness_signal')
+            _score = round(max(0.05, min(0.95, _score)), 2)
+            _ranked.append({
+                'source': _record['title'],
+                'source_type': _record['type'],
+                'quality_score': _score,
+                'trust_signals': _signals,
+                'relevance_terms': _overlap[:8],
+                'freshness': _record.get('date') or ('freshness_signal' if 'freshness_signal' in _signals else 'unknown'),
+                'preview': _record['content'][:220],
+                'recommended_use': 'anchor' if _score >= 0.62 else ('supporting' if _score >= 0.4 else 'avoid_or_verify'),
+            })
+        _ranked = sorted(_ranked, key=lambda item: item['quality_score'], reverse=True)
+        _anchor_sources = [item for item in _ranked if item['recommended_use'] == 'anchor']
+        _rejected_sources = [item for item in _ranked if item['recommended_use'] == 'avoid_or_verify']
+        _missing = [] if _source_records else ['source_notes, retrieved_context, citations, references, or sources']
+        _avg_score = round(sum(item['quality_score'] for item in _ranked) / max(1, len(_ranked)), 2)
+        result['summary'] = f"{locals().get('plugin_name', 'AI Source Quality Ranker')}: ranked {len(_ranked)} source(s) by trust, relevance, freshness, and usefulness."
+        result['primary_insights'] = [
+            {'title': 'Ranked sources', 'detail': _ranked[:8]},
+            {'title': 'Anchor sources', 'detail': _anchor_sources[:5]},
+            {'title': 'Sources needing verification', 'detail': _rejected_sources[:5]},
+        ]
+        result['recommended_actions'] = [
+            {'action': 'Use anchor sources first', 'sources': _anchor_sources[:5]},
+            {'action': 'Verify or exclude weak sources', 'sources': _rejected_sources[:5]},
+            {'action': 'Fill source gaps before synthesis', 'missing_inputs': _missing},
+        ]
+        _scores = result.get('scores') if isinstance(result.get('scores'), dict) else {}
+        _scores.update({
+            'confidence': round(min(0.92, 0.42 + 0.06 * len(_ranked) + 0.12 * len(_anchor_sources)), 2) if _ranked else 0.28,
+            'usefulness': round(min(0.95, 0.5 + 0.08 * len(_ranked) + 0.08 * len(_anchor_sources)), 2) if _ranked else 0.35,
+            'source_quality': _avg_score,
+            'anchor_source_count': len(_anchor_sources),
+            'weak_source_count': len(_rejected_sources),
+            'risk': round(min(0.92, 0.2 + 0.12 * len(_rejected_sources) + (0.2 if not _ranked else 0)), 2),
+        })
+        _details.update({
+            'ranked_sources': _ranked,
+            'anchor_sources': _anchor_sources,
+            'rejected_sources': _rejected_sources,
+            'ranking_criteria': ['trust', 'objective_relevance', 'freshness', 'answer_usefulness'],
+            'missing_inputs': _missing,
+            'source_quality_repair': {'replaced_grounded_answer_plan': True, 'source_count': len(_ranked)},
+        })
+        _diagnostics = result.get('diagnostics') if isinstance(result.get('diagnostics'), dict) else {}
+        _diagnostics['source_quality_repair_applied'] = True
+        _diagnostics['ranked_source_count'] = len(_ranked)
+        result['scores'] = _scores
+        result['details'] = _details
+        result['diagnostics'] = _diagnostics
+except Exception as _source_quality_repair_exc:
+    if isinstance(result, dict):
+        result.setdefault('details', {})['source_quality_repair_error'] = str(_source_quality_repair_exc)
+"""
+
+
+def _patch_context_noise_filter_semantics(source: str) -> tuple[str, bool]:
+    return _insert_before_return_result(
+        source,
+        "AI Draft Plugin Repair Surgeon context noise finalizer",
+        _context_noise_filter_finalizer_block(),
+    )
+
+
+def _patch_source_quality_ranker_semantics(source: str) -> tuple[str, bool]:
+    return _insert_before_return_result(
+        source,
+        "AI Draft Plugin Repair Surgeon source quality finalizer",
+        _source_quality_ranker_finalizer_block(),
+    )
+
+
 def _patch_overlap_alias(source: str) -> tuple[str, bool]:
     pattern = re.compile(
         r"(?P<prefix>(?:if|elif)\s+)logic_profile_id\s*==\s*(['\"])plugin_duplicate_detector_profile\2\s*:",
@@ -708,6 +984,10 @@ def apply_repair_plan(source: str, repair_plan: RepairPlan) -> RepairResult:
             patched, changed = _patch_overlap_alias(patched)
         elif step.patch_id == "normalize_patchable_posix_temp_paths":
             patched, changed = _patch_patchable_posix_temp_paths(patched)
+        elif step.patch_id == "add_context_noise_filter_semantic_finalizer":
+            patched, changed = _patch_context_noise_filter_semantics(patched)
+        elif step.patch_id == "add_source_quality_ranker_semantic_finalizer":
+            patched, changed = _patch_source_quality_ranker_semantics(patched)
         if changed and patched != before:
             applied.append(step.patch_id)
         else:
@@ -731,6 +1011,10 @@ def apply_repair_plan(source: str, repair_plan: RepairPlan) -> RepairResult:
         remaining_findings.append("windows_shell_command_bug")
     if remaining_analysis.has_windows_subprocess_shell_bug:
         remaining_findings.append("windows_subprocess_shell_bug")
+    if remaining_analysis.has_context_noise_filter_weak_drop_bug:
+        remaining_findings.append("context_noise_filter_weak_drop_bug")
+    if remaining_analysis.has_source_quality_ranker_grounded_answer_bug:
+        remaining_findings.append("source_quality_ranker_grounded_answer_bug")
 
     if repair_plan.risk_level == "high" and not applied:
         next_action: Literal["retest", "regenerate", "quarantine"] = "regenerate"
@@ -755,6 +1039,8 @@ def apply_repair_plan(source: str, repair_plan: RepairPlan) -> RepairResult:
             "apply profile-specific missing-input rules before promotion",
             "use pathlib.Path/tempfile for filesystem paths that must work on Windows",
             "avoid shell=True and shell-specific command separators in generated plugin logic",
+            "context noise filters must explicitly move irrelevant/off-topic context into dropped_context",
+            "source quality rankers must emit ranked_sources and source-quality scores, not only grounded-answer plans",
         ],
     }
 

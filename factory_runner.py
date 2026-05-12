@@ -106,6 +106,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
         from factory_os.promotion_gate import evaluate_for_promotion as _evaluate_for_promotion  # type: ignore
         from factory_os.semantic_contracts import get_semantic_contract as _get_semantic_contract  # type: ignore
         from factory_os.semantic_validator import run_semantic_contract_async as _run_semantic_contract_async  # type: ignore
+        from factory_os.draft_plugin_repair_surgeon import repair_plugin_file as _repair_draft_plugin_file  # type: ignore
     except (ImportError, ModuleNotFoundError):  # pragma: no cover
         _get_capability_spec = None  # type: ignore[assignment]
         _get_logic_profile = None  # type: ignore[assignment]
@@ -113,6 +114,12 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
         _evaluate_for_promotion = None  # type: ignore[assignment]
         _get_semantic_contract = None  # type: ignore[assignment]
         _run_semantic_contract_async = None  # type: ignore[assignment]
+        _repair_draft_plugin_file = None  # type: ignore[assignment]
+else:
+    try:
+        from factory.factory_os.draft_plugin_repair_surgeon import repair_plugin_file as _repair_draft_plugin_file
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover
+        _repair_draft_plugin_file = None  # type: ignore[assignment]
 
 try:
     from plugin_template import render_plugin_source as _render_plugin_source
@@ -1452,6 +1459,24 @@ def _write_candidate_plugin_file(slug: str, source: str) -> Path:
     CANDIDATE_PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
     path = CANDIDATE_PLUGINS_DIR / f"{slug}.py"
     path.write_text(source, encoding="utf-8")
+    if _repair_draft_plugin_file is not None:
+        try:
+            repair_result = _repair_draft_plugin_file(path, dry_run=False, validate=True)
+            if repair_result.applied_patches:
+                LOG.info(
+                    "Draft repair surgeon patched candidate %r: %s",
+                    slug,
+                    ", ".join(repair_result.applied_patches),
+                )
+            if repair_result.recommended_next_action != "retest":
+                LOG.warning(
+                    "Draft repair surgeon flagged candidate %r for %s: %s",
+                    slug,
+                    repair_result.recommended_next_action,
+                    repair_result.remaining_findings,
+                )
+        except Exception:
+            LOG.warning("Draft repair surgeon failed for candidate %r.", slug, exc_info=True)
     return path
 
 

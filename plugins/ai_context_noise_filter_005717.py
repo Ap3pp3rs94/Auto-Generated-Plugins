@@ -387,6 +387,85 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
     result['diagnostics']['payload_warning_count'] = len(result.get('details', {}).get('payload_warnings', [])) if isinstance(result.get('details'), dict) and isinstance(result.get('details', {}).get('payload_warnings', []), list) else 0
     result['diagnostics'].setdefault('profile_output_keys', sorted(result.keys()))
     result['diagnostics'].setdefault('semantic_probe_ready', bool(has_user_input and isinstance(result.get('details'), dict) and not result['details'].get('missing_inputs')))
+    # AI Draft Plugin Repair Surgeon context noise finalizer.
+    try:
+        _details = result.get('details') if isinstance(result.get('details'), dict) else {}
+        _profile_id = str(_details.get('logic_profile_id') or locals().get('logic_profile_id') or '')
+        if 'context_noise_filter' in _profile_id:
+            explicit_noise_terms = [
+                'irrelevant', 'unrelated', 'off-topic', 'off topic', 'noise',
+                'random old', 'small talk', 'lunch', 'chatter', 'thanks only',
+                'no action needed', 'discard', 'do not need',
+            ]
+            def _repair_context_items(key):
+                value = _details.get(key)
+                return list(value) if isinstance(value, list) else []
+            def _repair_item_text(item):
+                if isinstance(item, dict):
+                    parts = [item.get('text'), item.get('preview'), item.get('compressed_text'), item.get('source')]
+                    return ' '.join(str(part) for part in parts if part is not None).lower()
+                return str(item).lower()
+            def _repair_mark_noise(item):
+                text = _repair_item_text(item)
+                return any(term in text for term in explicit_noise_terms)
+            _kept = _repair_context_items('kept_context')
+            _compressed = _repair_context_items('compressed_context')
+            _dropped = _repair_context_items('dropped_context')
+            _moved = []
+            _new_kept = []
+            for _item in _kept:
+                if _repair_mark_noise(_item):
+                    if isinstance(_item, dict):
+                        _item = dict(_item)
+                        _item.setdefault('reason_tags', [])
+                        if isinstance(_item['reason_tags'], list) and 'explicit_noise' not in _item['reason_tags']:
+                            _item['reason_tags'].append('explicit_noise')
+                    _moved.append(_item)
+                else:
+                    _new_kept.append(_item)
+            _new_compressed = []
+            for _item in _compressed:
+                if _repair_mark_noise(_item):
+                    if isinstance(_item, dict):
+                        _item = dict(_item)
+                        _item.setdefault('reason_tags', [])
+                        if isinstance(_item['reason_tags'], list) and 'explicit_noise' not in _item['reason_tags']:
+                            _item['reason_tags'].append('explicit_noise')
+                    _moved.append(_item)
+                else:
+                    _new_compressed.append(_item)
+            if _moved:
+                _details['kept_context'] = _new_kept
+                _details['compressed_context'] = _new_compressed
+                _details['dropped_context'] = _moved + _dropped
+                _reason_counts = _details.get('priority_reason_counts') if isinstance(_details.get('priority_reason_counts'), dict) else {}
+                _reason_counts['explicit_noise'] = _reason_counts.get('explicit_noise', 0) + len(_moved)
+                _details['priority_reason_counts'] = _reason_counts
+                _details['noise_filter_repair'] = {'moved_to_dropped': len(_moved), 'terms': explicit_noise_terms}
+                _total = max(1, len(_new_kept) + len(_new_compressed) + len(_details['dropped_context']))
+                _scores = result.get('scores') if isinstance(result.get('scores'), dict) else {}
+                _scores['context_retention'] = round((len(_new_kept) + len(_new_compressed)) / _total, 2)
+                _scores['noise_drop_count'] = len(_details['dropped_context'])
+                _scores['usefulness'] = max(float(_scores.get('usefulness', _scores.get('confidence', 0.65)) or 0.65), 0.7)
+                result['scores'] = _scores
+                result['primary_insights'] = [
+                    {'title': 'Kept context', 'detail': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'reason_tags': item.get('reason_tags', [])} for item in _new_kept if isinstance(item, dict)]},
+                    {'title': 'Compressed context', 'detail': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'reason_tags': item.get('reason_tags', [])} for item in _new_compressed if isinstance(item, dict)]},
+                    {'title': 'Dropped context', 'detail': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'reason_tags': item.get('reason_tags', [])} for item in _details['dropped_context'] if isinstance(item, dict)]},
+                ]
+                result['recommended_actions'] = [
+                    {'action': 'Keep high-priority context', 'items': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'why': item.get('reason_tags', [])} for item in _new_kept[:8] if isinstance(item, dict)]},
+                    {'action': 'Compress oversized but important context', 'items': [{'source': item.get('source'), 'preview': item.get('compressed_text', item.get('preview', '')), 'why': item.get('reason_tags', [])} for item in _new_compressed[:8] if isinstance(item, dict)]},
+                    {'action': 'Drop explicit noise and low-signal context', 'items': [{'source': item.get('source'), 'preview': item.get('preview', item.get('text', '')), 'why': item.get('reason_tags', [])} for item in _details['dropped_context'][:8] if isinstance(item, dict)]},
+                ]
+                _diagnostics = result.get('diagnostics') if isinstance(result.get('diagnostics'), dict) else {}
+                _diagnostics['context_noise_repair_applied'] = True
+                _diagnostics['context_noise_moved_count'] = len(_moved)
+                result['diagnostics'] = _diagnostics
+                result['details'] = _details
+    except Exception as _context_repair_exc:
+        if isinstance(result, dict):
+            result.setdefault('details', {})['context_noise_repair_error'] = str(_context_repair_exc)
     return result
 # === LOGIC END ===
 

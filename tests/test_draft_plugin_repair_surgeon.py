@@ -222,6 +222,103 @@ def shell_command_source() -> str:
     )
 
 
+def context_noise_filter_weak_source() -> str:
+    return textwrap.dedent(
+        '''
+        from __future__ import annotations
+
+        _PLUGIN_NAME = "AI Context Noise Filter Test"
+        _PLUGIN_SLUG = "ai_context_noise_filter_test"
+
+        class SkillContext:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        def _run_core_logic(context, payload, config):
+            # === LOGIC START ===
+            plugin_name = "AI Context Noise Filter Test"
+            logic_profile_id = "continuous_context_noise_filter_profile"
+            messages = payload.get("messages", []) if isinstance(payload, dict) else []
+            kept = []
+            dropped = []
+            for idx, item in enumerate(messages):
+                kept.append({"source": "item_%d" % idx, "text": str(item), "preview": str(item), "reason_tags": []})
+            result = {
+                "summary": "kept everything",
+                "primary_insights": [{"title": "Kept context", "detail": kept}],
+                "recommended_actions": [{"action": "Keep high-priority context", "items": kept}],
+                "scores": {"confidence": 0.7, "usefulness": 0.7, "context_retention": 1.0},
+                "details": {
+                    "logic_profile_id": logic_profile_id,
+                    "kept_context": kept,
+                    "compressed_context": [],
+                    "dropped_context": dropped,
+                    "priority_reason_counts": {},
+                    "missing_inputs": [],
+                },
+                "progress_state": {"blockers": []},
+                "user_experience": {},
+                "fun_mode": {"celebratory_microcopy": "ok"},
+                "diagnostics": {"logic_profile_id": logic_profile_id},
+            }
+            return result
+            # === LOGIC END ===
+
+        async def invoke(user_id, payload, **kwargs):
+            if not isinstance(payload, dict):
+                payload = {"_value": payload, "_payload_warnings": ["payload was not a dict; invoke wrapped it in _value"]}
+            return {"status": "succeeded", "output": _run_core_logic(SkillContext(user_id=user_id), payload, kwargs.get("config") or {}), "error": "", "meta": {"plugin_slug": _PLUGIN_SLUG}}
+        '''
+    )
+
+
+def source_quality_ranker_grounded_answer_source() -> str:
+    return textwrap.dedent(
+        '''
+        from __future__ import annotations
+
+        _PLUGIN_NAME = "AI Source Quality Ranker Test"
+        _PLUGIN_SLUG = "ai_source_quality_ranker_test"
+
+        class SkillContext:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        def _run_core_logic(context, payload, config):
+            # === LOGIC START ===
+            plugin_name = "AI Source Quality Ranker Test"
+            logic_profile_id = "continuous_source_quality_ranker_profile"
+            supported_claims = []
+            unsupported_claims = [{"claim": "All plugins are useful", "matched_evidence_terms": []}]
+            answer_plan = [{"section": "answer", "instruction": "State only supported claims."}]
+            result = {
+                "summary": plugin_name + ": planned a grounded answer with 0 supported and 1 unsupported claim(s).",
+                "primary_insights": [{"title": "Answer plan", "detail": answer_plan}],
+                "recommended_actions": [{"action": "Draft general_grounding answer from plan", "answer_plan": answer_plan}],
+                "scores": {"confidence": 0.5, "grounding_score": 0.0, "usefulness": 0.5},
+                "details": {
+                    "logic_profile_id": logic_profile_id,
+                    "supported_claims": supported_claims,
+                    "unsupported_claims": unsupported_claims,
+                    "answer_plan": answer_plan,
+                    "missing_inputs": [],
+                },
+                "progress_state": {"blockers": []},
+                "user_experience": {},
+                "fun_mode": {"celebratory_microcopy": "ok"},
+                "diagnostics": {"logic_profile_id": logic_profile_id},
+            }
+            return result
+            # === LOGIC END ===
+
+        async def invoke(user_id, payload, **kwargs):
+            if not isinstance(payload, dict):
+                payload = {"_value": payload, "_payload_warnings": ["payload was not a dict; invoke wrapped it in _value"]}
+            return {"status": "succeeded", "output": _run_core_logic(SkillContext(user_id=user_id), payload, kwargs.get("config") or {}), "error": "", "meta": {"plugin_slug": _PLUGIN_SLUG}}
+        '''
+    )
+
+
 class DraftPluginRepairSurgeonTests(unittest.TestCase):
     def test_repair_detects_goal_fallback_bug(self) -> None:
         analysis = analyze_draft_plugin(buggy_plugin_source())
@@ -334,6 +431,55 @@ class DraftPluginRepairSurgeonTests(unittest.TestCase):
         self.assertTrue(apply_reports[0].changed)
         self.assertIn("tempfile.gettempdir()", plugin_path.read_text(encoding="utf-8"))
 
+    def test_context_noise_filter_repair_drops_explicit_noise(self) -> None:
+        result = repair_draft_plugin(context_noise_filter_weak_source())
+        self.assertIn("add_context_noise_filter_semantic_finalizer", result.applied_patches)
+        module = self._load_module_from_source(result.patched_source, "context_noise_filter_repaired")
+
+        envelope = asyncio.run(
+            module.invoke(
+                "tester",
+                {
+                    "messages": [
+                        "important: factory running in tmux",
+                        "irrelevant: lunch plans",
+                    ]
+                },
+            )
+        )
+
+        output = envelope["output"]
+        kept_text = " ".join(str(item) for item in output["details"]["kept_context"]).lower()
+        dropped_text = " ".join(str(item) for item in output["details"]["dropped_context"]).lower()
+        self.assertNotIn("lunch plans", kept_text)
+        self.assertIn("lunch plans", dropped_text)
+        self.assertTrue(output["diagnostics"]["context_noise_repair_applied"])
+
+    def test_source_quality_ranker_repair_outputs_ranked_sources(self) -> None:
+        result = repair_draft_plugin(source_quality_ranker_grounded_answer_source())
+        self.assertIn("add_source_quality_ranker_semantic_finalizer", result.applied_patches)
+        module = self._load_module_from_source(result.patched_source, "source_quality_ranker_repaired")
+
+        envelope = asyncio.run(
+            module.invoke(
+                "tester",
+                {
+                    "objective": "Rank evidence for whether plugins run on Windows.",
+                    "source_notes": [
+                        {"title": "local test output", "type": "command_log", "content": "Windows py_compile ok and 78 tests OK"},
+                        {"title": "unverified blog", "type": "blog", "content": "claims the system is perfect"},
+                    ],
+                },
+            )
+        )
+
+        output = envelope["output"]
+        self.assertIn("ranked_sources", output["details"])
+        self.assertGreaterEqual(len(output["details"]["ranked_sources"]), 2)
+        self.assertIn("source_quality", output["scores"])
+        self.assertNotEqual(output["recommended_actions"][0]["action"], "Draft general_grounding answer from plan")
+        self.assertTrue(output["diagnostics"]["source_quality_repair_applied"])
+
     def _load_repaired_module(self):
         result = repair_draft_plugin(buggy_plugin_source())
         self.assertEqual(result.recommended_next_action, "retest", result)
@@ -342,6 +488,18 @@ class DraftPluginRepairSurgeonTests(unittest.TestCase):
         path = Path(temp_dir.name) / "repaired_plugin.py"
         path.write_text(result.patched_source, encoding="utf-8")
         spec = importlib.util.spec_from_file_location("repaired_plugin", path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
+        return module
+
+    def _load_module_from_source(self, source: str, module_name: str):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        path = Path(temp_dir.name) / (module_name + ".py")
+        path.write_text(source, encoding="utf-8")
+        spec = importlib.util.spec_from_file_location(module_name, path)
         self.assertIsNotNone(spec)
         self.assertIsNotNone(spec.loader)
         module = importlib.util.module_from_spec(spec)

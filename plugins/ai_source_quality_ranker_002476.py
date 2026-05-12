@@ -407,6 +407,110 @@ def _run_core_logic(context: SkillContext, payload: Dict[str, Any], config: Dict
     result['diagnostics']['payload_warning_count'] = len(result.get('details', {}).get('payload_warnings', [])) if isinstance(result.get('details'), dict) and isinstance(result.get('details', {}).get('payload_warnings', []), list) else 0
     result['diagnostics'].setdefault('profile_output_keys', sorted(result.keys()))
     result['diagnostics'].setdefault('semantic_probe_ready', bool(has_user_input and isinstance(result.get('details'), dict) and not result['details'].get('missing_inputs')))
+    # AI Draft Plugin Repair Surgeon source quality finalizer.
+    try:
+        _details = result.get('details') if isinstance(result.get('details'), dict) else {}
+        _profile_id = str(_details.get('logic_profile_id') or locals().get('logic_profile_id') or '')
+        if 'source_quality_ranker' in _profile_id:
+            _payload_data = payload if isinstance(payload, dict) else {}
+            _objective_text = str(_payload_data.get('objective') or _payload_data.get('task') or _payload_data.get('question') or '').lower()
+            _source_records = []
+            for _key in ['source_notes', 'retrieved_context', 'citations', 'references', 'sources']:
+                _value = _payload_data.get(_key)
+                _items = _value if isinstance(_value, list) else ([_value] if _value else [])
+                for _idx, _item in enumerate(_items):
+                    if isinstance(_item, dict):
+                        _title = str(_item.get('title') or _item.get('name') or _item.get('source') or f'{_key}_{_idx}')
+                        _kind = str(_item.get('type') or _item.get('kind') or _key)
+                        _content = str(_item.get('content') or _item.get('text') or _item.get('summary') or _item)
+                        _url = str(_item.get('url') or _item.get('uri') or '')
+                        _date = str(_item.get('date') or _item.get('published_at') or _item.get('updated_at') or '')
+                    else:
+                        _title = f'{_key}_{_idx}'
+                        _kind = _key
+                        _content = str(_item)
+                        _url = ''
+                        _date = ''
+                    _source_records.append({'title': _title, 'type': _kind, 'content': _content, 'url': _url, 'date': _date, 'source_key': _key})
+            _objective_terms = {term.strip('.,:;!?').lower() for term in _objective_text.split() if len(term.strip('.,:;!?')) > 4}
+            _ranked = []
+            for _record in _source_records:
+                _text = ' '.join(str(_record.get(key, '')) for key in ['title', 'type', 'content', 'url', 'date']).lower()
+                _score = 0.35
+                _signals = []
+                if any(term in _text for term in ['official', 'docs', 'documentation', 'api reference', 'standard']):
+                    _score += 0.2
+                    _signals.append('official_or_primary')
+                if any(term in _text for term in ['command_log', 'test output', 'tests ok', 'repository', 'git log', 'local validation', 'py_compile']):
+                    _score += 0.24
+                    _signals.append('local_validation')
+                if any(term in _text for term in ['citation', 'reference', 'source', 'doi', 'published']):
+                    _score += 0.12
+                    _signals.append('citable')
+                if any(term in _text for term in ['unverified', 'blog', 'forum', 'social', 'claims']):
+                    _score -= 0.18
+                    _signals.append('weak_or_unverified')
+                _content_terms = {term.strip('.,:;!?').lower() for term in _text.split() if len(term.strip('.,:;!?')) > 4}
+                _overlap = sorted(_objective_terms & _content_terms)
+                if _overlap:
+                    _score += min(0.18, 0.04 * len(_overlap))
+                    _signals.append('objective_relevance')
+                if _record.get('date') or any(term in _text for term in ['2026', '2025', 'latest', 'current']):
+                    _score += 0.06
+                    _signals.append('freshness_signal')
+                _score = round(max(0.05, min(0.95, _score)), 2)
+                _ranked.append({
+                    'source': _record['title'],
+                    'source_type': _record['type'],
+                    'quality_score': _score,
+                    'trust_signals': _signals,
+                    'relevance_terms': _overlap[:8],
+                    'freshness': _record.get('date') or ('freshness_signal' if 'freshness_signal' in _signals else 'unknown'),
+                    'preview': _record['content'][:220],
+                    'recommended_use': 'anchor' if _score >= 0.62 else ('supporting' if _score >= 0.4 else 'avoid_or_verify'),
+                })
+            _ranked = sorted(_ranked, key=lambda item: item['quality_score'], reverse=True)
+            _anchor_sources = [item for item in _ranked if item['recommended_use'] == 'anchor']
+            _rejected_sources = [item for item in _ranked if item['recommended_use'] == 'avoid_or_verify']
+            _missing = [] if _source_records else ['source_notes, retrieved_context, citations, references, or sources']
+            _avg_score = round(sum(item['quality_score'] for item in _ranked) / max(1, len(_ranked)), 2)
+            result['summary'] = f"{locals().get('plugin_name', 'AI Source Quality Ranker')}: ranked {len(_ranked)} source(s) by trust, relevance, freshness, and usefulness."
+            result['primary_insights'] = [
+                {'title': 'Ranked sources', 'detail': _ranked[:8]},
+                {'title': 'Anchor sources', 'detail': _anchor_sources[:5]},
+                {'title': 'Sources needing verification', 'detail': _rejected_sources[:5]},
+            ]
+            result['recommended_actions'] = [
+                {'action': 'Use anchor sources first', 'sources': _anchor_sources[:5]},
+                {'action': 'Verify or exclude weak sources', 'sources': _rejected_sources[:5]},
+                {'action': 'Fill source gaps before synthesis', 'missing_inputs': _missing},
+            ]
+            _scores = result.get('scores') if isinstance(result.get('scores'), dict) else {}
+            _scores.update({
+                'confidence': round(min(0.92, 0.42 + 0.06 * len(_ranked) + 0.12 * len(_anchor_sources)), 2) if _ranked else 0.28,
+                'usefulness': round(min(0.95, 0.5 + 0.08 * len(_ranked) + 0.08 * len(_anchor_sources)), 2) if _ranked else 0.35,
+                'source_quality': _avg_score,
+                'anchor_source_count': len(_anchor_sources),
+                'weak_source_count': len(_rejected_sources),
+                'risk': round(min(0.92, 0.2 + 0.12 * len(_rejected_sources) + (0.2 if not _ranked else 0)), 2),
+            })
+            _details.update({
+                'ranked_sources': _ranked,
+                'anchor_sources': _anchor_sources,
+                'rejected_sources': _rejected_sources,
+                'ranking_criteria': ['trust', 'objective_relevance', 'freshness', 'answer_usefulness'],
+                'missing_inputs': _missing,
+                'source_quality_repair': {'replaced_grounded_answer_plan': True, 'source_count': len(_ranked)},
+            })
+            _diagnostics = result.get('diagnostics') if isinstance(result.get('diagnostics'), dict) else {}
+            _diagnostics['source_quality_repair_applied'] = True
+            _diagnostics['ranked_source_count'] = len(_ranked)
+            result['scores'] = _scores
+            result['details'] = _details
+            result['diagnostics'] = _diagnostics
+    except Exception as _source_quality_repair_exc:
+        if isinstance(result, dict):
+            result.setdefault('details', {})['source_quality_repair_error'] = str(_source_quality_repair_exc)
     return result
 # === LOGIC END ===
 
