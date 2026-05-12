@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import ast
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any, Literal, Optional
 
 
@@ -40,6 +41,10 @@ class DraftPluginAnalysis:
     has_profile_routing_mismatch: bool
     patchable: bool
     recommended_action: RecommendedRepairAction
+    has_windows_path_literal_bug: bool = False
+    has_patchable_windows_temp_path_bug: bool = False
+    has_windows_shell_command_bug: bool = False
+    has_windows_subprocess_shell_bug: bool = False
 
 
 @dataclass(frozen=True)
@@ -70,6 +75,19 @@ class RepairResult:
     remaining_findings: list[str] = field(default_factory=list)
     repair_recipe: dict[str, Any] = field(default_factory=dict)
     recommended_next_action: Literal["retest", "regenerate", "quarantine"] = "retest"
+
+
+@dataclass(frozen=True)
+class PluginFileRepairReport:
+    path: str
+    plugin_slug: Optional[str]
+    changed: bool
+    applied_patches: list[str] = field(default_factory=list)
+    skipped_patches: list[str] = field(default_factory=list)
+    remaining_findings: list[str] = field(default_factory=list)
+    recommended_next_action: Literal["retest", "regenerate", "quarantine"] = "retest"
+    validation_error: Optional[str] = None
+    repair_recipe: dict[str, Any] = field(default_factory=dict)
 
 
 def _literal_module_constants(source: str) -> dict[str, Any]:
@@ -174,6 +192,44 @@ def _has_profile_routing_mismatch(source: str) -> bool:
     return bool(duplicate_branch and not canonical_branch)
 
 
+def _has_windows_path_literal_bug(source: str) -> bool:
+    absolute_posix_path = re.search(
+        r"(?P<quote>['\"])/(?:tmp|home|mnt|var|etc)(?:/[^'\"]*)?(?P=quote)",
+        source,
+    )
+    path_constructor = re.search(
+        r"\bPath\(\s*(?P<quote>['\"])/(?:tmp|home|mnt|var|etc)(?:/[^'\"]*)?(?P=quote)\s*\)",
+        source,
+    )
+    return bool(absolute_posix_path or path_constructor or "\\\\wsl$" in source.lower())
+
+
+def _has_patchable_windows_temp_path_bug(source: str) -> bool:
+    return bool(
+        re.search(r"\bPath\(\s*(['\"])/tmp(?:/[^'\"]*)?\1\s*\)", source)
+        or re.search(r"\bopen\(\s*(['\"])/tmp/[^'\"]*\1", source)
+    )
+
+
+def _has_windows_shell_command_bug(source: str) -> bool:
+    if "os.system(" in source:
+        return True
+    subprocess_call = re.search(
+        r"subprocess\.(?:run|check_call|check_output|Popen)\(\s*(?P<quote>['\"])(?P<cmd>.*?)(?P=quote)",
+        source,
+        flags=re.DOTALL,
+    )
+    if not subprocess_call:
+        return False
+    command = subprocess_call.group("cmd").lower()
+    shell_only_markers = ("&&", "||", "sh -c", "bash", "rm -rf", " cp ", " mv ")
+    return any(marker in command for marker in shell_only_markers)
+
+
+def _has_windows_subprocess_shell_bug(source: str) -> bool:
+    return bool(re.search(r"subprocess\.(?:run|check_call|check_output|Popen)\([^)]*shell\s*=\s*True", source, flags=re.DOTALL))
+
+
 def analyze_draft_plugin(source: str, *, plugin_path: str | None = None) -> DraftPluginAnalysis:
     constants = _literal_module_constants(source)
     plugin_name = constants.get("_PLUGIN_NAME")
@@ -188,6 +244,10 @@ def analyze_draft_plugin(source: str, *, plugin_path: str | None = None) -> Draf
     has_missing_input_bug = _has_missing_input_profile_bug(source)
     has_multi_profile_table = _has_multi_profile_branch_table(source)
     has_routing_mismatch = _has_profile_routing_mismatch(source)
+    has_windows_path_bug = _has_windows_path_literal_bug(source)
+    has_patchable_windows_temp_bug = _has_patchable_windows_temp_path_bug(source)
+    has_windows_shell_bug = _has_windows_shell_command_bug(source)
+    has_windows_subprocess_shell_bug = _has_windows_subprocess_shell_bug(source)
 
     patchable_findings = any(
         [
@@ -196,12 +256,20 @@ def analyze_draft_plugin(source: str, *, plugin_path: str | None = None) -> Draf
             has_thin_diagnostics,
             has_missing_input_bug,
             has_routing_mismatch,
+            has_patchable_windows_temp_bug,
         ]
     )
-    patchable = has_logic_markers and patchable_findings and not has_multi_profile_table
+    has_nonpatchable_windows_risk = (
+        has_windows_shell_bug
+        or has_windows_subprocess_shell_bug
+        or (has_windows_path_bug and not has_patchable_windows_temp_bug)
+    )
+    patchable = has_logic_markers and patchable_findings and not has_multi_profile_table and not has_nonpatchable_windows_risk
     if not has_logic_markers:
         recommended_action: RecommendedRepairAction = "quarantine"
     elif has_multi_profile_table:
+        recommended_action = "regenerate"
+    elif has_nonpatchable_windows_risk:
         recommended_action = "regenerate"
     elif patchable_findings:
         recommended_action = "repair"
@@ -221,6 +289,10 @@ def analyze_draft_plugin(source: str, *, plugin_path: str | None = None) -> Draf
         has_profile_routing_mismatch=has_routing_mismatch,
         patchable=patchable,
         recommended_action=recommended_action,
+        has_windows_path_literal_bug=has_windows_path_bug,
+        has_patchable_windows_temp_path_bug=has_patchable_windows_temp_bug,
+        has_windows_shell_command_bug=has_windows_shell_bug,
+        has_windows_subprocess_shell_bug=has_windows_subprocess_shell_bug,
     )
 
 
@@ -257,6 +329,27 @@ def plan_repairs(
             risk_level="high",
             expected_fixed_findings=["multi_profile_branch_table"],
             must_retest=["regenerate_with_profile_dispatcher"],
+        )
+    if (
+        analysis.has_windows_shell_command_bug
+        or analysis.has_windows_subprocess_shell_bug
+        or (analysis.has_windows_path_literal_bug and not analysis.has_patchable_windows_temp_path_bug)
+    ):
+        expected.extend(
+            finding
+            for finding, present in [
+                ("windows_path_literal_bug", analysis.has_windows_path_literal_bug),
+                ("windows_shell_command_bug", analysis.has_windows_shell_command_bug),
+                ("windows_subprocess_shell_bug", analysis.has_windows_subprocess_shell_bug),
+            ]
+            if present
+        )
+        return RepairPlan(
+            plugin_slug=analysis.plugin_slug,
+            repair_steps=[],
+            risk_level="high",
+            expected_fixed_findings=list(dict.fromkeys(expected)),
+            must_retest=["regenerate_for_windows_portability"],
         )
 
     if analysis.has_goal_fallback_input_bug:
@@ -306,6 +399,23 @@ def plan_repairs(
         expected.append("profile_routing_mismatch")
     elif analysis.has_multi_profile_branch_table:
         risk = "high"
+    if analysis.has_patchable_windows_temp_path_bug:
+        steps.append(
+            RepairStep(
+                patch_id="normalize_patchable_posix_temp_paths",
+                target="source",
+                description="Replace simple /tmp Path/open literals with pathlib/tempfile expressions that work on Windows.",
+                severity="warning",
+                patch_mode="text",
+            )
+        )
+        expected.append("windows_path_literal_bug")
+    if analysis.has_windows_shell_command_bug or analysis.has_windows_subprocess_shell_bug:
+        risk = "high"
+        expected.extend(["windows_shell_command_bug", "windows_subprocess_shell_bug"])
+    elif analysis.has_windows_path_literal_bug and not analysis.has_patchable_windows_temp_path_bug:
+        risk = "high"
+        expected.append("windows_path_literal_bug")
 
     return RepairPlan(
         plugin_slug=analysis.plugin_slug,
@@ -532,6 +642,55 @@ def _patch_overlap_alias(source: str) -> tuple[str, bool]:
     return patched, bool(count)
 
 
+def _ensure_import(source: str, import_line: str) -> str:
+    if re.search(rf"^\s*{re.escape(import_line)}\s*$", source, flags=re.MULTILINE):
+        return source
+    lines = source.splitlines(keepends=True)
+    insert_at = 0
+    if lines and lines[0].startswith("#!"):
+        insert_at = 1
+    for index, line in enumerate(lines):
+        if line.startswith("from __future__ import"):
+            insert_at = index + 1
+            break
+    lines.insert(insert_at, import_line + "\n")
+    return "".join(lines)
+
+
+def _temp_path_expr(relative_path: str) -> str:
+    normalized = relative_path.strip("/")
+    if not normalized:
+        return "Path(tempfile.gettempdir())"
+    return f"Path(tempfile.gettempdir()) / {normalized!r}"
+
+
+def _patch_patchable_posix_temp_paths(source: str) -> tuple[str, bool]:
+    patched = source
+
+    def replace_path(match: re.Match[str]) -> str:
+        return "(" + _temp_path_expr(match.group("relative_path")) + ")"
+
+    patched, path_count = re.subn(
+        r"\bPath\(\s*(['\"])/tmp(?:/(?P<relative_path>[^'\"]*))?\1\s*\)",
+        replace_path,
+        patched,
+    )
+
+    def replace_open(match: re.Match[str]) -> str:
+        return "open(" + _temp_path_expr(match.group("relative_path"))
+
+    patched, open_count = re.subn(
+        r"\bopen\(\s*(['\"])/tmp/(?P<relative_path>[^'\"]*)\1",
+        replace_open,
+        patched,
+    )
+    changed = bool(path_count or open_count)
+    if changed:
+        patched = _ensure_import(patched, "from pathlib import Path")
+        patched = _ensure_import(patched, "import tempfile")
+    return patched, changed
+
+
 def apply_repair_plan(source: str, repair_plan: RepairPlan) -> RepairResult:
     patched = source
     applied: list[str] = []
@@ -547,6 +706,8 @@ def apply_repair_plan(source: str, repair_plan: RepairPlan) -> RepairResult:
             patched, changed = _patch_finalizer(patched)
         elif step.patch_id == "patch_overlap_profile_alias_routing":
             patched, changed = _patch_overlap_alias(patched)
+        elif step.patch_id == "normalize_patchable_posix_temp_paths":
+            patched, changed = _patch_patchable_posix_temp_paths(patched)
         if changed and patched != before:
             applied.append(step.patch_id)
         else:
@@ -564,6 +725,12 @@ def apply_repair_plan(source: str, repair_plan: RepairPlan) -> RepairResult:
         remaining_findings.append("multi_profile_branch_table")
     if remaining_analysis.has_profile_routing_mismatch:
         remaining_findings.append("profile_routing_mismatch")
+    if remaining_analysis.has_windows_path_literal_bug:
+        remaining_findings.append("windows_path_literal_bug")
+    if remaining_analysis.has_windows_shell_command_bug:
+        remaining_findings.append("windows_shell_command_bug")
+    if remaining_analysis.has_windows_subprocess_shell_bug:
+        remaining_findings.append("windows_subprocess_shell_bug")
 
     if repair_plan.risk_level == "high" and not applied:
         next_action: Literal["retest", "regenerate", "quarantine"] = "regenerate"
@@ -586,6 +753,8 @@ def apply_repair_plan(source: str, repair_plan: RepairPlan) -> RepairResult:
             "read payload_data['_payload_warnings'] after invoke wraps non-dict payloads",
             "emit rich diagnostics with semantic input fields",
             "apply profile-specific missing-input rules before promotion",
+            "use pathlib.Path/tempfile for filesystem paths that must work on Windows",
+            "avoid shell=True and shell-specific command separators in generated plugin logic",
         ],
     }
 
@@ -610,3 +779,81 @@ def repair_draft_plugin(
     analysis = analyze_draft_plugin(source, plugin_path=plugin_path)
     plan = plan_repairs(analysis, semantic_findings=semantic_findings, capability_spec=capability_spec)
     return apply_repair_plan(source, plan)
+
+
+def _compile_error(source: str, *, filename: str) -> Optional[str]:
+    try:
+        compile(source, filename, "exec")
+    except SyntaxError as exc:
+        return f"{type(exc).__name__}: {exc}"
+    return None
+
+
+def analyze_plugin_file(path: str | Path) -> DraftPluginAnalysis:
+    path_obj = Path(path)
+    source = path_obj.read_text(encoding="utf-8")
+    return analyze_draft_plugin(source, plugin_path=str(path_obj))
+
+
+def repair_plugin_file(
+    path: str | Path,
+    *,
+    dry_run: bool = True,
+    semantic_findings: list[dict] | None = None,
+    capability_spec: dict | None = None,
+    validate: bool = True,
+) -> RepairResult:
+    path_obj = Path(path)
+    source = path_obj.read_text(encoding="utf-8")
+    result = repair_draft_plugin(
+        source,
+        plugin_path=str(path_obj),
+        semantic_findings=semantic_findings,
+        capability_spec=capability_spec,
+    )
+    validation_error = _compile_error(result.patched_source, filename=str(path_obj)) if validate else None
+    if validation_error:
+        result = replace(
+            result,
+            remaining_findings=list(dict.fromkeys(result.remaining_findings + [f"compile_error: {validation_error}"])),
+            recommended_next_action="quarantine",
+        )
+    changed = result.patched_source != source
+    if changed and not dry_run and result.recommended_next_action == "retest":
+        path_obj.write_text(result.patched_source, encoding="utf-8", newline="\n")
+    return result
+
+
+def repair_plugin_tree(
+    plugin_dir: str | Path,
+    *,
+    dry_run: bool = True,
+    validate: bool = True,
+    max_files: int | None = None,
+) -> list[PluginFileRepairReport]:
+    root = Path(plugin_dir)
+    paths = sorted(path for path in root.rglob("*.py") if "__pycache__" not in path.parts)
+    if max_files is not None:
+        paths = paths[:max_files]
+    reports: list[PluginFileRepairReport] = []
+    for path in paths:
+        result = repair_plugin_file(path, dry_run=dry_run, validate=validate)
+        validation_error = None
+        for finding in result.remaining_findings:
+            if finding.startswith("compile_error: "):
+                validation_error = finding.removeprefix("compile_error: ")
+                break
+        reports.append(
+            PluginFileRepairReport(
+                path=str(path),
+                plugin_slug=analyze_draft_plugin(result.patched_source, plugin_path=str(path)).plugin_slug,
+                changed=result.patched_source != result.original_source and result.recommended_next_action == "retest",
+                applied_patches=result.applied_patches,
+                skipped_patches=result.skipped_patches,
+                remaining_findings=result.remaining_findings,
+                recommended_next_action=result.recommended_next_action,
+                validation_error=validation_error,
+                repair_recipe=result.repair_recipe,
+            )
+        )
+    return reports

@@ -11,6 +11,7 @@ from factory_os.draft_plugin_repair_surgeon import (
     analyze_draft_plugin,
     plan_repairs,
     repair_draft_plugin,
+    repair_plugin_tree,
 )
 
 
@@ -157,6 +158,70 @@ def overlap_mismatch_source() -> str:
     )
 
 
+def windows_temp_path_source() -> str:
+    return textwrap.dedent(
+        '''
+        from __future__ import annotations
+
+        from pathlib import Path
+
+        _PLUGIN_NAME = "Windows Temp Path Target"
+        _PLUGIN_SLUG = "windows_temp_path_target"
+
+        def _run_core_logic(context, payload, config):
+            # === LOGIC START ===
+            logic_profile_id = "task_planner_profile"
+            temp_path = Path("/tmp/francis/plugin.txt")
+            result = {
+                "summary": str(temp_path),
+                "primary_insights": [],
+                "recommended_actions": [],
+                "scores": {"confidence": 0.7, "usefulness": 0.7},
+                "details": {"logic_profile_id": logic_profile_id},
+                "progress_state": {"blockers": []},
+                "user_experience": {},
+                "fun_mode": {"celebratory_microcopy": "ok"},
+                "diagnostics": {"logic_profile_id": logic_profile_id},
+            }
+            return result
+            # === LOGIC END ===
+        '''
+    )
+
+
+def windows_home_path_source() -> str:
+    return textwrap.dedent(
+        '''
+        _PLUGIN_NAME = "Windows Home Path Target"
+        _PLUGIN_SLUG = "windows_home_path_target"
+        def _run_core_logic(context, payload, config):
+            # === LOGIC START ===
+            logic_profile_id = "task_planner_profile"
+            repo_path = "/home/peppera091/francis/factory"
+            result = {"summary": repo_path, "details": {"logic_profile_id": logic_profile_id}}
+            return result
+            # === LOGIC END ===
+        '''
+    )
+
+
+def shell_command_source() -> str:
+    return textwrap.dedent(
+        '''
+        _PLUGIN_NAME = "Shell Command Target"
+        _PLUGIN_SLUG = "shell_command_target"
+        def _run_core_logic(context, payload, config):
+            # === LOGIC START ===
+            import subprocess
+            logic_profile_id = "task_planner_profile"
+            subprocess.run("echo one && echo two", shell=True)
+            result = {"summary": "done", "details": {"logic_profile_id": logic_profile_id}}
+            return result
+            # === LOGIC END ===
+        '''
+    )
+
+
 class DraftPluginRepairSurgeonTests(unittest.TestCase):
     def test_repair_detects_goal_fallback_bug(self) -> None:
         analysis = analyze_draft_plugin(buggy_plugin_source())
@@ -225,6 +290,49 @@ class DraftPluginRepairSurgeonTests(unittest.TestCase):
         self.assertIn("output", envelope)
         self.assertIn("error", envelope)
         self.assertIn("meta", envelope)
+
+    def test_windows_temp_path_literals_are_normalized(self) -> None:
+        result = repair_draft_plugin(windows_temp_path_source())
+
+        self.assertIn("normalize_patchable_posix_temp_paths", result.applied_patches)
+        self.assertIn("tempfile.gettempdir()", result.patched_source)
+        self.assertNotIn('Path("/tmp/francis/plugin.txt")', result.patched_source)
+        compile(result.patched_source, "windows_temp_path_target.py", "exec")
+
+    def test_hardcoded_home_path_is_not_blindly_patched(self) -> None:
+        analysis = analyze_draft_plugin(windows_home_path_source())
+        plan = plan_repairs(analysis)
+
+        self.assertTrue(analysis.has_windows_path_literal_bug)
+        self.assertFalse(analysis.has_patchable_windows_temp_path_bug)
+        self.assertEqual(plan.risk_level, "high")
+        self.assertEqual(plan.repair_steps, [])
+
+    def test_shell_command_is_classified_for_regeneration(self) -> None:
+        analysis = analyze_draft_plugin(shell_command_source())
+        plan = plan_repairs(analysis)
+
+        self.assertTrue(analysis.has_windows_shell_command_bug)
+        self.assertTrue(analysis.has_windows_subprocess_shell_bug)
+        self.assertEqual(analysis.recommended_action, "regenerate")
+        self.assertEqual(plan.risk_level, "high")
+
+    def test_repair_plugin_tree_dry_run_and_apply(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        root = Path(temp_dir.name)
+        plugin_path = root / "windows_temp_path_target.py"
+        plugin_path.write_text(windows_temp_path_source(), encoding="utf-8")
+
+        dry_run_reports = repair_plugin_tree(root, dry_run=True)
+        self.assertEqual(len(dry_run_reports), 1)
+        self.assertTrue(dry_run_reports[0].changed)
+        self.assertIn('Path("/tmp/francis/plugin.txt")', plugin_path.read_text(encoding="utf-8"))
+
+        apply_reports = repair_plugin_tree(root, dry_run=False)
+        self.assertEqual(len(apply_reports), 1)
+        self.assertTrue(apply_reports[0].changed)
+        self.assertIn("tempfile.gettempdir()", plugin_path.read_text(encoding="utf-8"))
 
     def _load_repaired_module(self):
         result = repair_draft_plugin(buggy_plugin_source())
