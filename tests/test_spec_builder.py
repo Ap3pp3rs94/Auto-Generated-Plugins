@@ -99,6 +99,32 @@ class SpecBuilderTests(unittest.TestCase):
 
         self.assertGreaterEqual(capacity, 500_000)
 
+    def test_continuous_expansion_can_target_broad_ai_use_cases(self) -> None:
+        target_slugs = {target.slug for target in CONTINUOUS_EXPANSION_TARGETS}
+        self.assertIn("agriculture_ops", target_slugs)
+        self.assertIn("manufacturing_ops", target_slugs)
+        self.assertIn("home_maintenance", target_slugs)
+        self.assertIn("gaming_community", target_slugs)
+
+        agriculture_index = next(
+            index
+            for index, target in enumerate(CONTINUOUS_EXPANSION_TARGETS)
+            if target.slug == "agriculture_ops"
+        )
+        spec_index = (
+            len(AI_CAPABILITY_ROADMAP)
+            + agriculture_index * len(CONTINUOUS_EXPANSION_FAMILIES)
+            + 1
+        )
+        spec = build_next_spec(spec_index)[0]
+
+        self.assertTrue(spec.extra["continuous_expansion"])
+        self.assertIn("Agriculture Ops", spec.use_cases[0])
+        self.assertIn("ai agriculture", spec.intended_domain.lower())
+        self.assertTrue(spec.extra["duplicate_policy"]["plugin_must_serve_ai_workflow"])
+        self.assertTrue(spec.extra["duplicate_policy"]["allow_expansive_ai_use_case_domains"])
+        self.assertTrue(spec.extra["duplicate_policy"]["do_not_generate_non_ai_utilities"])
+
     def test_second_continuous_wave_keeps_use_case_in_metadata_not_slug(self) -> None:
         first_wave_size = len(CONTINUOUS_EXPANSION_TARGETS) * len(CONTINUOUS_EXPANSION_FAMILIES)
         next_wave_spec = build_next_spec(len(AI_CAPABILITY_ROADMAP) + first_wave_size + 1)[0]

@@ -41,15 +41,20 @@ The response envelope is consistent across the library:
 }
 ```
 
-The capabilities focus on agentic AI work: planning, prompt quality, retrieval,
-tool use, handoffs, memory, evaluation, safety, debugging, verification, and
-release readiness.
+The capabilities are for AI consumption first: planning, prompt quality,
+retrieval, tool use, handoffs, memory, evaluation, safety, debugging,
+verification, and release readiness. Their target use cases are intentionally
+broad. The factory may create AI-facing capabilities for agriculture,
+manufacturing, healthcare, education, legal, finance, media, field service,
+personal workflows, or other domains as long as the module turns payload data
+into structured, deterministic assistance an AI system can use.
 
 ## Naming And Expansion
 
 Continuous expansion uses short numbered capability names. Category and profile
-families may repeat, but each new module must carry a distinct use-case scenario
-instead of packing every domain, mode, and surface into the slug.
+families may repeat, and target domains can range widely, but each new module
+must carry a distinct AI-use-case scenario instead of packing every domain,
+mode, and surface into the slug.
 
 Current naming standard:
 

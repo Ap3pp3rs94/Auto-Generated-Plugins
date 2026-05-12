@@ -6,13 +6,14 @@ Spec builder for the Francis plugin factory.
 This generates PluginSpecs for the autonomous AI capability roadmap.
 
 Upgrades:
-- Deterministic AI-focused plugin specs; no broad/random utility rotation.
+- Deterministic AI-focused plugin specs across broad real-world use cases;
+  no non-AI utility rotation.
 - Continuous expansion uses short numbered names plus varied concrete use cases.
 - Each spec includes a small set of concrete `use_cases`.
 - capability_type and intended_domain are set on PluginSpec directly.
 
 You can use this in place of Station A when you want autonomous progress
-toward AI functionality rather than broad/random utility generation.
+toward AI-consumable functionality rather than generic utility generation.
 """
 
 from dataclasses import dataclass
@@ -1076,7 +1077,7 @@ class ContinuousExpansionDimension:
     tags: List[str]
 
 
-CONTINUOUS_EXPANSION_TARGETS: Tuple[ContinuousExpansionTarget, ...] = (
+BASE_CONTINUOUS_EXPANSION_TARGETS: Tuple[ContinuousExpansionTarget, ...] = (
     ContinuousExpansionTarget("coding_agent", "Coding Agent", "AI coding agents and repository work", ["coding", "agents"]),
     ContinuousExpansionTarget("research_agent", "Research Agent", "AI research, retrieval, and synthesis work", ["research", "retrieval"]),
     ContinuousExpansionTarget("customer_support", "Customer Support", "AI customer support and service workflows", ["support", "service"]),
@@ -1093,6 +1094,79 @@ CONTINUOUS_EXPANSION_TARGETS: Tuple[ContinuousExpansionTarget, ...] = (
     ContinuousExpansionTarget("personal_assistant", "Personal Assistant", "AI personal productivity and scheduling workflows", ["productivity", "assistant"]),
     ContinuousExpansionTarget("operations_monitor", "Operations Monitor", "AI operations monitoring and incident response", ["operations", "monitoring"]),
     ContinuousExpansionTarget("plugin_factory", "Capability Factory", "AI capability factory and generated module operations", ["capabilities", "factory"]),
+)
+
+
+EXPANSIVE_AI_USE_CASE_TARGETS: Tuple[ContinuousExpansionTarget, ...] = (
+    ContinuousExpansionTarget("agriculture_ops", "Agriculture Ops", "AI agriculture, farm operations, crop monitoring, and controlled-environment grow workflows", ["agriculture", "farming", "operations"]),
+    ContinuousExpansionTarget("manufacturing_ops", "Manufacturing Ops", "AI manufacturing, production line, quality, and plant operations workflows", ["manufacturing", "quality", "operations"]),
+    ContinuousExpansionTarget("warehouse_ops", "Warehouse Ops", "AI warehouse, inventory, picking, packing, and fulfillment workflows", ["warehouse", "inventory", "fulfillment"]),
+    ContinuousExpansionTarget("logistics_dispatch", "Logistics Dispatch", "AI logistics, routing, fleet dispatch, and delivery coordination workflows", ["logistics", "fleet", "routing"]),
+    ContinuousExpansionTarget("supply_chain", "Supply Chain", "AI supply chain planning, vendor risk, procurement, and replenishment workflows", ["supply-chain", "procurement", "planning"]),
+    ContinuousExpansionTarget("construction_ops", "Construction Ops", "AI construction project, site safety, punch list, and contractor coordination workflows", ["construction", "field-ops", "safety"]),
+    ContinuousExpansionTarget("real_estate_ops", "Real Estate Ops", "AI real estate listing, lease, appraisal, due diligence, and portfolio workflows", ["real-estate", "contracts", "portfolio"]),
+    ContinuousExpansionTarget("insurance_claims", "Insurance Claims", "AI insurance claims, underwriting, policy review, and fraud-risk workflows", ["insurance", "claims", "risk"]),
+    ContinuousExpansionTarget("banking_ops", "Banking Ops", "AI banking operations, financial controls, customer risk, and account workflow support", ["banking", "finance", "controls"]),
+    ContinuousExpansionTarget("tax_accounting", "Tax Accounting", "AI tax, bookkeeping, reconciliation, and accounting workflow support", ["tax", "accounting", "finance"]),
+    ContinuousExpansionTarget("public_sector", "Public Sector", "AI public-sector service, permitting, benefits, and civic operations workflows", ["government", "civic", "services"]),
+    ContinuousExpansionTarget("nonprofit_ops", "Nonprofit Ops", "AI nonprofit fundraising, grant reporting, volunteer, and impact measurement workflows", ["nonprofit", "grants", "impact"]),
+    ContinuousExpansionTarget("energy_utilities", "Energy Utilities", "AI energy, utility operations, grid planning, outage, and sustainability workflows", ["energy", "utilities", "sustainability"]),
+    ContinuousExpansionTarget("climate_resilience", "Climate Resilience", "AI climate adaptation, environmental monitoring, resilience, and mitigation workflows", ["climate", "environment", "resilience"]),
+    ContinuousExpansionTarget("healthcare_clinical", "Healthcare Clinical", "AI clinical documentation, care coordination, patient safety, and health operations workflows", ["healthcare", "clinical", "documentation"]),
+    ContinuousExpansionTarget("biotech_lab", "Biotech Lab", "AI biotech, lab notebook, assay review, experiment tracking, and research operations workflows", ["biotech", "lab", "research"]),
+    ContinuousExpansionTarget("pharma_regulatory", "Pharma Regulatory", "AI pharma regulatory, submission readiness, safety review, and evidence workflows", ["pharma", "regulatory", "evidence"]),
+    ContinuousExpansionTarget("veterinary_ops", "Veterinary Ops", "AI veterinary clinic, case note, treatment plan, and client communication workflows", ["veterinary", "clinical", "service"]),
+    ContinuousExpansionTarget("food_service", "Food Service", "AI restaurant, food safety, menu, kitchen ops, and guest-service workflows", ["food-service", "restaurant", "safety"]),
+    ContinuousExpansionTarget("hospitality_travel", "Hospitality Travel", "AI hospitality, booking, itinerary, guest recovery, and travel operations workflows", ["hospitality", "travel", "service"]),
+    ContinuousExpansionTarget("retail_merchandising", "Retail Merchandising", "AI retail merchandising, assortment, pricing, store ops, and customer journey workflows", ["retail", "merchandising", "pricing"]),
+    ContinuousExpansionTarget("marketplace_ops", "Marketplace Ops", "AI marketplace trust, seller operations, catalog quality, and transaction workflows", ["marketplace", "trust", "catalog"]),
+    ContinuousExpansionTarget("creator_economy", "Creator Economy", "AI creator workflow, audience planning, content packaging, and sponsor operations", ["creator", "content", "audience"]),
+    ContinuousExpansionTarget("media_production", "Media Production", "AI media production, editorial planning, transcript, rights, and publishing workflows", ["media", "production", "publishing"]),
+    ContinuousExpansionTarget("gaming_community", "Gaming Community", "AI game design, live ops, moderation, economy, and player-support workflows", ["gaming", "community", "moderation"]),
+    ContinuousExpansionTarget("sports_analytics", "Sports Analytics", "AI sports analytics, scouting, training, injury-risk, and performance workflows", ["sports", "analytics", "performance"]),
+    ContinuousExpansionTarget("fitness_wellness", "Fitness Wellness", "AI fitness coaching, wellness planning, habit review, and progress workflows", ["fitness", "wellness", "coaching"]),
+    ContinuousExpansionTarget("home_maintenance", "Home Maintenance", "AI home repair, maintenance planning, contractor scope, and inspection workflows", ["home", "maintenance", "inspection"]),
+    ContinuousExpansionTarget("automotive_service", "Automotive Service", "AI automotive diagnostics, repair intake, maintenance, and fleet service workflows", ["automotive", "maintenance", "fleet"]),
+    ContinuousExpansionTarget("field_service", "Field Service", "AI field service dispatch, work order, technician handoff, and service verification workflows", ["field-service", "dispatch", "work-orders"]),
+    ContinuousExpansionTarget("iot_robotics", "IoT Robotics", "AI IoT, robotics, device telemetry, autonomy review, and maintenance workflows", ["iot", "robotics", "telemetry"]),
+    ContinuousExpansionTarget("education_admin", "Education Admin", "AI education administration, curriculum operations, student support, and assessment workflows", ["education", "curriculum", "student-support"]),
+    ContinuousExpansionTarget("learning_design", "Learning Design", "AI instructional design, course review, practice generation, and learner feedback workflows", ["learning", "instructional-design", "assessment"]),
+    ContinuousExpansionTarget("translation_localization", "Translation Localization", "AI translation, localization, cultural review, and multilingual content workflows", ["translation", "localization", "language"]),
+    ContinuousExpansionTarget("accessibility_review", "Accessibility Review", "AI accessibility audit, accommodation planning, inclusive design, and content remediation workflows", ["accessibility", "inclusion", "review"]),
+    ContinuousExpansionTarget("recruiting_ops", "Recruiting Ops", "AI recruiting, interview planning, candidate review, and hiring workflow support", ["recruiting", "hiring", "talent"]),
+    ContinuousExpansionTarget("employee_enablement", "Employee Enablement", "AI employee onboarding, enablement, policy Q&A, and internal support workflows", ["hr", "enablement", "onboarding"]),
+    ContinuousExpansionTarget("project_delivery", "Project Delivery", "AI project delivery, milestone tracking, risk review, and stakeholder update workflows", ["project", "delivery", "risk"]),
+    ContinuousExpansionTarget("design_review", "Design Review", "AI product design critique, UX review, design-system, and accessibility workflows", ["design", "ux", "review"]),
+    ContinuousExpansionTarget("procurement_ops", "Procurement Ops", "AI procurement intake, vendor comparison, contract handoff, and spend review workflows", ["procurement", "vendors", "contracts"]),
+    ContinuousExpansionTarget("contract_ops", "Contract Ops", "AI contract operations, clause review, obligation tracking, and negotiation prep workflows", ["contracts", "legal", "obligations"]),
+    ContinuousExpansionTarget("policy_governance", "Policy Governance", "AI policy governance, control mapping, audit evidence, and exception workflow support", ["policy", "governance", "audit"]),
+    ContinuousExpansionTarget("privacy_ops", "Privacy Ops", "AI privacy operations, data request triage, DPIA review, and consent workflows", ["privacy", "data-governance", "compliance"]),
+    ContinuousExpansionTarget("cyber_defense", "Cyber Defense", "AI cyber defense, alert triage, incident handling, and threat intelligence workflows", ["cybersecurity", "incidents", "threat-intel"]),
+    ContinuousExpansionTarget("science_research", "Science Research", "AI scientific literature, experiment design, evidence synthesis, and peer-review workflows", ["science", "research", "evidence"]),
+    ContinuousExpansionTarget("personal_finance", "Personal Finance", "AI personal finance planning, budgeting, debt, and financial decision workflows", ["personal-finance", "budgeting", "planning"]),
+    ContinuousExpansionTarget("life_admin", "Life Admin", "AI personal administration, paperwork, appointments, and decision support workflows", ["personal-admin", "paperwork", "planning"]),
+    ContinuousExpansionTarget("community_moderation", "Community Moderation", "AI community moderation, escalation, trust-and-safety, and policy workflows", ["moderation", "community", "trust-safety"]),
+    ContinuousExpansionTarget("emergency_response", "Emergency Response", "AI emergency response, continuity, triage, logistics, and recovery workflows", ["emergency", "continuity", "triage"]),
+)
+
+
+def _dedupe_expansion_targets(
+    *target_groups: Tuple[ContinuousExpansionTarget, ...],
+) -> Tuple[ContinuousExpansionTarget, ...]:
+    seen: set[str] = set()
+    deduped: List[ContinuousExpansionTarget] = []
+    for group in target_groups:
+        for target in group:
+            if target.slug in seen:
+                continue
+            seen.add(target.slug)
+            deduped.append(target)
+    return tuple(deduped)
+
+
+CONTINUOUS_EXPANSION_TARGETS: Tuple[ContinuousExpansionTarget, ...] = _dedupe_expansion_targets(
+    BASE_CONTINUOUS_EXPANSION_TARGETS,
+    EXPANSIVE_AI_USE_CASE_TARGETS,
 )
 
 
@@ -1117,6 +1191,16 @@ CONTINUOUS_EXPANSION_CONTEXTS: Tuple[ContinuousExpansionDimension, ...] = (
     ContinuousExpansionDimension("prompt_ops", "Prompt Operations", "prompt operations", ["prompting", "operations"]),
     ContinuousExpansionDimension("knowledge_graph", "Knowledge Graph", "knowledge graph work", ["knowledge", "graph"]),
     ContinuousExpansionDimension("live_monitoring", "Live Monitoring", "live monitoring", ["monitoring", "live"]),
+    ContinuousExpansionDimension("decision_support", "Decision Support", "decision support", ["decision-support"]),
+    ContinuousExpansionDimension("domain_triage", "Domain Triage", "domain triage", ["triage"]),
+    ContinuousExpansionDimension("quality_control", "Quality Control", "quality control", ["quality"]),
+    ContinuousExpansionDimension("case_management", "Case Management", "case management", ["cases"]),
+    ContinuousExpansionDimension("resource_planning", "Resource Planning", "resource planning", ["resources", "planning"]),
+    ContinuousExpansionDimension("policy_mapping", "Policy Mapping", "policy mapping", ["policy", "mapping"]),
+    ContinuousExpansionDimension("field_operations", "Field Operations", "field operations", ["field-ops"]),
+    ContinuousExpansionDimension("stakeholder_updates", "Stakeholder Updates", "stakeholder updates", ["stakeholders", "updates"]),
+    ContinuousExpansionDimension("knowledge_extraction", "Knowledge Extraction", "knowledge extraction", ["knowledge", "extraction"]),
+    ContinuousExpansionDimension("accessibility_review", "Accessibility Review", "accessibility review", ["accessibility"]),
 )
 
 
@@ -1133,6 +1217,15 @@ CONTINUOUS_EXPANSION_MODES: Tuple[ContinuousExpansionDimension, ...] = (
     ContinuousExpansionDimension("simulate", "Simulation", "simulating outcomes", ["simulation"]),
     ContinuousExpansionDimension("recover", "Recovery", "recovering from failures", ["recovery"]),
     ContinuousExpansionDimension("optimize", "Optimization", "optimizing decisions", ["optimization"]),
+    ContinuousExpansionDimension("classify", "Classification", "classifying inputs", ["classification"]),
+    ContinuousExpansionDimension("prioritize", "Prioritization", "prioritizing work", ["prioritization"]),
+    ContinuousExpansionDimension("extract", "Extraction", "extracting structured signals", ["extraction"]),
+    ContinuousExpansionDimension("compare", "Comparison", "comparing options", ["comparison"]),
+    ContinuousExpansionDimension("forecast", "Forecasting", "forecasting likely outcomes", ["forecasting"]),
+    ContinuousExpansionDimension("recommend", "Recommendation", "recommending next moves", ["recommendation"]),
+    ContinuousExpansionDimension("audit", "Audit", "auditing readiness", ["audit"]),
+    ContinuousExpansionDimension("normalize", "Normalization", "normalizing messy inputs", ["normalization"]),
+    ContinuousExpansionDimension("map", "Mapping", "mapping relationships", ["mapping"]),
 )
 
 
@@ -1143,6 +1236,13 @@ CONTINUOUS_EXPANSION_SURFACES: Tuple[ContinuousExpansionDimension, ...] = (
     ContinuousExpansionDimension("conversations", "Conversation", "conversation history", ["conversation"]),
     ContinuousExpansionDimension("artifacts", "Artifact", "generated artifacts", ["artifacts"]),
     ContinuousExpansionDimension("scorecards", "Scorecard", "scorecards and rubrics", ["scorecards"]),
+    ContinuousExpansionDimension("documents", "Document", "documents and files", ["documents"]),
+    ContinuousExpansionDimension("forms", "Form", "forms and intake fields", ["forms"]),
+    ContinuousExpansionDimension("tickets", "Ticket", "tickets and queues", ["tickets"]),
+    ContinuousExpansionDimension("records", "Record", "records and case files", ["records"]),
+    ContinuousExpansionDimension("policies", "Policy", "policies and controls", ["policies"]),
+    ContinuousExpansionDimension("contracts", "Contract", "contracts and obligations", ["contracts"]),
+    ContinuousExpansionDimension("telemetry", "Telemetry", "sensor readings and telemetry", ["telemetry"]),
 )
 
 
@@ -2036,7 +2136,10 @@ def _build_huge_ai_spec(
         "duplicate_policy": {
             "slug_must_be_unique": True,
             "capability_must_be_distinct": True,
-            "do_not_generate_random_domains": True,
+            "plugin_must_serve_ai_workflow": True,
+            "allow_expansive_ai_use_case_domains": True,
+            "do_not_generate_non_ai_utilities": True,
+            "do_not_generate_random_domains": False,
             "avoid_equivalent_prompt_memory_eval_retrieval_agent_safety_plugins": True,
         },
         "expected_result_shape": {

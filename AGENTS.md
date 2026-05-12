@@ -7,7 +7,8 @@
 - Every canonical plugin must pass structural and semantic validation.
 - Repair good shells before rejecting them when the failure is semantic routing or shallow logic.
 - Never let metadata-only relabeling count as real capability behavior.
+- Continuous expansion may target any practical domain, but every retained module must be an AI-consumable capability that turns payload data into structured, deterministic assistance.
+- Broad target/domain variation belongs in the spec, use cases, tags, details, and behavior; keep installable slugs short and numbered.
 - Tests must include semantic contrast payloads, not only smoke tests.
 - Keep generated plugin artifacts inside `factory/plugins` and commit only after promotion gates pass.
 - Do not remove backward-compatible logic profile aliases; normalize them to canonical profile ids.
-
