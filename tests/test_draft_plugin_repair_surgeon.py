@@ -377,6 +377,18 @@ class DraftPluginRepairSurgeonTests(unittest.TestCase):
 
         self.assertTrue(analysis.has_profile_routing_mismatch)
 
+    def test_overlap_checker_routing_mismatch_is_patched_without_full_regeneration(self) -> None:
+        analysis = analyze_draft_plugin(overlap_mismatch_source())
+        plan = plan_repairs(analysis)
+        result = repair_draft_plugin(overlap_mismatch_source())
+
+        self.assertIn("patch_overlap_profile_alias_routing", [step.patch_id for step in plan.repair_steps])
+        self.assertIn("patch_overlap_profile_alias_routing", result.applied_patches)
+        self.assertIn("capability_overlap_checker_profile", result.patched_source)
+        self.assertIn("continuous_capability_overlap_checker_profile", result.patched_source)
+        self.assertNotIn("profile_routing_mismatch", result.remaining_findings)
+        self.assertEqual(result.recommended_next_action, "retest")
+
     def test_patched_source_still_imports_and_invoke_returns_station_c_envelope(self) -> None:
         module = self._load_repaired_module()
         envelope = asyncio.run(module.invoke("tester", {"prompt": "Make this better", "objective": "Ship safely"}))

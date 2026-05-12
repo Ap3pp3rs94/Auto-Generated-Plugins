@@ -417,7 +417,7 @@ def plan_repairs(
             )
         )
         expected.extend(["thin_diagnostics", "missing_input_profile_bug"])
-    if analysis.has_profile_routing_mismatch and allow_routing_patch:
+    if analysis.has_profile_routing_mismatch and (allow_routing_patch or not analysis.has_multi_profile_branch_table):
         steps.append(
             RepairStep(
                 patch_id="patch_overlap_profile_alias_routing",
