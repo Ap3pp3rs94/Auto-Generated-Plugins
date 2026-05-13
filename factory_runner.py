@@ -97,6 +97,11 @@ try:
     from factory.factory_os.promotion_gate import evaluate_for_promotion as _evaluate_for_promotion
     from factory.factory_os.semantic_contracts import get_semantic_contract as _get_semantic_contract
     from factory.factory_os.semantic_validator import run_semantic_contract_async as _run_semantic_contract_async
+    from factory.factory_os.a_plus_certification import (
+        A_PLUS_MIN_SCORE,
+        certify_plugin_callable as _certify_a_plus_plugin,
+        summarize_a_plus_result as _summarize_a_plus_result,
+    )
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone sidecar checkout
     try:
         from factory_os.capability_spec import CapabilitySpec, LogicProfile, SemanticContract, SemanticProbe  # type: ignore
@@ -109,6 +114,11 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
         from factory_os.semantic_contracts import get_semantic_contract as _get_semantic_contract  # type: ignore
         from factory_os.semantic_validator import run_semantic_contract_async as _run_semantic_contract_async  # type: ignore
         from factory_os.draft_plugin_repair_surgeon import repair_plugin_file as _repair_draft_plugin_file  # type: ignore
+        from factory_os.a_plus_certification import (  # type: ignore
+            A_PLUS_MIN_SCORE,
+            certify_plugin_callable as _certify_a_plus_plugin,
+            summarize_a_plus_result as _summarize_a_plus_result,
+        )
     except (ImportError, ModuleNotFoundError):  # pragma: no cover
         _get_capability_spec = None  # type: ignore[assignment]
         _get_logic_profile = None  # type: ignore[assignment]
@@ -117,6 +127,9 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - standalone side
         _get_semantic_contract = None  # type: ignore[assignment]
         _run_semantic_contract_async = None  # type: ignore[assignment]
         _repair_draft_plugin_file = None  # type: ignore[assignment]
+        _certify_a_plus_plugin = None  # type: ignore[assignment]
+        _summarize_a_plus_result = None  # type: ignore[assignment]
+        A_PLUS_MIN_SCORE = 0.98  # type: ignore[assignment]
         CapabilitySpec = None  # type: ignore[assignment]
         LogicProfile = None  # type: ignore[assignment]
         SemanticContract = None  # type: ignore[assignment]
@@ -1896,6 +1909,40 @@ async def _production_quality_gate(
         True,
         f"production_quality: score {score:.4f} >= threshold {threshold:.2f}",
     )
+
+
+async def _a_plus_certification_gate(
+    plugin_path: Path,
+    spec: PluginSpec,
+    *,
+    threshold: float = A_PLUS_MIN_SCORE,
+) -> Tuple[bool, str]:
+    """
+    Certify that a validated capability is A+ material before promotion.
+
+    Production quality proves the module is useful enough to keep. A+ adds
+    probe-level checks for missing-input behavior, non-dict payload warnings,
+    diagnostics richness, profile-specific details, and semantic contrast.
+    """
+    if _certify_a_plus_plugin is None or _summarize_a_plus_result is None:
+        return False, "a_plus: certification layer is unavailable"
+    module = _module_from_plugin_path(plugin_path, slug=spec.slug, purpose="a_plus")
+    invoke = getattr(module, "invoke", None)
+    if not callable(invoke):
+        return False, "a_plus: plugin has no callable invoke"
+    result = await _certify_a_plus_plugin(
+        invoke,
+        metadata={
+            "slug": getattr(spec, "slug", ""),
+            "name": getattr(spec, "name", ""),
+            "category": getattr(spec, "category", ""),
+            "capability_type": getattr(spec, "capability_type", ""),
+            "intended_domain": getattr(spec, "intended_domain", ""),
+            "use_cases": list(getattr(spec, "use_cases", []) or []),
+        },
+        threshold=threshold,
+    )
+    return bool(result.passed), _summarize_a_plus_result(result)
 
 
 _CAPABILITY_NAME_CONTRACTS: tuple[tuple[str, dict[str, Any]], ...] = (
@@ -4063,6 +4110,65 @@ async def run_factory(config: RunnerConfig) -> None:
 
                 LOG.info(
                     "AI roadmap plugin failed name/uniqueness gate; retrying same spec in %.1f seconds.",
+                    config.sleep_seconds,
+                )
+                await asyncio.sleep(config.sleep_seconds)
+                continue
+
+            try:
+                a_plus_ok, a_plus_reason = await _a_plus_certification_gate(candidate_path, spec)
+            except Exception as exc:
+                a_plus_ok = False
+                a_plus_reason = f"a_plus: check crashed: {exc}"
+
+            if a_plus_ok:
+                LOG.info("Plugin A+ certification OK: %s", a_plus_reason)
+            else:
+                LOG.error(
+                    "A+ certification FAILED for AI roadmap plugin %r → %s",
+                    spec.slug,
+                    a_plus_reason,
+                )
+                try:
+                    rejected_path = _discard_candidate_plugin(candidate_path, reason=a_plus_reason)
+                    LOG.info("Rejected non-A+ candidate moved to %s", rejected_path)
+                except Exception:
+                    LOG.warning("Unable to discard non-A+ candidate %r", spec.slug, exc_info=True)
+                if is_upgrade_attempt and source_spec is not None:
+                    _upgrade_attempt_record(
+                        state=ai_roadmap_state,
+                        source_spec=source_spec,
+                        canonical_spec=spec,
+                        status="rejected",
+                        reason=a_plus_reason,
+                    )
+                elif source_spec is not None:
+                    _capability_rejection_record(
+                        state=ai_roadmap_state,
+                        spec=source_spec,
+                        reason=a_plus_reason,
+                    )
+                    existing_slugs.add(spec.slug)
+                    existing_signatures.add(_spec_signature(spec))
+                    index_counter = selected_index + 1
+
+                _se_record(
+                    EVENT_FACTORY_PLUGIN_LOW_SCORE,
+                    slug=spec.slug,
+                    category=getattr(spec, "category", None),
+                    capability_type=capability_type,
+                    domain=intended_domain,
+                    score=0.0,
+                    threshold=A_PLUS_MIN_SCORE,
+                    reason=a_plus_reason,
+                    a_plus_certification_failed=True,
+                )
+
+                if not config.loop_forever:
+                    break
+
+                LOG.info(
+                    "AI roadmap plugin failed A+ certification; retrying same spec in %.1f seconds.",
                     config.sleep_seconds,
                 )
                 await asyncio.sleep(config.sleep_seconds)

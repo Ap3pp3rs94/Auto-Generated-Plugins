@@ -41,6 +41,8 @@ try:
     from factory.factory_os.promotion_gate import evaluate_for_promotion
     from factory.factory_os.semantic_contracts import get_semantic_contract
     from factory.factory_os.semantic_validator import run_semantic_contract_async
+    from factory.factory_os.a_plus_certification import certify_plugin_callable as certify_a_plus_plugin
+    from factory.factory_os.a_plus_certification import summarize_a_plus_result
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - direct sidecar execution
     from factory_runner import (  # type: ignore
         FACTORY_DIR,
@@ -61,6 +63,8 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover - direct sidecar 
     from factory_os.promotion_gate import evaluate_for_promotion  # type: ignore
     from factory_os.semantic_contracts import get_semantic_contract  # type: ignore
     from factory_os.semantic_validator import run_semantic_contract_async  # type: ignore
+    from factory_os.a_plus_certification import certify_plugin_callable as certify_a_plus_plugin  # type: ignore
+    from factory_os.a_plus_certification import summarize_a_plus_result  # type: ignore
 
 
 LOG = logging.getLogger(__name__)
@@ -433,6 +437,31 @@ async def _promotion_gate_checks(result: AuditResult, path: Path, spec: Any) -> 
         result.add("promotion_gate", promotion_reason)
 
 
+async def _a_plus_checks(result: AuditResult, path: Path, spec: Any) -> None:
+    try:
+        module = _load_module_from_path(path, result.slug)
+        invoke = getattr(module, "invoke", None)
+        if not callable(invoke):
+            result.add("a_plus_certification", "plugin has no callable invoke")
+            return
+        a_plus_result = await certify_a_plus_plugin(
+            invoke,
+            metadata={
+                "slug": getattr(spec, "slug", ""),
+                "name": getattr(spec, "name", ""),
+                "category": getattr(spec, "category", ""),
+                "capability_type": getattr(spec, "capability_type", ""),
+                "intended_domain": getattr(spec, "intended_domain", ""),
+                "use_cases": list(getattr(spec, "use_cases", []) or []),
+            },
+        )
+    except Exception as exc:
+        result.add("a_plus_certification_crash", str(exc))
+        return
+    if not a_plus_result.passed:
+        result.add("a_plus_certification", summarize_a_plus_result(a_plus_result))
+
+
 async def audit_plugin_path(path: Path, spec: Any) -> AuditResult:
     profile_id = registered_profile_id(spec.slug)
     result = AuditResult(slug=spec.slug, path=path, profile_id=profile_id, passed=True)
@@ -473,6 +502,7 @@ async def audit_plugin_path(path: Path, spec: Any) -> AuditResult:
     _profile_specific_checks(result, output)
     await _semantic_contract_checks(result, path, spec)
     await _promotion_gate_checks(result, path, spec)
+    await _a_plus_checks(result, path, spec)
     return result
 
 

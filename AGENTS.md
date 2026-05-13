@@ -5,6 +5,7 @@
 - Every capability must have a `CapabilitySpec`.
 - Every generated plugin must map to a known `LogicProfile`.
 - Every canonical plugin must pass structural and semantic validation.
+- Every newly promoted plugin must pass A+ certification after production quality and identity gates.
 - Repair good shells before rejecting them when the failure is semantic routing or shallow logic.
 - Never let metadata-only relabeling count as real capability behavior.
 - Continuous expansion may target any practical domain, but every retained module must be an AI-consumable capability that turns payload data into structured, deterministic assistance.

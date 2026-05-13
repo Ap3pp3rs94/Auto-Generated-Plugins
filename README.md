@@ -85,6 +85,9 @@ A plugin is kept only if it passes the current production gate:
 - satisfies any declared `CapabilitySpec`, `LogicProfile`, and semantic contract
 - passes capability-specific promotion gates before canonical registration
 - scores at least `0.95` on the production quality gate
+- passes A+ certification for missing-input behavior, non-dict payload warning
+  preservation, rich diagnostics, profile-specific detail keys, and semantic
+  contrast across probes
 - does not duplicate an existing canonical capability
 - has a distinct use-case seed when it reuses an existing category or profile family
 - replaces a canonical plugin only when the candidate is measurably better
