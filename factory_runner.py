@@ -710,29 +710,33 @@ def _canonical_retention_spec(spec: PluginSpec) -> PluginSpec:
     return base_spec
 
 
-def _next_ai_roadmap_index(existing_slugs: Set[str]) -> int:
+def _next_ai_roadmap_index(
+    existing_slugs: Set[str],
+    unavailable_slugs: Optional[Set[str]] = None,
+) -> int:
     """
     Return the first missing curated capability before expanding forward.
 
-    A later generated capability must not hide an earlier curated gap. If a
-    plugin file was deleted or a candidate was rejected, the factory backfills
-    that canonical slot before moving into continuous expansion.
+    A later generated capability must not hide an earlier curated gap. Deleted
+    plugins are backfilled unless the slug is explicitly unavailable because it
+    was rejected under the current factory knowledge.
     """
+    known_slugs = set(existing_slugs) | set(unavailable_slugs or set())
     for position, blueprint in enumerate(AI_CAPABILITY_ROADMAP, start=1):
         spec, _, _ = build_next_spec(position)
         slug = str(getattr(spec, "slug", "") or "")
         legacy_slug = str(getattr(blueprint, "slug", "") or "")
         has_current = bool(slug) and (
-            slug in existing_slugs or (PLUGINS_DIR / f"{slug}.py").exists()
+            slug in known_slugs or (PLUGINS_DIR / f"{slug}.py").exists()
         )
         has_legacy = bool(legacy_slug) and (
-            legacy_slug in existing_slugs or (PLUGINS_DIR / f"{legacy_slug}.py").exists()
+            legacy_slug in known_slugs or (PLUGINS_DIR / f"{legacy_slug}.py").exists()
         )
         if slug and not has_current and not has_legacy:
             return position
 
     existing_indexes = [
-        idx for slug in existing_slugs
+        idx for slug in known_slugs
         for idx in [_roadmap_slug_index(slug)]
         if idx is not None
     ]
@@ -741,7 +745,10 @@ def _next_ai_roadmap_index(existing_slugs: Set[str]) -> int:
     return max(existing_indexes) + 1
 
 
-def _randomized_ai_expansion_indexes(existing_slugs: Set[str]) -> list[int]:
+def _randomized_ai_expansion_indexes(
+    existing_slugs: Set[str],
+    unavailable_slugs: Optional[Set[str]] = None,
+) -> list[int]:
     """
     Return a bounded shuffled list of internal upgrade-attempt indexes.
 
@@ -751,8 +758,9 @@ def _randomized_ai_expansion_indexes(existing_slugs: Set[str]) -> list[int]:
     module or be discarded.
     """
     roadmap_size = len(AI_CAPABILITY_ROADMAP)
+    known_slugs = set(existing_slugs) | set(unavailable_slugs or set())
     existing_indexes = [
-        idx for slug in existing_slugs
+        idx for slug in known_slugs
         for idx in [_roadmap_slug_index(slug)]
         if idx is not None
     ]
@@ -763,7 +771,7 @@ def _randomized_ai_expansion_indexes(existing_slugs: Set[str]) -> list[int]:
         for position in range(1, roadmap_size + 1):
             idx = (generation_round - 1) * roadmap_size + position
             spec, _, _ = build_next_spec(idx)
-            if spec.slug not in existing_slugs and not (PLUGINS_DIR / f"{spec.slug}.py").exists():
+            if spec.slug not in known_slugs and not (PLUGINS_DIR / f"{spec.slug}.py").exists():
                 candidates.append(idx)
     random.SystemRandom().shuffle(candidates)
     return candidates
@@ -878,10 +886,12 @@ def _prune_ai_roadmap_state_to_existing_plugins(
     """
     Keep roadmap memory aligned with the actual plugin directory.
 
-    If generated artifacts are purged, stale completion/rejection/upgrade memory
-    must not make the factory believe the capability is still present or already
-    exhausted. This avoids losing a capability just because a deleted module's
-    slug still existed in local handoff state.
+    If generated artifacts are purged, completion/upgrade memory must not make
+    the factory believe the capability is still present. Rejection memory is
+    different: an A+ purge means the artifact was intentionally retired under
+    the current factory knowledge. Keep those records so the runner does not
+    immediately regenerate the same known-bad slot; the knowledge fingerprint
+    still reopens it after factory/profile logic changes.
     """
     _normalize_ai_roadmap_state(state)
 
@@ -915,13 +925,14 @@ def _prune_ai_roadmap_state_to_existing_plugins(
     ]
 
     rejected = state.get("rejected_capabilities") if isinstance(state.get("rejected_capabilities"), dict) else {}
+    current_fp = _upgrade_knowledge_fingerprint()
     kept_rejected = {
         key: value for key, value in rejected.items()
-        if str(key) in existing_slugs
+        if isinstance(value, dict) and value.get("knowledge_fingerprint") == current_fp
     }
     if len(kept_rejected) != len(rejected):
         LOG.info(
-            "Pruned %d stale rejection record(s) for deleted canonical plugin artifact(s).",
+            "Pruned %d stale rejection record(s) from older factory knowledge.",
             len(rejected) - len(kept_rejected),
         )
     state["rejected_capabilities"] = kept_rejected
@@ -930,6 +941,20 @@ def _prune_ai_roadmap_state_to_existing_plugins(
         if str(item) in kept_rejected
     ]
     return state
+
+
+def _remembered_rejected_capability_slugs(state: Dict[str, Any]) -> Set[str]:
+    rejected = state.get("rejected_capabilities")
+    if not isinstance(rejected, dict):
+        return set()
+    current_fp = _upgrade_knowledge_fingerprint()
+    return {
+        str(slug)
+        for slug, record in rejected.items()
+        if str(slug)
+        and isinstance(record, dict)
+        and record.get("knowledge_fingerprint") == current_fp
+    }
 
 
 def _upgrade_knowledge_fingerprint() -> str:
@@ -3291,7 +3316,13 @@ async def run_factory(config: RunnerConfig) -> None:
     ai_roadmap_state = _prune_ai_roadmap_state_to_existing_plugins(ai_roadmap_state, existing_slugs)
     ai_roadmap_state = _seed_ai_roadmap_state_from_existing(ai_roadmap_state, existing_slugs)
     _save_ai_roadmap_state(ai_roadmap_state)
+    remembered_rejected_slugs = _remembered_rejected_capability_slugs(ai_roadmap_state)
     LOG.info("Loaded %d existing plugin(s) from plugins/", len(existing_slugs))
+    if remembered_rejected_slugs:
+        LOG.info(
+            "Loaded %d remembered rejected capability slot(s) under current factory knowledge.",
+            len(remembered_rejected_slugs),
+        )
     LOG.info(
         "Loaded AI roadmap handoff state with %d completed item(s).",
         len(ai_roadmap_state.get("completed") or []),
@@ -3304,9 +3335,13 @@ async def run_factory(config: RunnerConfig) -> None:
     if target_count is None and not config.loop_forever:
         target_count = 1
 
-    index_counter = _next_ai_roadmap_index(existing_slugs)
+    index_counter = _next_ai_roadmap_index(existing_slugs, remembered_rejected_slugs)
     LOG.info("Starting AI roadmap at deterministic index %d", index_counter)
-    anticipated = _refresh_anticipation_state(ai_roadmap_state, existing_slugs, start_index=index_counter)
+    anticipated = _refresh_anticipation_state(
+        ai_roadmap_state,
+        existing_slugs | remembered_rejected_slugs,
+        start_index=index_counter,
+    )
     if anticipated:
         LOG.info(
             "Anticipated next capability candidates: %s",
@@ -3347,7 +3382,12 @@ async def run_factory(config: RunnerConfig) -> None:
         is_upgrade_attempt = False
         capability_type: Optional[str] = None
         intended_domain: Optional[str] = None
-        anticipated = _refresh_anticipation_state(ai_roadmap_state, existing_slugs, start_index=index_counter)
+        remembered_rejected_slugs = _remembered_rejected_capability_slugs(ai_roadmap_state)
+        anticipated = _refresh_anticipation_state(
+            ai_roadmap_state,
+            existing_slugs | remembered_rejected_slugs,
+            start_index=index_counter,
+        )
 
         randomized_indexes: list[int] = []
         if not config.allow_upgrade_expansion and index_counter > len(AI_CAPABILITY_ROADMAP):
@@ -3375,10 +3415,11 @@ async def run_factory(config: RunnerConfig) -> None:
                             existing_slugs = _load_existing_plugin_slugs()
                             existing_signatures = _load_existing_capability_signatures()
                             ai_roadmap_state = _load_ai_roadmap_state()
-                            index_counter = _next_ai_roadmap_index(existing_slugs)
+                            remembered_rejected_slugs = _remembered_rejected_capability_slugs(ai_roadmap_state)
+                            index_counter = _next_ai_roadmap_index(existing_slugs, remembered_rejected_slugs)
                             continue
                         break
-                    randomized_indexes = _randomized_ai_expansion_indexes(existing_slugs)
+                    randomized_indexes = _randomized_ai_expansion_indexes(existing_slugs, remembered_rejected_slugs)
                     LOG.info(
                         "AI roadmap base complete at %d unique plugin(s); randomized bounded expansion has %d candidate(s).",
                         len(AI_CAPABILITY_ROADMAP),
@@ -3393,7 +3434,9 @@ async def run_factory(config: RunnerConfig) -> None:
                             await asyncio.sleep(config.sleep_seconds)
                             existing_slugs = _load_existing_plugin_slugs()
                             existing_signatures = _load_existing_capability_signatures()
-                            index_counter = _next_ai_roadmap_index(existing_slugs)
+                            ai_roadmap_state = _load_ai_roadmap_state()
+                            remembered_rejected_slugs = _remembered_rejected_capability_slugs(ai_roadmap_state)
+                            index_counter = _next_ai_roadmap_index(existing_slugs, remembered_rejected_slugs)
                             continue
                         break
             else:
@@ -3409,7 +3452,9 @@ async def run_factory(config: RunnerConfig) -> None:
                     await asyncio.sleep(config.sleep_seconds)
                     existing_slugs = _load_existing_plugin_slugs()
                     existing_signatures = _load_existing_capability_signatures()
-                    index_counter = _next_ai_roadmap_index(existing_slugs)
+                    ai_roadmap_state = _load_ai_roadmap_state()
+                    remembered_rejected_slugs = _remembered_rejected_capability_slugs(ai_roadmap_state)
+                    index_counter = _next_ai_roadmap_index(existing_slugs, remembered_rejected_slugs)
                     continue
                 break
 
@@ -3482,7 +3527,8 @@ async def run_factory(config: RunnerConfig) -> None:
                 existing_slugs = _load_existing_plugin_slugs()
                 existing_signatures = _load_existing_capability_signatures()
                 ai_roadmap_state = _load_ai_roadmap_state()
-                index_counter = _next_ai_roadmap_index(existing_slugs)
+                remembered_rejected_slugs = _remembered_rejected_capability_slugs(ai_roadmap_state)
+                index_counter = _next_ai_roadmap_index(existing_slugs, remembered_rejected_slugs)
                 continue
             break
 
