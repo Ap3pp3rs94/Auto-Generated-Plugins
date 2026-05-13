@@ -1,14 +1,8 @@
-# Downloadable Plugin Packages
+# Release Package Output
 
-This directory contains zip packages for generated plugins that are ready to
-download from GitHub.
+This directory is reserved for downloadable release packages built from current
+A+ capability modules.
 
-Current package:
-
-- `ai_prompt_refinement_engine-0.1.2.zip`
-
-Checksum:
-
-```text
-4472cb3d24e420041683bbbeda692e2b73624449b517f668c2362ca927137d02  ai_prompt_refinement_engine-0.1.2.zip
-```
+No stale package is kept here as a standing example. If a package appears in
+this directory, it should correspond to a currently promoted plugin in
+`plugins/` and include fresh checksum metadata for that exact archive.

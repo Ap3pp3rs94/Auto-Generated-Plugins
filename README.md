@@ -152,7 +152,8 @@ instead of `duplicate_risks`, `comparison_targets`, `max_similarity`, and
 | `plugin_template.py` | Shared plugin source template. |
 | `plugin_spec.py` | Serializable plugin specification model. |
 | `docs/` | Walkthroughs and deeper notes. |
-| `dist/` | Downloadable packaged plugin artifacts. |
+| `dist/` | Optional release-package output for current A+ artifacts; stale packages are removed. |
+| `packages/` | Optional package staging area for a selected current capability. |
 | `archive/legacy/` | Older experiments kept out of the active production path. |
 
 ## Quick Start
@@ -241,37 +242,25 @@ generated plugin file for that unit of work, not unrelated local changes.
 The factory also supports quality cleanup commits, such as removing plugins that
 fall below the current production threshold.
 
-## Downloadable Package
+## Release Packages
 
-The packaged prompt-refinement example is available in `dist/`:
+The source of truth is the promoted capability library in `plugins/`. Release
+packages are generated only from a current A+ capability and should not outlive
+the plugin they package. Stale package zips and package directories are removed
+instead of kept as historical examples.
 
-```text
-dist/ai_prompt_refinement_engine-0.1.2.zip
-```
+Package artifacts, when present, should include:
 
-After the repository is pushed, it can be downloaded from:
-
-```text
-https://github.com/Ap3pp3rs94/Auto-Generated-Plugins/raw/main/dist/ai_prompt_refinement_engine-0.1.2.zip
-```
-
-The archive includes:
-
-- `ai_prompt_refinement_engine.py`
+- the selected plugin module
 - `plugin.json`
 - `README.md`
 - `LICENSE`
-
-Checksums are tracked in:
-
-```text
-dist/SHA256SUMS
-```
+- checksum metadata for the exact archive
 
 ## Example Capability
 
-`ai_prompt_refinement_engine` is a retained capability for turning vague prompts
-into testable model instructions. Its current expected behavior includes:
+Retained capabilities are expected to map their names to real deterministic
+behavior. For a prompt-refinement capability, that means behavior such as:
 
 - identifying vague phrases
 - naming missing constraints
@@ -279,8 +268,10 @@ into testable model instructions. Its current expected behavior includes:
 - scoring specificity and risk
 - returning structured next actions for another agent or UI
 
-That is the standard for the rest of the library: a capability name must map to
-real behavior, not metadata relabeling.
+For an overlap-checking capability, the equivalent standard is duplicate-risk
+records, comparison targets, max similarity, and an explicit
+`merge_or_reject_decision`. Metadata relabeling is not accepted as capability
+behavior.
 
 ## Quality Workflow
 

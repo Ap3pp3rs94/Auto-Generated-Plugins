@@ -1,169 +1,139 @@
-# Generated Plugin Walkthrough
+# Generated Capability Walkthrough
 
-This walkthrough shows the first plugin kept in this curated library:
+This walkthrough describes the current retention standard for generated
+capability modules. The exact plugin inventory changes over time, so examples
+use the numbered module convention instead of naming one stale artifact as the
+permanent seed.
+
+Current generated modules live under:
 
 ```text
-plugins/ai_prompt_refinement_engine.py
+plugins/<capability_family>_<number>.py
 ```
 
-It was generated under the AI roadmap guide, validated by Station C, and kept as
-the seed artifact for the plugin library.
+Example shape:
+
+```text
+plugins/ai_capability_overlap_checker_000833.py
+```
 
 ## Spec
 
-```text
-Name: AI Prompt Refinement Engine
-Slug: ai_prompt_refinement_engine
-Category: ai_prompting
-Capability: enrichment
-Domain: AI prompt engineering and instruction quality
-Goal: Analyze task instructions and produce clearer, safer, more testable prompts.
-```
+Every retained module starts from a capability spec. The spec defines the
+capability boundary, required inputs, required detail keys, required scores,
+forbidden fields, logic profile ids, and semantic probes.
 
-Primary use cases:
+For an overlap-checking capability, the spec must require behavior like:
 
-- Rewrite vague prompts into specific, testable instructions.
-- Identify missing constraints, inputs, outputs, and acceptance criteria.
-- Suggest prompt variants for different model sizes or latency budgets.
-- Return progress state and user-facing guidance.
-- Avoid duplicating existing AI plugin behavior.
+- comparing a proposed capability against existing plugin records
+- computing duplicate risks and max similarity
+- producing a uniqueness fingerprint
+- choosing `generate_new`, `redesign_boundary`, `merge_or_reject`, or
+  `insufficient_input`
+- avoiding unrelated backlog, release-package, or repair-plan fields
 
-## Generated Body Excerpt
+## Generated Body
 
-Station B generated a Python logic body that is injected into the plugin
-template. The first generated body was structurally valid but too shallow, so
-the semantic-depth gate repaired it into value-dependent logic before packaging.
+Generated files should not carry the old universal multi-profile branch table.
+They preserve the Station C envelope and call the profile dispatcher or a
+profile-specific body. The body must use real payload input, not the plugin's
+own goal text, when deciding whether the request is complete.
 
-```python
-task_preview = str(payload_data.get('task') or payload_data.get('objective') or payload_data.get('prompt'))[:180]
-objective_preview = str(payload_data.get('objective') or goal)[:180]
-blocker_preview = str((payload_data.get('blocked_steps') or missing_keys[:2])[0])[:160]
+Required behaviors include:
 
-primary_insights.append({
-    'title': 'Capability focus',
-    'detail': 'Apply ' + plugin_name + ' to: ' + task_preview,
-    'domain': domain
-})
-primary_insights.append({
-    'title': 'Available context',
-    'detail': 'Use objective: ' + objective_preview,
-    'fields': present_keys
-})
-primary_insights.append({
-    'title': 'Key blocker or uncertainty',
-    'detail': blocker_preview
-})
-
-recommended_actions.append({
-    'action': 'Define the next AI workflow step for ' + task_preview,
-    'why': 'Keeps autonomous progress concrete and testable.'
-})
-recommended_actions.append({
-    'action': 'Separate blocking work around ' + blocker_preview + ' from parallel work',
-    'why': 'Prevents duplicated agent effort and drift.'
-})
-```
+- empty payloads return `missing_inputs` and progress blockers
+- non-dict payloads preserve `_payload_warnings`
+- `scores` includes at least `confidence` and `usefulness`
+- top-level `diagnostics` records profile id, input signals, warning counts,
+  and semantic-probe readiness
+- `fun_mode` includes `celebratory_microcopy` while keeping backward-compatible
+  microcopy fields when present
 
 ## Sample Invocation
 
 ```python
 import asyncio
-from plugins.ai_prompt_refinement_engine import invoke
+from plugins.ai_capability_overlap_checker_000833 import invoke
 
 payload = {
-    "task": "Create a prompt that asks an AI coding agent to add tests before changing production code.",
-    "objective": "Make the instruction specific, safe, and testable.",
-    "prompt": "Make this better and don't break stuff.",
-    "messages": [],
-    "candidate_outputs": [
-        {"id": "draft_a", "summary": "Add tests maybe."},
-        {"id": "draft_b", "summary": "Write tests first, then implement."},
+    "plugin_name": "AI Capability Overlap Checker",
+    "objective": "Check whether a proposed AI capability overlaps existing modules.",
+    "existing_plugins": [
+        {
+            "name": "AI Capability Overlap Checker 000100",
+            "slug": "ai_capability_overlap_checker_000100",
+            "family_key": "ai_plugin_factory::capability_overlap_checker",
+            "owns": [
+                "capability boundary comparison",
+                "duplicate risk scoring",
+                "merge or reject recommendation",
+            ],
+        }
     ],
 }
 
-result = asyncio.run(invoke("demo-user", payload, run_id="readme-demo"))
-print(result["output"]["summary"])
+result = asyncio.run(invoke("demo-user", payload, run_id="walkthrough-demo"))
+print(result["output"]["details"]["merge_or_reject_decision"])
 ```
 
 Representative output fields:
 
 ```json
 {
-  "summary": "AI Prompt Refinement Engine: Analyzing task instructions and producing clearer, safer, more testable prompts.",
-  "primary_insights": [
-    "No conversation history found.",
-    "Multiple model outputs detected."
-  ],
-  "recommended_actions": [
-    {
-      "action": "Rewrite prompt",
-      "description": "Use the task and objective to create a specific, testable instruction."
-    },
-    {
-      "action": "Start conversation",
-      "description": "Begin interacting with the model to gather more information."
-    }
-  ],
+  "summary": "AI Capability Overlap Checker: compared the proposed capability against existing plugin records.",
   "scores": {
-    "confidence": 0.8,
-    "usefulness": 0.9
+    "confidence": 0.86,
+    "usefulness": 0.91,
+    "duplicate_risk": 0.72
   },
-  "progress_state": {
-    "current_stage": "Analysis",
-    "next_step": "Rewrite prompt",
-    "blockers": [],
-    "done_signals": []
+  "details": {
+    "duplicate_risks": [],
+    "uniqueness_fingerprint": [],
+    "comparison_targets": [],
+    "merge_or_reject_decision": "merge_or_reject",
+    "max_similarity": 0.72,
+    "missing_inputs": []
   },
-  "fun_mode": {
-    "challenge_label": "Clear Path",
-    "score_badge": "Ready to Run"
+  "diagnostics": {
+    "logic_profile_id": "capability_overlap_checker_profile",
+    "has_user_input": true,
+    "input_signal_count": 2,
+    "semantic_probe_ready": true
   }
 }
 ```
 
 ## Validation
 
-Station C validates generated plugins before they are kept in the curated
-library.
+Station C validates generated modules before they are kept:
 
 ```bash
 python - <<'PY'
 from pathlib import Path
 from station_c_validator import validate_plugin_module
 
-ok, reason = validate_plugin_module(Path("plugins/ai_prompt_refinement_engine.py"))
+path = next(Path("plugins").glob("ai_capability_overlap_checker_*.py"))
+ok, reason = validate_plugin_module(path)
+print(path)
 print(ok)
 print(reason)
 PY
 ```
 
-Current result:
+Quality gates then check semantic depth, profile contracts, promotion decisions,
+and the `0.95` production threshold.
 
-```text
-True
-```
+## Why A Plugin Stays
 
-Semantic-depth result:
+A generated module is retained only when it satisfies the current library rules:
 
-```text
-semantic_depth: payload values influenced decision fields
-```
-
-Prompt-refinement contract result:
-
-```text
-prompt_refinement_contract: rewrites and missing constraints present
-```
-
-## Why This Plugin Stayed
-
-This plugin is retained because it satisfies the current library rules:
-
-- AI-specific capability
+- AI-consumable capability behavior
 - deterministic Python output
-- structured result shape
-- semantic-depth gate passes on contrasting payloads
-- user-facing progress and next actions
-- optional fun mode that does not replace the serious recommendation
-- no legacy random sales/data plugin behavior
-- passes Station C validation
+- preserved Station C async `invoke` envelope
+- required profile-specific detail keys and scores
+- missing-input behavior that does not use goal fallback as input
+- non-dict payload warnings preserved into output details
+- semantic contrast across different payloads
+- no metadata-only relabeling
+- no unrelated multi-profile branch table
+- no duplicate canonical capability unless the new module is a measured upgrade
